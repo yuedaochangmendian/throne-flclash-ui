@@ -19,6 +19,9 @@ object Key {
     const val BYPASS_MODE = "bypassMode"
     const val INDIVIDUAL = "individual"
     const val METERED_NETWORK = "meteredNetwork"
+    // `vpnAllowBypass` (not `allowBypass`): the FlClash bridge already owns `allowBypass` for the
+    // "bypass private ranges" switch, and a reset of that key would otherwise drop this row too.
+    const val ALLOW_BYPASS = "vpnAllowBypass"
 
     const val SHOW_DIRECT_SPEED = "showDirectSpeed"
     const val SHOW_GROUP_IN_NOTIFICATION = "showGroupInNotification"

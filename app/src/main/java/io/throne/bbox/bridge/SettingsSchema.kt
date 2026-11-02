@@ -167,6 +167,9 @@ object Settings {
         // vocabulary uses); its raw row is only an alias for the reset, so there is no entry here.
         boolEntry("enableTunRouting", Apply.Reload, { DataStore.enableTunRouting }, { DataStore.enableTunRouting = it }),
         listEntry("vpnPrivateRanges", Apply.Reload, { DataStore.vpnPrivateRanges }, { DataStore.vpnPrivateRanges = it }),
+        // Lets apps bind sockets to the underlying network while the VPN is up; FCM needs this for
+        // its push channel. Distinct from the `allowBypass` bridge key above, which is private ranges.
+        boolEntry("vpnAllowBypass", Apply.Reload, true, { DataStore.allowBypass }, { DataStore.allowBypass = it }),
 
         // --- Per-app proxy ------------------------------------------------------------------------
 

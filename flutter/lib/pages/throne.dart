@@ -356,7 +356,7 @@ class TunPage extends StatelessWidget {
   const TunPage({super.key});
   @override Widget build(BuildContext context) => BoxPage(title: 'TUN', actions: [
     restoreDefaultsAction(context, const [
-      'vpnMtu', 'vpnIpv6', 'vpnTunIpv4Cidr', 'vpnTunIpv6Cidr', 'allowBypass', 'vpnPrivateRanges', 'enableTunRouting',
+      'vpnMtu', 'vpnIpv6', 'vpnTunIpv4Cidr', 'vpnTunIpv6Cidr', 'allowBypass', 'vpnPrivateRanges', 'enableTunRouting', 'vpnAllowBypass',
     ]),
   ], children: [
     generateSection(items: [
@@ -371,6 +371,7 @@ class TunPage extends StatelessWidget {
         SettingLines('Private ranges', 'vpnPrivateRanges',
           hint: 'One CIDR per line. These are reached directly instead of through the tunnel.'),
       SettingToggle('Route through TUN', 'enableTunRouting'),
+      SettingToggle('Allow VPN bypass', 'vpnAllowBypass', autoRestart: true),
     ]),
   ]);
 }
