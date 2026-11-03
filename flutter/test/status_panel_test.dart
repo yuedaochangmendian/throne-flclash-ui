@@ -183,7 +183,7 @@ void main() {
     expect(dashboard.ids, hasLength(1));
     expect(find.text('203.0.113.9'), findsOneWidget);
     expect(find.byKey(const Key('country-badge-flag')), findsOneWidget);
-    expect(find.text('Example Business'), findsOneWidget);
+    expect(find.textContaining('Example Business'), findsOneWidget);
     expect(find.text('Business'), findsOneWidget);
     expect(find.text('Quality Good'), findsOneWidget);
     expect(find.text('Not running'), findsOneWidget);
@@ -231,7 +231,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(dashboard.ids, hasLength(2));
     expect(find.text('203.0.113.9'), findsOneWidget);
-    expect(find.text('Example Business'), findsOneWidget);
+    expect(find.textContaining('Example Business'), findsOneWidget);
     expect(find.text('Not running'), findsOneWidget);
     expect(dashboard.calls.where((call) => call.method == 'service.start'), isEmpty);
     expect(tester.takeException(), isNull);
@@ -272,8 +272,8 @@ void main() {
       expect(find.text('192.0.2.3'), findsOneWidget);
       expect(find.text('203.0.113.9'), findsNothing);
       expect(find.text('198.51.100.2'), findsNothing);
-      expect(find.text('Stale Organization'), findsNothing);
-      expect(find.text('Example Business'), findsOneWidget);
+      expect(find.textContaining('Stale Organization'), findsNothing);
+      expect(find.textContaining('Example Business'), findsOneWidget);
       expect(find.text('Not running'), findsOneWidget);
       final writes = dashboard.calls.where((call) => call.method == 'dashboard.qualityCache.put');
       expect(writes, hasLength(1));
@@ -315,7 +315,7 @@ void main() {
       final dashboard = _Dashboard();
       await dashboard.mount(tester, locale: locale, scale: scale);
       expect(find.text('203.0.113.9'), findsOneWidget);
-      expect(find.text('Example Business'), findsNothing);
+      expect(find.textContaining('Example Business'), findsNothing);
       expect(find.byType(SkeletonPill), findsWidgets);
       await tester.tap(find.text('203.0.113.9'));
       await _advance(tester);
@@ -325,7 +325,7 @@ void main() {
       expect(find.descendant(of: details, matching: find.text(locale == 'zh' ? '类型未知' : 'Unknown type')), findsOneWidget);
       dashboard.answerQuality(dashboard.ids.single);
       await tester.pumpAndSettle();
-      expect(find.descendant(of: details, matching: find.text('Example Business')), findsOneWidget);
+      expect(find.descendant(of: details, matching: find.textContaining('Example Business')), findsOneWidget);
       expect(find.descendant(of: details, matching: find.text('AS64500')), findsOneWidget);
       expect(find.descendant(of: details, matching: find.text('ident.me')), findsOneWidget);
       expect(find.descendant(of: details, matching: find.text(locale == 'zh' ? '商业' : 'Business')), findsOneWidget);
@@ -359,7 +359,7 @@ void main() {
     dashboard.answerQuality(dashboard.ids.last);
     await tester.pumpAndSettle();
     expect(find.text('203.0.113.9'), findsOneWidget);
-    expect(find.text('Example Business'), findsOneWidget);
+    expect(find.textContaining('Example Business'), findsOneWidget);
     expect(find.text('Business'), findsOneWidget);
     expect(dashboard.calls.where((call) => call.method == 'dashboard.probe.get'), hasLength(9));
     expect(tester.takeException(), isNull);
@@ -380,7 +380,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('198.51.100.2'), findsOneWidget);
     expect(find.text('203.0.113.9'), findsNothing);
-    expect(find.text('Example Business'), findsOneWidget);
+    expect(find.textContaining('Example Business'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -398,8 +398,8 @@ void main() {
       expect(dashboard.closed, contains(old));
       expect(find.text('198.51.100.2'), findsOneWidget);
       expect(find.text('203.0.113.9'), findsNothing);
-      expect(find.text('Example Business'), findsOneWidget);
-      expect(find.text('Stale Organization'), findsNothing);
+      expect(find.textContaining('Example Business'), findsOneWidget);
+      expect(find.textContaining('Stale Organization'), findsNothing);
       final writes = dashboard.calls.where((call) => call.method == 'dashboard.qualityCache.put');
       expect(writes, hasLength(1));
       expect((writes.single.arguments as Map)['ip'], '198.51.100.2');
@@ -424,7 +424,7 @@ void main() {
         expect(dashboard.ids, hasLength(1));
         expect(dashboard.calls.where((call) => call.method == 'dashboard.probe.get'), hasLength(qualityCalls));
         expect(find.text('203.0.113.9'), findsOneWidget);
-        expect(find.text('Example Business'), findsOneWidget);
+        expect(find.textContaining('Example Business'), findsOneWidget);
       }
       // A long stay in the background also keeps a successful result.
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
@@ -453,7 +453,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(dashboard.ids, hasLength(2));
       expect(find.text('198.51.100.2'), findsOneWidget);
-      expect(find.text('Example Business'), findsOneWidget);
+      expect(find.textContaining('Example Business'), findsOneWidget);
       expect(tester.takeException(), isNull);
     });
   }
@@ -482,7 +482,7 @@ void main() {
         await tester.pumpAndSettle();
         expect(dashboard.ids, hasLength(1));
         expect(find.text('203.0.113.9'), findsOneWidget);
-        expect(find.text('Example Business'), findsOneWidget);
+        expect(find.textContaining('Example Business'), findsOneWidget);
         expect(tester.takeException(), isNull);
       });
     }
@@ -574,7 +574,7 @@ void main() {
       ..cachedQualityAt = DateTime.now().subtract(const Duration(days: 3)).add(const Duration(seconds: 10));
     await dashboard.mount(tester);
     await tester.pump();
-    expect(find.text('Cached Business'), findsOneWidget);
+    expect(find.textContaining('Cached Business'), findsOneWidget);
     expect(dashboard.calls.where((call) => call.method == 'dashboard.probe.get'), isEmpty);
     addTearDown(() => tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed));
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
@@ -586,7 +586,7 @@ void main() {
     expect(dashboard.opened, hasLength(1));
     expect(dashboard.closed, contains(dashboard.opened.single));
     expect(find.text('203.0.113.9'), findsOneWidget);
-    expect(find.text('Example Business'), findsOneWidget);
+    expect(find.textContaining('Example Business'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

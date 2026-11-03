@@ -1,3 +1,9 @@
+#### 3.2.10
+
+* The status card's bottom row no longer overflows on a narrow display with large text: Run time joins Location and Operator as an equally flexible column, so all three shrink (with ellipsis) instead of spilling past the card edge
+* A two-letter country code is no longer repeated as text in the Location column — the badge's regional-indicator emoji already shows it, so the location only carries a full country name and the city
+* The Xray VLESS form gains Chinese labels for its Reality/TLS fields (Fingerprint, Use system CA, Pinned cert SHA256, Short ID, Authority, SpiderX)
+
 #### 3.2.9
 
 * The Settings → Core → Logging "Log level" (and "Xray log level") now actually takes effect. The level was gated behind a process restart (`Apply.AppRestart`), but the core already re-reads `log_level` and rebuilds the config on every reload, so it only needed `Apply.Reload`; both choices now also re-apply to a running core the moment you pick a new level instead of waiting for a stop/start

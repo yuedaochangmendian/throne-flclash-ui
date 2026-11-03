@@ -191,8 +191,11 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
     final loading = (ipLoading && ip == null) || _qualityChecking;
     // Bettbox-style placement: a location (country · city) and a carrier (ASN · ISP/organization)
     // sit beside the IP, using the richer fields the ipwho.is source supplies when available.
+    // A two-letter code is already drawn as the badge's regional-indicator emoji, so it is not
+    // repeated as text here; only a full country name (or a non-ISO label) joins the city.
+    final rawCountry = info?['country'] as String?;
     final location = [
-      (info?['countryName'] as String?) ?? (info?['country'] as String?),
+      (info?['countryName'] as String?) ?? (rawCountry?.length == 2 ? null : rawCountry),
       info?['city'] as String?,
     ].whereType<String>().where((item) => item.isNotEmpty).join(' · ');
     final carrier = [
@@ -252,7 +255,7 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
           ]),
           const SizedBox(height: 16),
           Row(spacing: 24, children: [
-            _StatusCell(label: 'Run time', child: _RuntimeValue(startedAt: box.running ? (box.dashboard['startedAt'] as num?)?.toInt() : null)),
+            Expanded(child: _StatusCell(label: 'Run time', child: _RuntimeValue(startedAt: box.running ? (box.dashboard['startedAt'] as num?)?.toInt() : null))),
             Expanded(child: _StatusCell(label: 'Location', child: location.isNotEmpty
               ? Text(location, maxLines: 1, overflow: TextOverflow.ellipsis, style: _statusCellStyle(context))
               : loading ? SkeletonText(width: 72, style: _statusCellStyle(context))
@@ -366,7 +369,7 @@ class _RuntimeValueState extends State<_RuntimeValue> {
   @override Widget build(BuildContext context) {
     final seconds = widget.startedAt == null ? 0 : math.min(999 * 3600 + 59 * 60 + 59, math.max(0, (DateTime.now().millisecondsSinceEpoch - widget.startedAt!) ~/ 1000));
     final text = widget.startedAt == null ? '—' : [seconds ~/ 3600, seconds ~/ 60 % 60, seconds % 60].map((n) => n.toString().padLeft(2, '0')).join(':');
-    return Text(text, maxLines: 1, style: _statusCellStyle(context));
+    return Text(text, maxLines: 1, overflow: TextOverflow.ellipsis, style: _statusCellStyle(context));
   }
 }
 

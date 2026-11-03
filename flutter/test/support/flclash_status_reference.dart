@@ -155,7 +155,7 @@ class FlClashStatusCard extends StatelessWidget {
                         const SizedBox(height: 16),
                       _Cells(
                         location: [
-                          ipInfo?.countryName ?? ipInfo?.countryCode,
+                          ipInfo?.countryName ?? (ipInfo?.countryCode?.length == 2 ? null : ipInfo?.countryCode),
                           ipInfo?.city,
                         ].whereType<String>().where((item) => item.isNotEmpty).join(' · '),
                         carrier: _carrier(ipInfo, quality),
@@ -589,9 +589,11 @@ class _Cells extends StatelessWidget {
     return Row(
       spacing: gap,
       children: [
-        _Cell(
-          label: appLocalizations.runTime,
-          value: active ? const _RunTimeValue() : const _Placeholder(),
+        Expanded(
+          child: _Cell(
+            label: appLocalizations.runTime,
+            value: active ? const _RunTimeValue() : const _Placeholder(),
+          ),
         ),
         Expanded(
           child: _Cell(

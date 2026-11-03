@@ -291,6 +291,8 @@ const _zh = <String, String>{
   'Server name': '服务器名称', 'Allow insecure': '允许不安全连接',
   'uTLS': 'uTLS', 'Reality': 'Reality',
   'Reality public key': 'Reality 公钥', 'Reality short ID': 'Reality Short ID',
+  'Short ID': '短 ID', 'Fingerprint': '指纹', 'Authority': 'Authority',
+  'Use system CA': '使用系统 CA', 'Pinned cert SHA256': '固定证书 SHA256', 'SpiderX': 'SpiderX',
   'ECH': 'ECH', 'ECH config': 'ECH 配置',
   'Service name': '服务名称', 'Ping timeout': 'Ping 超时',
   'Max early data': '最大早期数据', 'Early data header': '早期数据请求头',
