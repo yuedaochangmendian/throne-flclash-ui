@@ -1,3 +1,7 @@
+#### 3.2.7
+
+* Sync ThroneForAndroid's VPN allow-bypass: while the VPN is up, apps may bind sockets to the underlying network themselves — FCM needs this for its push channel. Exposed as an "Allow VPN bypass" switch under TUN; the bridge key is `vpnAllowBypass`, kept apart from the `allowBypass` key the FlClash UI already uses for "bypass private ranges"
+
 #### 3.2.6
 
 * The About page credits `giturass/B-box` in the app itself: its bridge and Flutter-module setup is the migration approach this port follows, and until now the thanks lived only in the README. The entry sits with Source code / Core / FlClash interface and links to the project; a test pins the line so it cannot be dropped silently
