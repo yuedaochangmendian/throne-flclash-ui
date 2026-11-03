@@ -6,7 +6,8 @@ import org.gradle.api.JavaVersion
 import org.gradle.api.Project
 import org.gradle.api.plugins.ExtensionAware
 import org.gradle.kotlin.dsl.getByName
-import org.jetbrains.kotlin.gradle.dsl.KotlinJvmOptions
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.dsl.KotlinAndroidProjectExtension
 import java.util.Base64
 import java.util.Properties
 
@@ -71,13 +72,8 @@ fun Project.setupCommon() {
             sourceCompatibility = JavaVersion.VERSION_17
             targetCompatibility = JavaVersion.VERSION_17
         }
-        (android as ExtensionAware).extensions.getByName<KotlinJvmOptions>("kotlinOptions").apply {
-            jvmTarget = JavaVersion.VERSION_17.toString()
-            // The B-box Flutter AARs can only be built with Kotlin >= 2.2.20 (Flutter 3.47 hard-fails below that),
-            // so their metadata is newer than this project's Kotlin 2.0.21 compiler expects. Loading them is safe,
-            // they use nothing newer than plain Kotlin/React-simple APIs, so allow mismatched metadata versions
-            // instead of dragging the whole toolchain onto 2.2.
-            freeCompilerArgs += "-Xskip-metadata-version-check"
+        (project.extensions.getByName("kotlin") as KotlinAndroidProjectExtension).compilerOptions {
+            jvmTarget.set(JvmTarget.JVM_17)
         }
         lint {
             showAll = true

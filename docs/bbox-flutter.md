@@ -97,8 +97,9 @@ The Flutter toolchain and Throne's are pinned differently, and both sides have t
 | --- | --- |
 | `flutter/.android/settings.gradle` | Flutter's Gradle plugin requires AGP >= 8.11.1 and KGP >= 2.2.20 (`DependencyVersionChecker`), so the module builds with AGP 9.1.0 / Kotlin 2.2.20 — Kotlin 2.4.0 from the template would also work but produces newer metadata than needed. |
 | `app` (`buildSrc/…/Helpers.kt`) | `compileSdk = 36` because every AAR published above declares `minCompileSdk=36`; `targetSdk` stays 35. |
-| `app` (`buildSrc/…/Helpers.kt`) | `-Xskip-metadata-version-check`, because Kotlin 2.0.21 must load AARs whose metadata is 2.2. Raising the whole toolchain to Kotlin 2.2 would ripple through KSP and Room, so relaxing this one check is the smaller change. |
-| `app/build.gradle.kts` | CameraX forced to 1.5.3 and Kotlin artifacts to the app's own versions; see the comments there. |
+| `buildSrc/build.gradle.kts` + Gradle wrapper | The host uses AGP 8.12.3 / Gradle 8.13, satisfying both CameraX 1.6.1's minimum AGP requirement (8.9.1) and KSP 2.3.13's minimum AGP requirement (8.12). |
+| `app` (`buildSrc/…/Helpers.kt`) | Kotlin 2.4.10 reads the 2.4.0 metadata that `mobile_scanner_release` was compiled with; `-Xskip-metadata-version-check` is no longer needed or allowed. |
+| `app/build.gradle.kts` | No dependency `force` remains: CameraX 1.6.1, Kotlin stdlib 2.4.10 and coroutines 1.11.0 resolve normally. CI still scans the Flutter AAR for API references missing from those host versions. |
 
 Put together, that means a rebuild after touching anything under `flutter/lib/` looks like:
 

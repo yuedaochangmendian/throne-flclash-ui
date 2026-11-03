@@ -1,12 +1,11 @@
-"""scan an AAR / classes.jar for coroutines and stdlib API references the forced downgrade may miss.
+"""scan an AAR / classes.jar for coroutines and stdlib API references the host may not provide.
 
-The host pins kotlin-stdlib 2.0.21 and kotlinx-coroutines 1.6.4 while some Flutter plugins are
-published against much newer artifacts. A bytecode call to a member those pinned versions do not
-declare fails at runtime with NoSuchMethodError. This scan:
+Flutter plugins can be published against newer Kotlin artifacts than the host resolves. A bytecode
+call to a member the resolved versions do not declare fails at runtime with NoSuchMethodError. This scan:
 
   1. reads every .class and collects Methodref / InterfaceMethodref / Fieldref entries under
      `kotlin/` and `kotlinx/coroutines/`;
-  2. downloads the pinned reference jars from Maven Central (cached under build/diagnostics-api-cache);
+  2. downloads the host's reference jars from Maven Central (cached under build/diagnostics-api-cache);
   3. resolves each reference against the declaring class's own and inherited members and reports
      whatever is left unbacked.
 
@@ -30,16 +29,16 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 CACHE = REPO_ROOT / "build" / "diagnostics-api-cache"
 
 REFERENCE_JARS = {
-    "kotlin-stdlib-2.0.21.jar":
-        "https://repo1.maven.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.0.21/kotlin-stdlib-2.0.21.jar",
-    "kotlin-stdlib-jdk7-2.0.21.jar":
-        "https://repo1.maven.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/2.0.21/kotlin-stdlib-jdk7-2.0.21.jar",
-    "kotlin-stdlib-jdk8-2.0.21.jar":
-        "https://repo1.maven.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk8/2.0.21/kotlin-stdlib-jdk8-2.0.21.jar",
-    "kotlinx-coroutines-core-jvm-1.6.4.jar":
-        "https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.6.4/kotlinx-coroutines-core-jvm-1.6.4.jar",
-    "kotlinx-coroutines-android-1.6.4.jar":
-        "https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-android/1.6.4/kotlinx-coroutines-android-1.6.4.jar",
+    "kotlin-stdlib-2.4.10.jar":
+        "https://repo1.maven.org/maven2/org/jetbrains/kotlin/kotlin-stdlib/2.4.10/kotlin-stdlib-2.4.10.jar",
+    "kotlin-stdlib-jdk7-2.4.10.jar":
+        "https://repo1.maven.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk7/2.4.10/kotlin-stdlib-jdk7-2.4.10.jar",
+    "kotlin-stdlib-jdk8-2.4.10.jar":
+        "https://repo1.maven.org/maven2/org/jetbrains/kotlin/kotlin-stdlib-jdk8/2.4.10/kotlin-stdlib-jdk8-2.4.10.jar",
+    "kotlinx-coroutines-core-jvm-1.11.0.jar":
+        "https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-core-jvm/1.11.0/kotlinx-coroutines-core-jvm-1.11.0.jar",
+    "kotlinx-coroutines-android-1.11.0.jar":
+        "https://repo1.maven.org/maven2/org/jetbrains/kotlinx/kotlinx-coroutines-android/1.11.0/kotlinx-coroutines-android-1.11.0.jar",
 }
 
 WATCHED = ("kotlin/", "kotlinx/coroutines/")
@@ -170,7 +169,7 @@ def reference_world() -> tuple[set[tuple[str, str, str, str]], dict[str, str]]:
 
 PLATFORM = ("java/", "javax/", "android/", "dalvik/", "libcore/", "sun/", "jdk/", "kotlinx/android/")
 
-# Verdicts for one reference against the pinned jars.
+# Verdicts for one reference against the host's jars.
 #   declared          - the member is declared by the class or a library superclass
 #   platform-owner    - the owner class itself comes from the platform; the pin cannot speak to it
 #   platform-super    - the chain ran into a platform superclass without a hit; the member would

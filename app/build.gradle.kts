@@ -73,7 +73,7 @@ dependencies {
 
     implementation(fileTree("libs"))
 
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
     implementation("androidx.core:core-ktx:1.9.0")
     implementation("androidx.recyclerview:recyclerview:1.3.0")
     implementation("androidx.activity:activity-ktx:1.10.1")
@@ -88,8 +88,8 @@ dependencies {
     implementation("com.google.code.gson:gson:2.9.0")
 
     implementation("com.github.jenly1314:zxing-lite:2.1.1")
-    // 0.24.x is built with Kotlin 2.2 (unreadable for the Kotlin 2.0 compiler/KSP) and 0.24.5+ needs compileSdk 36;
-    // 0.23.7 is Kotlin 2.1 and only references stdlib members that 2.0.21 has, so the app keeps its own stdlib
+    // 0.24.x now matches the host's Kotlin 2.2 toolchain, but still needs a separate editor regression pass.
+    // Keep 0.23.7 and its stdlib exclusion until that optional U3 upgrade.
     implementation("io.github.rosemoe:editor:0.23.7") {
         exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
     }
@@ -114,31 +114,9 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
 }
 
-// `mobile_scanner` (pulled in by the B-box Flutter module, used by profiles.dart's QR scanner) asks for
-// androidx.camera 1.6.1, whose aar metadata demands minCompileSdk=36 and minAndroidGradlePluginVersion=8.9.1.
-// compileSdk is already 36 (the Flutter AAR forces it, see Helpers.setupCommon), but the project still builds
-// with AGP 8.8.1, so CameraX stays pinned to the newest line that accepts it (1.5.3 declares minCompileSdk=35 /
-// minAGP=8.6.0). Removing these pins rides with the next AGP upgrade, not before. Same pattern as pinning the
-// rosemoe editor to 0.23.7.
-configurations.configureEach {
-    resolutionStrategy {
-        // CameraX: see the comment above.
-        force("androidx.camera:camera-core:1.5.3")
-        force("androidx.camera:camera-camera2:1.5.3")
-        force("androidx.camera:camera-lifecycle:1.5.3")
-        force("androidx.camera:camera-view:1.5.3")
-        // The B-box AARs were published alongside libraries whose POMs still ask for newer Kotlin artifacts
-        // (mobile_scanner declares kotlin-stdlib 2.2.10 and kotlinx-coroutines 1.11.0, both metadata 2.2+).
-        // Publishing does not rewrite those declarations, so pin them here to what this project's Kotlin 2.0.21
-        // compiler can actually read — same idea as excluding kotlin-stdlib from rosemoe editor above. CI runs
-        // tools/diagnostics/scan_aar_apis.py against the freshly built AAR to prove every kotlin*/coroutines*
-        // reference the AAR makes is backed by these pinned versions (a miss would be a runtime NoSuchMethodError).
-        force("org.jetbrains.kotlin:kotlin-stdlib:2.0.21")
-        force("org.jetbrains.kotlin:kotlin-stdlib-common:2.0.21")
-        force("org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.0.21")
-        force("org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.0.21")
-        force("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.6.4")
-        force("org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.6.4")
-        force("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.6.4")
-    }
-}
+// Flutter plugin AARs and the host now share one Kotlin toolchain: the host builds on Kotlin 2.4.10,
+// which reads the 2.4.0 metadata that mobile_scanner_release (pulled in by the B-box Flutter module)
+// was compiled with, so no `force` or `-Xskip-metadata-version-check` is needed to bridge the gap.
+// CameraX likewise resolves to 1.6.1 on its own (AGP 8.12.3 satisfies its min AGP 8.9.1). The one
+// thing still enforced out-of-band is CI's tools/diagnostics/scan_aar_apis.py, which proves the AAR
+// references nothing the resolved stdlib/coroutines versions don't provide.

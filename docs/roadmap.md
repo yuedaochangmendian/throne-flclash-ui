@@ -3,7 +3,7 @@
 > 版本：v1.0（2026-11-03 定稿）。基线：`main` @ `364cda9`（**v3.0.11**，VERSION_CODE 124），CI 全绿，`releases/latest` = v3.0.11。
 > 用途：全功能迁移（bbox-full-parity）已于 2026-11-01 完成、旧 UI 退役并归档（`openspec/history/bbox-full-parity.md`），本文档是**后迁移时代的接续规划**，任何 agent 接手时以本文为任务来源。执行前先 `git fetch`（代理断连用 `git -c http.proxy= fetch`）确认基线之后的提交；若前提已变，先做增量审计再动手。
 > 姊妹文档：仓库内 `docs/bbox-full-parity-plan.md`（已完成的迁移规划，其 §2 硬性规则全部沿用）。
-> 执行状态（2026-11-03）：W1/v3.0.12 ✅、v3.0.13 ✅、批次 M 的 M1/M2/M5 ✅、批次 N 的 N1–N4 ✅；本文档随仓库分发，批次 O 及里程碑表以 §4 为准。
+> 执行状态（2026-11-03）：W1/v3.0.12 ✅、v3.0.13 ✅、批次 M 的 M1/M2/M5 ✅、批次 N 的 N1–N4 ✅、工具链 U1/U2 ✅；本文档随仓库分发，批次 O 及里程碑表以 §4 为准。
 
 ---
 
@@ -21,8 +21,8 @@
 
 | # | 内容 | 证据 | 归属 |
 |---|---|---|---|
-| 1 | 依赖链 pin：coroutines force 1.6.4、stdlib 2.0.21 排除重编、全局 `-Xskip-metadata-version-check`（`buildSrc/Helpers.kt:80`）——Flutter AAR 调新版 API 会有运行时 NoSuchMethodError 风险，`scan_aar_apis.py` 结论需复查收窄 | `app/build.gradle.kts` | M → 详见 `docs/toolchain-upgrade.md`（批次 U1–U3） |
-| 2 | compileSdk 36 被 androidx.camera 1.6.1 绑架（targetSdk 仍 35） | `app/build.gradle.kts:55` | M → 同上，U1 解 CameraX 钉 |
+| 1 | ~~依赖链 force 降级与元数据跳过~~：U2 已升 Kotlin 2.4.10 并删除全套 force 和 `-Xskip-metadata-version-check`；`scan_aar_apis.py` 以新版宿主依赖为基线继续守门 | `app/build.gradle.kts` | ✅ U1/U2；rosemoe 解钉仍属 U3 |
+| 2 | ~~CameraX 1.5.3 钉死~~：U1 已升 AGP 8.12.3 / Gradle 8.13，CameraX 1.6.1 自然解析；compileSdk 36 仍是 Flutter AAR 的独立要求 | `app/build.gradle.kts` | ✅ U1 |
 | 3 | analyze 存量 167 条 info（多为 test 的 curly_braces / unnecessary_import） | `flutter analyze` | M |
 | 4 | README 仍是上游 Throne 原文（捐赠链接指 throneproj、文档指 throneproj.github.io、命名混乱：仓库名 flclash / 应用名 Flrone / 包名 com.throneflclash） | `README.md` | M |
 | 5 | docs 失实风险：`bbox-bridge.md`/`bbox-flutter.md` 在 0.5 修过一轮，3.0.x 又漂移了十余轮 | docs/ | M |
