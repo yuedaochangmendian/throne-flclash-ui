@@ -409,6 +409,12 @@ class ThroneBoxBridge(
                 "profiles.nodeDelete" -> result.respond {
                     BboxProfiles.deleteNode(call.argument<Int>("id")?.toLong() ?: -1L); null
                 }
+                "profiles.clearTestResults" -> result.respond {
+                    BboxProfiles.clearGroupTestResults(call.argument<Int>("id")?.toLong() ?: -1L); null
+                }
+                "profiles.clearTraffic" -> result.respond {
+                    BboxProfiles.clearGroupTraffic(call.argument<Int>("id")?.toLong() ?: -1L); null
+                }
                 "routes.list" -> result.respond { BboxRoutes.list() }
                 "routes.get" -> result.respond { BboxRoutes.get(call.argument<Int>("id")?.toLong() ?: -1L) }
                 "routes.save" -> {

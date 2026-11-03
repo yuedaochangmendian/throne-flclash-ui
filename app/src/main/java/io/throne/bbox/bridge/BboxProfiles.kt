@@ -21,6 +21,7 @@ import io.nekohasekai.sagernet.group.SubscriptionNameFilter
 import io.nekohasekai.sagernet.group.SubscriptionQueue
 import io.nekohasekai.sagernet.group.SubscriptionScheduler
 import io.nekohasekai.sagernet.ktx.app
+import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.outbound.Outbound
 import io.nekohasekai.sagernet.outbound.common.MUX_CUSTOM
 import io.nekohasekai.sagernet.outbound.common.Multiplex
@@ -490,6 +491,23 @@ object BboxProfiles {
     suspend fun deleteNode(id: Long): Unit = withContext(Dispatchers.IO) {
         val profile = ProfileManager.getProfile(id) ?: error("No proxy with id $id")
         ProfileManager.deleteProfile(profile.groupId, id)
+        BboxBridge.scheduleRefresh(immediate = true)
+    }
+
+    // ---------------------------------------------------------------------------------- group menu actions
+
+    /** Clears every member's stored test results in [groupId]; the list refreshes. */
+    suspend fun clearGroupTestResults(groupId: Long): Unit = withContext(Dispatchers.IO) {
+        ProfileManager.clearGroupTestResults(groupId)
+        GroupRepo.postReload(groupId)
+    }
+
+    /** Clears every member's traffic counters in [groupId] — the running core's live counters first, then the table. */
+    suspend fun clearGroupTraffic(groupId: Long): Unit = withContext(Dispatchers.IO) {
+        val ids = ProfileManager.memberIds(groupId).toLongArray()
+        runCatching { BboxBridge.serviceBinder()?.resetTraffic(ids) }
+            .onFailure { Logs.w(it) }
+        ProfileManager.resetTraffic(ids)
         BboxBridge.scheduleRefresh(immediate = true)
     }
 
