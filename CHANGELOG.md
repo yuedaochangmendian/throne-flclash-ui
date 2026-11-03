@@ -1,3 +1,8 @@
+#### 3.2.9
+
+* The Settings → Core → Logging "Log level" (and "Xray log level") now actually takes effect. The level was gated behind a process restart (`Apply.AppRestart`), but the core already re-reads `log_level` and rebuilds the config on every reload, so it only needed `Apply.Reload`; both choices now also re-apply to a running core the moment you pick a new level instead of waiting for a stop/start
+* The dashboard's status card borrows Bettbox's IP-detection display: a regional-indicator emoji stands in for the flag, a `country · city` location and an `ASN · ISP/operator` carrier sit beside the address, and the bottom row is now Run time / Location / Operator. The probe tries `ipwho.is` first (it returns country name, region, city, ISP and ASN over HTTPS); the existing `ip.sb` and `ipinfo.io` endpoints stay as fallbacks, and the detail sheet shows the new fields when the source supplies them. The `country_flags` dependency leaves the bundle with the SVG flags it drew
+
 #### 3.2.8
 
 * A single imported node no longer becomes a configuration of its own: it joins the shared "Default" group (the tab Throne's empty table starts with), so hand-imported `ss://` / `vmess://` / `vless://` nodes accumulate in one tab instead of one tab each. The editor's name renames the node, not the group

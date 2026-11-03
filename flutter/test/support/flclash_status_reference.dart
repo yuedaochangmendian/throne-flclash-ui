@@ -6,12 +6,33 @@
 
 import 'dart:math' as math;
 import 'package:b_box_ui/widgets.dart';
-import 'package:country_flags/country_flags.dart' as country_flags;
 import 'package:material_new_shapes/material_new_shapes.dart';
 
 const _ipMask = '*****';
 const _decorationGrowth = 0.12;
 const _decorationTurn = 2 * math.pi / 12;
+
+/// The regional-indicator emoji for a two-letter country code, the way
+/// Bettbox's network card shows the flag instead of a raster or SVG.
+String _countryCodeToEmoji(String code) {
+  final upper = code.toUpperCase();
+  if (upper.length != 2) return code;
+  final first = upper.codeUnitAt(0) - 0x41 + 0x1F1E6;
+  final second = upper.codeUnitAt(1) - 0x41 + 0x1F1E6;
+  return String.fromCharCodes([first, second]);
+}
+
+/// The exit's carrier line: the ASN and the ISP (or organization) side by
+/// side, the fields the richer egress source supplies when available. The
+/// quality check overwrites the egress ASN and organization, so it wins.
+String _carrier(IpInfo? info, IpQuality? quality) {
+  final asn = quality?.asn;
+  final asnText = asn != null ? 'AS$asn' : info?.asn;
+  return [
+    asnText,
+    info?.isp ?? quality?.organization ?? info?.organization,
+  ].whereType<String>().where((item) => item.isNotEmpty).join(' ');
+}
 
 class FlClashStatusCard extends StatelessWidget {
   const FlClashStatusCard({
@@ -133,7 +154,11 @@ class FlClashStatusCard extends StatelessWidget {
                       else
                         const SizedBox(height: 16),
                       _Cells(
-                        quality: quality,
+                        location: [
+                          ipInfo?.countryName ?? ipInfo?.countryCode,
+                          ipInfo?.city,
+                        ].whereType<String>().where((item) => item.isNotEmpty).join(' · '),
+                        carrier: _carrier(ipInfo, quality),
                         loading: loading,
                         active: isStart && !suspended,
                         gap: metrics.cellGap,
@@ -478,9 +503,7 @@ class _CountryBadgeState extends State<_CountryBadge>
     final enabled = !widget.checking;
     final size = widget.size;
     final code = widget.countryCode?.trim();
-    final showsFlag = code != null &&
-        code.isNotEmpty &&
-        country_flags.FlagCode.fromCountryCode(code.toUpperCase()) != null;
+    final showsFlag = code != null && code.length == 2;
     final tooltip = context.appLocalizations.retry;
     final color = Color.alphaBlend(
       foreground.withValues(alpha: enabled && _hovered ? 0.08 : 0),
@@ -510,13 +533,7 @@ class _CountryBadgeState extends State<_CountryBadge>
                   size: size,
                   rotation: rotation,
                   ring: _focused ? focusRingSide(colorScheme) : null,
-                  child: showsFlag
-                      ? ClipPath(
-                          clipper: _ReferenceCountryBadgeClipper(rotation),
-                          clipBehavior: Clip.antiAlias,
-                          child: child,
-                        )
-                      : child,
+                  child: child,
                 );
               },
               child: code == null || code.isEmpty
@@ -526,11 +543,11 @@ class _CountryBadgeState extends State<_CountryBadge>
                       color: foreground,
                     )
                   : showsFlag
-                      ? country_flags.CountryFlag.fromCountryCode(
-                          code.toUpperCase(),
-                          theme: country_flags.ImageTheme(
-                            width: size,
-                            height: size,
+                      ? FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            _countryCodeToEmoji(code),
+                            style: const TextStyle(fontSize: 24),
                           ),
                         )
                       : Text(
@@ -553,13 +570,15 @@ class _CountryBadgeState extends State<_CountryBadge>
 
 class _Cells extends StatelessWidget {
   const _Cells({
-    required this.quality,
+    required this.location,
+    required this.carrier,
     required this.loading,
     required this.active,
     required this.gap,
   });
 
-  final IpQuality? quality;
+  final String location;
+  final String carrier;
   final bool loading;
   final bool active;
   final double gap;
@@ -567,11 +586,6 @@ class _Cells extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final appLocalizations = context.appLocalizations;
-    final organization = switch (quality) {
-      IpQuality(organization: final name?) when name.isNotEmpty => name,
-      IpQuality(asn: final asn?) => 'AS$asn',
-      _ => null,
-    };
     return Row(
       spacing: gap,
       children: [
@@ -579,13 +593,23 @@ class _Cells extends StatelessWidget {
           label: appLocalizations.runTime,
           value: active ? const _RunTimeValue() : const _Placeholder(),
         ),
-        Flexible(
+        Expanded(
           child: _Cell(
-            label: appLocalizations.ipOrganization,
-            value: organization != null
-                ? _CellText(organization)
+            label: appLocalizations.location,
+            value: location.isNotEmpty
+                ? _CellText(location)
                 : loading
-                ? SkeletonText(width: 96, style: _cellStyle(context))
+                ? SkeletonText(width: 72, style: _cellStyle(context))
+                : const _Placeholder(),
+          ),
+        ),
+        Expanded(
+          child: _Cell(
+            label: appLocalizations.operator,
+            value: carrier.isNotEmpty
+                ? _CellText(carrier)
+                : loading
+                ? SkeletonText(width: 72, style: _cellStyle(context))
                 : const _Placeholder(),
           ),
         ),
@@ -920,25 +944,6 @@ class _MorphClipper extends CustomClipper<Path> {
   @override
   bool shouldReclip(_MorphClipper oldClipper) =>
       oldClipper.progress != progress;
-}
-
-/// The clover the badge paints, so the flag inside it is trimmed to the same outline.
-class _ReferenceCountryBadgeClipper extends CustomClipper<Path> {
-  const _ReferenceCountryBadgeClipper(this.rotation);
-
-  final double rotation;
-
-  @override
-  Path getClip(Size size) => shapePathOf(MaterialShapes.clover4Leaf).transform(
-    (Matrix4.identity()
-      ..translateByDouble(size.width / 2, size.height / 2, 0, 1)
-      ..rotateZ(rotation)
-      ..scaleByDouble(size.width, size.height, 1, 1)
-      ..translateByDouble(-0.5, -0.5, 0, 1)).storage);
-
-  @override
-  bool shouldReclip(_ReferenceCountryBadgeClipper oldClipper) =>
-      oldClipper.rotation != rotation;
 }
 
 EdgeInsets dashboardCardPadding(DashboardDensity density) => switch (density) {
@@ -1554,9 +1559,20 @@ enum IpType { residential, mobile, business, hosting }
 enum IpQualityLevel { good, normal, risky }
 
 class IpInfo {
-  const IpInfo(this.ip, this.countryCode);
+  const IpInfo(this.ip, this.countryCode, {
+    this.countryName,
+    this.city,
+    this.isp,
+    this.organization,
+    this.asn,
+  });
   final String ip;
   final String? countryCode;
+  final String? countryName;
+  final String? city;
+  final String? isp;
+  final String? organization;
+  final String? asn;
 }
 
 class IpQuality {
@@ -1599,7 +1615,8 @@ class _ReferenceStrings {
   String get tapIconToRetry => chinese ? "点击图标重试" : "Tap the icon to retry";
   String get retry => chinese ? "重试" : "Retry";
   String get runTime => chinese ? "运行时长" : "Run time";
-  String get ipOrganization => chinese ? "组织" : "Organization";
+  String get location => chinese ? "位置" : "Location";
+  String get operator => chinese ? "运营商" : "Operator";
   String get ipQualityShort => chinese ? "质量" : "Quality";
   String get ipTypeUnknown => chinese ? "类型未知" : "Unknown type";
   String get ipTypeResidential => chinese ? "住宅" : "Residential";

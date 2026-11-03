@@ -13,7 +13,7 @@ import kotlin.math.absoluteValue
  * Unlike the native Throne screens this runs head-less, so the three native levels are split here:
  * None          — takes effect immediately.
  * Reload        — the running core rebuilds its config (`Action.RELOAD`).
- * AppRestart    — only the process restart picks it up (log level, log buffer).
+ * AppRestart    — only the process restart picks it up (log buffer).
  */
 enum class Apply { None, Reload, AppRestart }
 
@@ -253,7 +253,9 @@ object Settings {
         intEntry("dnsCacheCapacity", Apply.Reload, { DataStore.dnsCacheCapacity }, { DataStore.dnsCacheCapacity = it }),
 
         // --- Core ---------------------------------------------------------------------------------
-        textEntry("logLevel", Apply.AppRestart, { DataStore.logLevel }, { DataStore.logLevel = it }),
+        // A core reload re-runs BoxInstance.init -> applyLogLevel, which re-reads log_level and the freshly
+        // built config's `log.level`, so this does not need a process restart the way logBufSize does.
+        textEntry("logLevel", Apply.Reload, { DataStore.logLevel }, { DataStore.logLevel = it }),
         boolEntry("enableStats", Apply.Reload, true, { DataStore.enableStats }, { DataStore.enableStats = it }),
         boolEntry("disableTrafficStats", Apply.Reload, true, { DataStore.disableTrafficStats }, { DataStore.disableTrafficStats = it }),
         intEntry("logBufSize", Apply.AppRestart, { DataStore.logBufSize }, { DataStore.logBufSize = it }),

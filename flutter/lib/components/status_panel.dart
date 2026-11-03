@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:math' as math;
-import 'package:country_flags/country_flags.dart' as country_flags;
 import 'package:flutter/foundation.dart' show ValueListenable, ValueNotifier;
 import 'package:flutter/services.dart';
 import 'package:material_new_shapes/material_new_shapes.dart';
@@ -190,8 +189,16 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
     final ipStyle = AppTextStyle.title2.of(context, emphasized: true).toTabular.copyWith(color: foreground, letterSpacing: 0);
     final ipLoading = _checking || (_routeChanged && _ipDue && !box.transitioning && !box.remote);
     final loading = (ipLoading && ip == null) || _qualityChecking;
-    final organization = (info?['organization'] as String?)?.isNotEmpty == true
-      ? info!['organization'] as String : info?['asn'] as String?;
+    // Bettbox-style placement: a location (country · city) and a carrier (ASN · ISP/organization)
+    // sit beside the IP, using the richer fields the ipwho.is source supplies when available.
+    final location = [
+      (info?['countryName'] as String?) ?? (info?['country'] as String?),
+      info?['city'] as String?,
+    ].whereType<String>().where((item) => item.isNotEmpty).join(' · ');
+    final carrier = [
+      info?['asn'] as String?,
+      (info?['isp'] as String?) ?? (info?['organization'] as String?),
+    ].whereType<String>().where((item) => item.isNotEmpty).join(' ');
     return Semantics(container: true, label: context.tr('Status'), child: BoxPanel(padding: EdgeInsets.zero, clipBehavior: Clip.none, child: Stack(children: [
       Positioned.fill(child: ClipPath(
         clipper: ShapeBorderClipper(shape: AppShape.all(34), textDirection: Directionality.of(context)),
@@ -244,14 +251,17 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
             ])),
           ]),
           const SizedBox(height: 16),
-          LayoutBuilder(builder: (context, constraints) => Row(spacing: 24, children: [
-            ConstrainedBox(constraints: BoxConstraints(maxWidth: math.max(0, constraints.maxWidth - 24)),
-              child: _StatusCell(label: 'Run time', child: _RuntimeValue(startedAt: box.running ? (box.dashboard['startedAt'] as num?)?.toInt() : null))),
-            Flexible(child: _StatusCell(label: 'Organization', child: organization != null
-              ? Text(organization, maxLines: 1, overflow: TextOverflow.ellipsis, style: _statusCellStyle(context))
-              : loading ? SkeletonText(width: 96, style: _statusCellStyle(context))
+          Row(spacing: 24, children: [
+            _StatusCell(label: 'Run time', child: _RuntimeValue(startedAt: box.running ? (box.dashboard['startedAt'] as num?)?.toInt() : null)),
+            Expanded(child: _StatusCell(label: 'Location', child: location.isNotEmpty
+              ? Text(location, maxLines: 1, overflow: TextOverflow.ellipsis, style: _statusCellStyle(context))
+              : loading ? SkeletonText(width: 72, style: _statusCellStyle(context))
               : Text('—', maxLines: 1, style: _statusCellStyle(context)))),
-          ])),
+            Expanded(child: _StatusCell(label: 'Operator', child: carrier.isNotEmpty
+              ? Text(carrier, maxLines: 1, overflow: TextOverflow.ellipsis, style: _statusCellStyle(context))
+              : loading ? SkeletonText(width: 72, style: _statusCellStyle(context))
+              : Text('—', maxLines: 1, style: _statusCellStyle(context)))),
+          ]),
         ])),
         SizedBox(width: 88, child: Center(child: box.remote ? const GlyphIcon(AppGlyphs.proxies, size: 60) : StartToggle(
           size: 88, enabled: (box.running || box.selectedProfile != null) && !_busy && !box.transitioning, running: box.running, suspended: false, onTap: _toggle))),
@@ -272,6 +282,14 @@ class _IpText extends StatelessWidget {
     }
     return TooltipText(text: Text(ip, maxLines: 1, overflow: TextOverflow.ellipsis, style: style));
   });
+}
+
+/// The regional-indicator emoji for a two-letter ISO code, the way Bettbox's network card shows the flag.
+String _countryCodeToEmoji(String? code) {
+  if (code == null || code.length != 2) return code ?? '';
+  final first = code.codeUnitAt(0) - 0x41 + 0x1F1E6;
+  final second = code.codeUnitAt(1) - 0x41 + 0x1F1E6;
+  return String.fromCharCodes([first, second]);
 }
 
 class _CountryBadge extends StatefulWidget {
@@ -303,8 +321,8 @@ class _CountryBadgeState extends State<_CountryBadge> with SingleTickerProviderS
     final enabled = widget.onRefresh != null;
     final country = widget.country?.trim();
     final code = country == null || country.isEmpty ? null : country.toUpperCase();
-    // The badge carries the region itself; a code the flag set does not know keeps its text.
-    final showsFlag = code != null && country_flags.FlagCode.fromCountryCode(code) != null;
+    // Two-letter ISO codes render as regional-indicator emoji; anything else keeps its text.
+    final showsFlag = code != null && code.length == 2;
     final background = Color.alphaBlend(color.withValues(alpha: enabled && _hovered ? .08 : 0), SurfaceLevel.inset.colorOf(context.colorScheme));
     return Tooltip(message: context.tr('Retry'), child: Semantics(button: true, label: context.tr('Retry'), enabled: enabled,
       child: InkResponse(onTap: widget.onRefresh, onHover: (value) => setState(() => _hovered = value), onFocusChange: (value) => setState(() => _focused = value),
@@ -314,40 +332,15 @@ class _CountryBadgeState extends State<_CountryBadge> with SingleTickerProviderS
           return ShapeBadge(
             shape: MaterialShapes.clover4Leaf, color: background, size: 48,
             rotation: rotation, ring: _focused ? focusRingSide(context.colorScheme) : null,
-            child: showsFlag ? ClipPath(
-              key: const Key('country-badge-flag-clip'),
-              clipper: _CountryBadgeClipper(rotation),
-              clipBehavior: Clip.antiAlias,
-              child: child,
-            ) : child);
+            child: child);
         }, child: code == null
           ? GlyphIcon(AppGlyphs.proxies, size: 48 * .42, color: color)
           : showsFlag
-              // country_flags paints the vector flag with BoxFit.cover inside this 48x48 box, so any
-              // aspect ratio crops to fill; the clipper trims it to the clover the badge paints.
-              ? country_flags.CountryFlag.fromCountryCode(code,
-                  key: const Key('country-badge-flag'),
-                  theme: const country_flags.ImageTheme(width: 48, height: 48))
+              ? FittedBox(fit: BoxFit.scaleDown, child: Text(_countryCodeToEmoji(code),
+                  key: const Key('country-badge-flag'), style: const TextStyle(fontSize: 24)))
               : Text(code, maxLines: 1, style: AppTextStyle.footnote.of(context, emphasized: true)
                   .copyWith(color: color, letterSpacing: .04 * AppTextStyle.footnote.size)))))));
   }
-}
-
-/// Clips the upright flag to the same rotating clover the badge's painter draws.
-class _CountryBadgeClipper extends CustomClipper<Path> {
-  const _CountryBadgeClipper(this.rotation);
-  final double rotation;
-
-  @override
-  Path getClip(Size size) => shapePathOf(MaterialShapes.clover4Leaf).transform(
-    (Matrix4.identity()
-      ..translateByDouble(size.width / 2, size.height / 2, 0, 1)
-      ..rotateZ(rotation)
-      ..scaleByDouble(size.width, size.height, 1, 1)
-      ..translateByDouble(-0.5, -0.5, 0, 1)).storage);
-
-  @override
-  bool shouldReclip(_CountryBadgeClipper oldClipper) => oldClipper.rotation != rotation;
 }
 
 TextStyle _statusLabelStyle(BuildContext context) => AppTextStyle.caption1.of(context).toTabular.copyWith(color: context.colorScheme.onSurfaceVariant);
@@ -385,8 +378,10 @@ class EgressDetails extends StatelessWidget {
     : ValueListenableBuilder<int>(valueListenable: updates!, builder: (context, _, _) => _page(context));
   Widget _page(BuildContext context) => BoxPage(title: 'Outbound IP', actions: [
     IconButtonData(glyph: AppGlyphs.copy, tooltip: context.tr('Copy'), onPressed: () => Clipboard.setData(ClipboardData(text: info['ip'] as String))),
-  ], children: [DetailRows({'IP': info['ip'], 'Country': info['country'], 'Organization': info['organization'],
-    'ASN': info['asn'], 'Type': context.tr(info['type'] as String? ?? 'Unknown type'),
+  ], children: [DetailRows({'IP': info['ip'], 'Country': info['countryName'] ?? info['country'],
+    if (info['city'] != null) 'City': info['city'], if (info['region'] != null) 'Region': info['region'],
+    'Organization': info['organization'], if (info['isp'] != null) 'ISP': info['isp'], 'ASN': info['asn'],
+    'Type': context.tr(info['type'] as String? ?? 'Unknown type'),
     if (info['quality'] != null) 'Quality': context.tr(info['quality'] as String),
     'IP query source': info['ipSource'], 'Quality query source': info['source'],
     'Last checked': localDate(info['qualityCheckedAt'] ?? info['checkedAt'])}),

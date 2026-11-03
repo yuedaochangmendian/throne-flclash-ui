@@ -620,8 +620,8 @@ class CorePage extends StatelessWidget {
       // The categories and their order are Throne's settings_core.
       generateSection(title: context.tr('Logging'), items: [
         ListItem(title: Text(context.tr('Core version')), subtitle: Text(context.box.coreVersion)),
-        SettingChoice<String>('Log level', 'logLevel', options: logLevels, text: (value) => value.toUpperCase()),
-        SettingChoice<String>('Xray log level', 'xrayLogLevel', options: xrayLogLevels, text: (value) => value.toUpperCase()),
+        SettingChoice<String>('Log level', 'logLevel', options: logLevels, text: (value) => value.toUpperCase(), autoRestart: true),
+        SettingChoice<String>('Xray log level', 'xrayLogLevel', options: xrayLogLevels, text: (value) => value.toUpperCase(), autoRestart: true),
         SettingNumber('Log buffer', 'logBufSize', min: 0, unit: 'KiB'),
       ]),
       generateSection(title: context.tr('Statistics'), items: [

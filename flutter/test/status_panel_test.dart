@@ -115,15 +115,15 @@ Future<void> _advance(WidgetTester tester) async {
 }
 
 void main() {
-  testWidgets('a country code renders as text and the badge still retries', (tester) async {
-    final dashboard = _Dashboard()..country = 'zz'..autoQuality = true;
+  testWidgets('a non-two-letter country renders as text and the badge still retries', (tester) async {
+    final dashboard = _Dashboard()..country = 'Global'..autoQuality = true;
     await dashboard.mount(tester);
     await tester.pumpAndSettle();
-    expect(find.text('ZZ'), findsOneWidget);
+    expect(find.text('GLOBAL'), findsOneWidget);
     await tester.tap(find.byTooltip('Retry'));
     await tester.pumpAndSettle();
     expect(dashboard.ids, hasLength(2));
-    expect(find.text('ZZ'), findsOneWidget);
+    expect(find.text('GLOBAL'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 

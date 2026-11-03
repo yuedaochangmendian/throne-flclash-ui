@@ -108,7 +108,7 @@ const _zh = <String, String>{
   'IP query source': 'IP 查询来源', 'Quality query source': '质量查询来源',
   'No type data': '未提供类型', 'Rate limited': '请求频率受限', 'Unavailable': '不可用', 'IP mismatch': 'IP 不匹配',
   'Quality': '质量', 'Good': '优', 'Normal': '普通', 'Risky': '风险',
-  'Country': '国家/地区', 'City': '城市', 'Last checked': '上次检测',
+  'Country': '国家/地区', 'City': '城市', 'Region': '地区', 'Location': '位置', 'Operator': '运营商', 'ISP': 'ISP', 'Last checked': '上次检测',
   'App': '应用', 'App and shared memory': '应用及共享内存', 'Process RSS': '进程常驻内存',
   'Heap in use': '使用中的堆', 'Retained idle heap': '保留的空闲堆', 'Stack': '栈', 'Other runtime memory': '其他运行时内存',
   'Release memory': '释放内存', 'Memory released': '已释放可回收内存',

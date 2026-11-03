@@ -961,11 +961,15 @@ class ThroneBoxBridge(
         mapOf(
             "ip" to info.ip,
             "country" to info.country,
+            "countryName" to info.countryName,
+            "region" to info.region,
+            "city" to info.city,
+            "isp" to info.isp,
             "organization" to info.organization,
             "asn" to info.asn,
             "type" to info.type,
             "direct" to direct,
-            "ipSource" to "ip.sb",
+            "ipSource" to "ipwho.is",
             "checkedAt" to System.currentTimeMillis(),
         )
     }

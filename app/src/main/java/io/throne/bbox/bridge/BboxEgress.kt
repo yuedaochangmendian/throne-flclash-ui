@@ -21,7 +21,13 @@ object BboxEgress {
 
     data class Info(
         val ip: String? = null,
+        // country is the ISO code (US), countryName the human name (United States); the former is all the
+        // card needs for its flag, the latter what a richer card shows beside the city and carrier.
         val country: String? = null,
+        val countryName: String? = null,
+        val region: String? = null,
+        val city: String? = null,
+        val isp: String? = null,
         val organization: String? = null,
         val asn: String? = null,
         val type: String? = null,
@@ -29,7 +35,10 @@ object BboxEgress {
         val isEmpty: Boolean get() = ip.isNullOrBlank()
     }
 
+    // ipwho.is answers the richest set (country name, region, city, ISP, ASN) over HTTPS; the two existing
+    // endpoints stay as fallbacks for when it rate-limits or is unreachable.
     private val endpoints = listOf(
+        "https://ipwho.is/" to ::parseIpWhoIs,
         "https://api.ip.sb/geoip" to ::parseIpSb,
         "https://ipinfo.io/json" to ::parseIpInfo,
     )
@@ -132,6 +141,22 @@ object BboxEgress {
             organization = org?.substringAfter(' ', org),
             asn = asn,
             type = if (json.optString("ip").contains(':')) "IPv6" else "IPv4",
+        )
+    }
+
+    private fun parseIpWhoIs(json: JSONObject): Info {
+        val connection = json.optJSONObject("connection")
+        val asn = connection?.optInt("asn", -1)?.takeIf { it > 0 }?.let { "AS$it" }
+        return Info(
+            ip = json.optString("ip").takeIf { it.isNotBlank() },
+            country = json.optString("country_code").takeIf { it.isNotBlank() },
+            countryName = json.optString("country").takeIf { it.isNotBlank() },
+            region = json.optString("region").takeIf { it.isNotBlank() },
+            city = json.optString("city").takeIf { it.isNotBlank() },
+            isp = connection?.optString("isp")?.takeIf { it.isNotBlank() },
+            organization = connection?.optString("org")?.takeIf { it.isNotBlank() },
+            asn = asn,
+            type = json.optString("type").takeIf { it.isNotBlank() },
         )
     }
 }
