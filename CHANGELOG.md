@@ -2,6 +2,7 @@
 
 * The backend-to-UI path now mirrors Bettbox's architecture: a single typed `BoxEventBus` (with sealed `BoxMessageEvent` / `SubscriptionReportEvent` / `IntentAvailableEvent` / `BrowserCompleteEvent`) replaces the four ad-hoc event controllers, and listeners subscribe to the slice they care about
 * Every scattered `call('method.name', ...)` string invocation across the pages is folded into a semantic facade (`box_api.dart`), grouped by domain as extensions on `BoxController`, so method names are checked at compile time and parameter shapes live in one place
+* The event streams stay cached (repeated reads yield the same broadcast stream, as the old controllers did), and closing the controller now releases every event stream instead of all but the subscription reports
 
 #### 3.2.11
 

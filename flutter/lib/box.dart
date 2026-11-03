@@ -20,7 +20,7 @@ enum BoxData { memory, logs, logcat, testSession }
 
 /// A single event flowing from the backend / core to the UI, mirroring Bettbox's
 /// `ClashMessage` bus: one typed stream instead of several ad-hoc controllers. A listener
-/// subscribes to the subset it cares about via `whereType<X>()`.
+/// subscribes to the subset it cares about with `where((event) => event is X)`.
 sealed class BoxEvent {
   const BoxEvent();
 }
@@ -73,13 +73,15 @@ class BoxController extends ChangeNotifier {
   final MethodChannel _channel;
   final Stream<dynamic> _events;
   /// Unified event bus (Bettbox `ClashMessage`-style): the single one-way stream between
-  /// backend and UI. Consumers subscribe to the slice they need via `whereType<X>()`.
+  /// backend and UI. Consumers subscribe to the slice they need with `where((event) => event is X)`.
+  /// The derived streams are cached so repeated access yields the same broadcast stream, the
+  /// way `StreamController.stream` did.
   final eventBus = BoxEventBus();
   Stream<T> _eventsOf<T extends BoxEvent>() => eventBus.stream.where((event) => event is T).cast<T>();
-  Stream<String> get messages => _eventsOf<BoxMessageEvent>().map((event) => event.text);
-  Stream<Json> get subscriptionReports => _eventsOf<SubscriptionReportEvent>().map((event) => event.report);
-  Stream<Json> get browserEvents => _eventsOf<BrowserCompleteEvent>().map((event) => event.payload);
-  Stream<IntentAvailableEvent> get intents => _eventsOf<IntentAvailableEvent>();
+  late final Stream<String> messages = _eventsOf<BoxMessageEvent>().map((event) => event.text);
+  late final Stream<Json> subscriptionReports = _eventsOf<SubscriptionReportEvent>().map((event) => event.report);
+  late final Stream<Json> browserEvents = _eventsOf<BrowserCompleteEvent>().map((event) => event.payload);
+  late final Stream<IntentAvailableEvent> intents = _eventsOf<IntentAvailableEvent>();
   StreamSubscription<dynamic>? _subscription;
   final _revisions = List<int>.filled(BoxAspect.values.length, 0);
   final _stateChanges = ChangeNotifier();
