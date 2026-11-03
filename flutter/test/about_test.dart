@@ -33,9 +33,12 @@ void main() {
       await tester.pumpAndSettle();
       openPage(tester.element(find.byType(HomePage)), const AboutPage());
       await tester.pumpAndSettle();
-      // The hero is the launcher's own artwork, so the asset has to be in the bundle and not just named.
-      expect(find.byWidgetPredicate((widget) => widget is Image && widget.image is AssetImage &&
-        (widget.image as AssetImage).assetName == 'assets/images/throne_mark.png'), findsOneWidget);
+      // The hero is the launcher's artwork, so the asset has to be in the bundle and not just named.
+      expect(find.byWidgetPredicate((widget) {
+        final decoration = widget is DecoratedBox ? widget.decoration : null;
+        final image = decoration is ShapeDecoration ? decoration.image?.image : null;
+        return image is AssetImage && image.assetName == 'assets/images/app_icon.png';
+      }), findsOneWidget);
       final check = find.widgetWithText(TonalButton, 'Check for updates');
       await tester.ensureVisible(check);
       await tester.tap(check);

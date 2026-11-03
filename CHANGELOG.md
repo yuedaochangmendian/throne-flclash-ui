@@ -1,3 +1,8 @@
+#### 3.2.2
+
+* The app's mark is a watercolour range now: three peaks in ink and gold on cream paper, in place of the green crown. Every launcher density carries it — a rounded square where a plain bitmap is still expected, and an adaptive icon whose layers hold the same painting, the paper tone as the background and the range inset a little so no mask cuts it; the monochrome layer is a silhouette traced from the ink, so themed icons follow the new brand too
+* The About page wears the same painting in its hero, cropped to the icon's square, so the picture there is the picture on the home screen
+
 #### 3.2.1
 
 * The About page wears the app's own icon: the throne's crown on the white plate the launcher draws, cut from the launcher's own artwork at its native resolution. The old B-box cube leaves the bundle with it
