@@ -77,6 +77,19 @@ void main() {
     find.descendant(of: find.byType(LogsPage), matching: find.byType(Scaffold)).first,
   );
 
+  // The toolbar holds a limited number of buttons and folds the rest into the overflow menu,
+  // so the actions are looked up by label instead of by position.
+  IconButtonData exportAction(WidgetTester tester) =>
+      scaffold(tester).iconActions.firstWhere((item) => item.tooltip == 'Export');
+
+  /// The auto-scroll toggle, whichever way it currently reads.
+  Future<void> toggleFollow(WidgetTester tester) async {
+    scaffold(tester).iconActions
+        .firstWhere((item) => item.tooltip == 'Pause' || item.tooltip == 'Resume')
+        .onPressed!();
+    await tester.pumpAndSettle();
+  }
+
   Future<void> emit(WidgetTester tester, String? level, [List<Json>? records]) async {
     events.add({'type': 'logs', 'value': {'defaultLogLevel': level, 'entries': records ?? _records}});
     await tester.pumpAndSettle();
@@ -90,7 +103,7 @@ void main() {
   }
 
   Future<void> expectExport(WidgetTester tester, List<String> levels) async {
-    scaffold(tester).iconActions.first.onPressed!();
+    exportAction(tester).onPressed!();
     await tester.pumpAndSettle();
     expect(exported, isNotNull);
     expect(exported!.split('\n').where((line) => line.isNotEmpty),
@@ -152,12 +165,12 @@ void main() {
     ]}});
     await tester.pumpAndSettle();
     expect(box.logcat.map((line) => line['id']), [4, 5, 6, 7, 8]);
-    await choose(tester, 'Pause');
+    await toggleFollow(tester);
     await choose(tester, 'Clear');
     expect(calls.where((call) => call.method == 'logs.logcat.clear'), hasLength(1));
     expect(box.logcat, isEmpty);
     expect(find.text('No logs'), findsOneWidget);
-    expect(scaffold(tester).iconActions.first.onPressed, isNull);
+    expect(exportAction(tester).onPressed, isNull);
 
     events.add({'type': 'logcat', 'value': {'reset': true, 'entries': [
       {'id': 9, 'level': 'info', 'message': 'after clear'},
@@ -179,35 +192,35 @@ void main() {
       saveResult = result;
       await expectExport(tester, ['Error', 'Fatal', 'Panic']);
       expect(messages, result == null ? isEmpty : [result ? 'Exported' : 'Export failed']);
-      expect(scaffold(tester).iconActions.first.onPressed, isNotNull);
+      expect(exportAction(tester).onPressed, isNotNull);
       expect(tester.takeException(), isNull);
     });
   }
 
   testWidgets('export prevents reentry and reports platform errors without losing logs', (tester) async {
     await mount(tester);
-    expect(scaffold(tester).iconActions.first.onPressed, isNull);
+    expect(exportAction(tester).onPressed, isNull);
     await emit(tester, 'Error');
     pendingSave = Completer<Object?>();
-    final export = scaffold(tester).iconActions.first.onPressed!;
+    final export = exportAction(tester).onPressed!;
     export(); export();
     await tester.pumpAndSettle();
     expect(calls.where((call) => call.method == 'document.save'), hasLength(1));
-    expect(scaffold(tester).iconActions.first.onPressed, isNull);
+    expect(exportAction(tester).onPressed, isNull);
     pendingSave!.complete(null);
     await tester.pumpAndSettle();
     expect(messages, isEmpty);
-    expect(scaffold(tester).iconActions.first.onPressed, isNotNull);
+    expect(exportAction(tester).onPressed, isNotNull);
     pendingSave = null;
     saveResult = PlatformException(code: 'failed', message: 'Cannot write document');
-    scaffold(tester).iconActions.first.onPressed!();
+    exportAction(tester).onPressed!();
     await tester.pumpAndSettle();
     expect(messages, ['Cannot write document']);
     expect(box.logs, hasLength(_levels.length));
-    expect(scaffold(tester).iconActions.first.onPressed, isNotNull);
+    expect(exportAction(tester).onPressed, isNotNull);
     (scaffold(tester).keywords! as ValueNotifier<List<ScaffoldKeyword>>).value = [ScaffoldKeyword(key: 'no matching records', label: 'no matching records')];
     await tester.pumpAndSettle();
-    expect(scaffold(tester).iconActions.first.onPressed, isNull);
+    expect(exportAction(tester).onPressed, isNull);
     expect(tester.takeException(), isNull);
   });
 
@@ -216,7 +229,7 @@ void main() {
     await emit(tester, null);
     await expectExport(tester, _levels);
     await emit(tester, 'Warn');
-    await choose(tester, 'Pause');
+    await toggleFollow(tester);
     await emit(tester, 'Warn', [..._records, {'id': 8, 'level': 'Error', 'message': 'later record'}]);
     (scaffold(tester).keywords! as ValueNotifier<List<ScaffoldKeyword>>).value = [ScaffoldKeyword(key: 'core', label: 'core')];
     await tester.pumpAndSettle();
@@ -224,7 +237,7 @@ void main() {
     (scaffold(tester).keywords! as ValueNotifier<List<ScaffoldKeyword>>).value = const [];
     await tester.pumpAndSettle();
     expect(find.text('later record'), findsNothing);
-    await choose(tester, 'Resume');
+    await toggleFollow(tester);
     expect(find.text('later record'), findsOneWidget);
     await choose(tester, 'Clear');
     expect(box.logs, isEmpty);
