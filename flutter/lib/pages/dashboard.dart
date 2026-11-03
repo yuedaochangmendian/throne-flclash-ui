@@ -13,7 +13,7 @@ import '../components/system_proxy_panel.dart';
 
 export '../components/dashboard_editor.dart' show DashboardEditor;
 
-const dashboardCards = ['Status', 'Network speed', 'Outbound mode', 'Current profile', 'Proxy groups', 'Memory', 'Intranet IP', 'System HTTP proxy'];
+const dashboardCards = ['Status', 'Network speed', 'Outbound mode', 'Current profile', 'Proxy groups', 'Memory', 'Intranet IP', 'Network takeover'];
 const defaultDashboardCards = ['Status', 'Network speed', 'Outbound mode', 'Current profile', 'Proxy groups'];
 const defaultHiddenCards = ['Memory', 'Intranet IP'];
 
@@ -47,7 +47,7 @@ class _DashboardPageState extends State<DashboardPage> {
       // Throne keeps groups in its own list, there is no Clash-mode selector to render here.
       if (box.capabilities.of('proxyGroups')) 'Proxy groups': const ProxyGroupsPanel(),
       if (box.capabilities.of('memory')) 'Memory': const MemoryPanel(),
-      if (box.dashboard['systemProxyAvailable'] == true) 'System HTTP proxy': const SystemProxyPanel(),
+      if (box.dashboard['systemProxyAvailable'] == true) 'Network takeover': const SystemProxyPanel(),
     };
   }
 

@@ -1,3 +1,11 @@
+#### 3.2.8
+
+* A single imported node no longer becomes a configuration of its own: it joins the shared "Default" group (the tab Throne's empty table starts with), so hand-imported `ss://` / `vmess://` / `vless://` nodes accumulate in one tab instead of one tab each. The editor's name renames the node, not the group
+* The configuration list's "+" gains a "New node" entry: pick a protocol and the typed editor opens on a fresh node of that type — the manual entry Throne's per-protocol editors provide — and the node lands in the selected configuration (or the first one)
+* The typed editor now covers Xray VLESS (`xrayvless`), whose document carries `protocol` + `streamSettings` instead of `type` + `transport`: the form reads `settings.address`/`port`/`id`/`flow` and the Xray network (TCP / WebSocket / HTTPUpgrade / gRPC / XHTTP / XDrive) with its TLS and Reality blocks. Multiplex stays on the Node tuning screen
+* The proxy menu gains "Clear test results" and "Clear traffic statistics" for a configuration: the former drops the stored latency measurements, the latter zeroes the running core's live counters and the table, both behind the same confirm as delete (from ThroneForAndroid's profile menu)
+* The dashboard's "System HTTP proxy" card is "Network takeover" now, matching FlClash's current card registry; the card set otherwise maps one-to-one onto FlClash's (status, network speed, outbound mode, profile, proxy groups, memory, intranet IP)
+
 #### 3.2.7
 
 * Sync ThroneForAndroid's VPN allow-bypass: while the VPN is up, apps may bind sockets to the underlying network themselves — FCM needs this for its push channel. Exposed as an "Allow VPN bypass" switch under TUN; the bridge key is `vpnAllowBypass`, kept apart from the `allowBypass` key the FlClash UI already uses for "bypass private ranges"

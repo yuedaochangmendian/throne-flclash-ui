@@ -24,7 +24,7 @@ const _liftGrowth = .03;
 const dashboardGlyphs = <String, Glyph>{
   'Status': AppGlyphs.status, 'Network speed': AppGlyphs.speed, 'Outbound mode': AppGlyphs.split,
   'Current profile': AppGlyphs.profiles, 'Proxy groups': AppGlyphs.layers,
-  'Memory': AppGlyphs.cpu, 'Intranet IP': AppGlyphs.devices, 'System HTTP proxy': systemProxyGlyph,
+  'Memory': AppGlyphs.cpu, 'Intranet IP': AppGlyphs.devices, 'Network takeover': systemProxyGlyph,
 };
 const _descriptions = <String, String>{
   'Memory': 'App and core memory', 'Intranet IP': 'Device network addresses',

@@ -11,7 +11,7 @@ class SystemProxyPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final box = context.box, colors = context.colorScheme;
     final enabled = box.dashboard['systemProxy'] == true;
-    final title = context.tr('System HTTP proxy');
+    final title = context.tr('Network takeover');
     void change(bool value) => box.act('systemProxy.set', {'enabled': value});
     return Semantics(
       container: true,

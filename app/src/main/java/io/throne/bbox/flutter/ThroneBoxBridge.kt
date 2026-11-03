@@ -399,6 +399,12 @@ class ThroneBoxBridge(
                 "profiles.nodeConfig" -> result.respond {
                     BboxProfiles.nodeConfig(call.argument<Int>("id")?.toLong() ?: -1L)
                 }
+                "profiles.createNode" -> result.respond {
+                    BboxProfiles.createNode(
+                        call.argument<Int>("groupId")?.toLong(),
+                        call.argument<String>("type").orEmpty(),
+                    )
+                }
                 "profiles.nodeUpdate" -> result.respond {
                     BboxProfiles.updateNode(
                         call.argument<Int>("id")?.toLong() ?: -1L,

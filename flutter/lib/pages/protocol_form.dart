@@ -43,7 +43,13 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
     }
   }
 
-  String get _type => _root?['type']?.toString() ?? '';
+  String get _type {
+    final type = _root?['type']?.toString() ?? '';
+    if (type.isNotEmpty) return type;
+    // Xray-shaped outbounds (xrayvless) carry "protocol" + "streamSettings" instead of "type".
+    if (_root?['protocol'] != null && _root?['streamSettings'] is Json) return 'xrayvless';
+    return '';
+  }
 
   /// The form reads a dotted path; missing segments read as null (and as '' in text fields).
   Object? _get(String path) {
@@ -173,7 +179,7 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
   // ------------------------------------------------------------------------------------------------ schemas
 
   bool get _supported => const [
-    'shadowsocks', 'vmess', 'vless', 'trojan', 'tuic', 'hysteria', 'wireguard',
+    'shadowsocks', 'vmess', 'vless', 'xrayvless', 'trojan', 'tuic', 'hysteria', 'wireguard',
     'direct', 'socks', 'http', 'anytls', 'shadowtls', 'snell', 'naive', 'juicity',
     'mieru', 'masque', 'ssh', 'trusttunnel', 'openconnect', 'openvpn',
   ].contains(_type);
@@ -223,6 +229,21 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
       _Section('Transport', _transportBlock()),
       _Section('TLS', _tlsBlock(mustTls: false)),
       _Section('Multiplex', _muxBlock()),
+    ],
+    'xrayvless' => [
+      // Xray's VLESS carries the address inside `settings` and the stream in `streamSettings`.
+      _Section(null, [
+        _Field('name', 'Name', 'name'),
+        _Field('settings.address', 'Server', 'text', required: true),
+        _Field('settings.port', 'Server port', 'int', required: true),
+        _Field('settings.id', 'UUID', 'text', required: true),
+        _Field('settings.encryption', 'Encryption', 'choice', choices: const [('none', 'none')]),
+        _Field('settings.flow', 'Flow', 'choice', choices: const [
+          ('', 'none'), ('xtls-rprx-vision', 'xtls-rprx-vision'), ('xtls-rprx-vision-udp443', 'xtls-rprx-vision-udp443'),
+        ]),
+      ]),
+      _Section('Transport', _xrayTransportBlock()),
+      _Section('TLS', _xrayTlsBlock()),
     ],
     'trojan' => [
       ..._basic(),
@@ -454,6 +475,44 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
     ]),
   ];
 
+  /// The Xray `streamSettings` block: one network plus the per-network fields. `raw` is plain TCP.
+  List<_Field> _xrayTransportBlock() => [
+    _Field('streamSettings.network', 'Transport', 'choice', choices: const [
+      ('raw', 'TCP'), ('ws', 'WebSocket'), ('httpupgrade', 'HTTPUpgrade'),
+      ('grpc', 'gRPC'), ('xhttp', 'XHTTP'), ('xdrive', 'XDrive'),
+    ]),
+    _Field('streamSettings.wsSettings.path', 'Path', 'text', showIf: ('streamSettings.network', 'ws')),
+    _Field('streamSettings.wsSettings.host', 'Host', 'text', showIf: ('streamSettings.network', 'ws')),
+    _Field('streamSettings.wsSettings.headers', 'Headers', 'headers', showIf: ('streamSettings.network', 'ws')),
+    _Field('streamSettings.httpupgradeSettings.path', 'Path', 'text', showIf: ('streamSettings.network', 'httpupgrade')),
+    _Field('streamSettings.httpupgradeSettings.host', 'Host', 'text', showIf: ('streamSettings.network', 'httpupgrade')),
+    _Field('streamSettings.grpcSettings.serviceName', 'Service name', 'text', showIf: ('streamSettings.network', 'grpc')),
+    _Field('streamSettings.grpcSettings.authority', 'Authority', 'text', showIf: ('streamSettings.network', 'grpc')),
+    _Field('streamSettings.xhttpSettings.path', 'Path', 'text', showIf: ('streamSettings.network', 'xhttp')),
+    _Field('streamSettings.xhttpSettings.host', 'Host', 'text', showIf: ('streamSettings.network', 'xhttp')),
+    _Field('streamSettings.xhttpSettings.mode', 'Mode', 'choice', choices: const [
+      ('auto', 'auto'), ('packet-up', 'packet-up'), ('stream-up', 'stream-up'), ('stream-one', 'stream-one'),
+    ], showIf: ('streamSettings.network', 'xhttp')),
+  ];
+
+  /// The Xray `streamSettings.security` switch and its TLS / Reality fields.
+  List<_Field> _xrayTlsBlock() => [
+    _Field('streamSettings.security', 'Security', 'choice', choices: const [
+      ('none', 'none'), ('tls', 'tls'), ('reality', 'reality'),
+    ]),
+    _Field('streamSettings.tlsSettings.serverName', 'Server name', 'text', showIf: ('streamSettings.security', 'tls')),
+    _Field('streamSettings.tlsSettings.fingerprint', 'Fingerprint', 'text', showIf: ('streamSettings.security', 'tls')),
+    _Field('streamSettings.tlsSettings.alpn', 'ALPN', 'list', showIf: ('streamSettings.security', 'tls')),
+    _Field('streamSettings.tlsSettings.useSystemCA', 'Use system CA', 'bool', showIf: ('streamSettings.security', 'tls')),
+    _Field('streamSettings.tlsSettings.pinnedPeerCertSha256', 'Pinned cert SHA256', 'text', showIf: ('streamSettings.security', 'tls')),
+    _Field('streamSettings.tlsSettings.echConfigList', 'ECH config', 'text', showIf: ('streamSettings.security', 'tls')),
+    _Field('streamSettings.realitySettings.serverName', 'Server name', 'text', showIf: ('streamSettings.security', 'reality')),
+    _Field('streamSettings.realitySettings.fingerprint', 'Fingerprint', 'text', showIf: ('streamSettings.security', 'reality')),
+    _Field('streamSettings.realitySettings.password', 'Public key', 'password', showIf: ('streamSettings.security', 'reality')),
+    _Field('streamSettings.realitySettings.shortId', 'Short ID', 'text', showIf: ('streamSettings.security', 'reality')),
+    _Field('streamSettings.realitySettings.spiderX', 'SpiderX', 'text', showIf: ('streamSettings.security', 'reality')),
+  ];
+
   // ------------------------------------------------------------------------------------------------ validation
 
   ({String path, String message})? get _issue {
@@ -471,7 +530,7 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
           };
           if (empty) return (path: field.path, message: '${context.tr(field.label)}: ${context.tr('Required')}');
         }
-        if (field.kind == 'int' && field.path == 'server_port') {
+        if (field.kind == 'int' && (field.path == 'server_port' || field.path == 'settings.port')) {
           final port = _int(field.path);
           if (port < 1 || port > 65535) return (path: field.path, message: context.tr('Must be a port number'));
         }

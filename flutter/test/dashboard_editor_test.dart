@@ -10,7 +10,7 @@ import 'support/errors.dart';
 
 void main() {
   for (final (card, scenario) in [
-    for (final card in ['Network speed', 'System HTTP proxy'])
+    for (final card in ['Network speed', 'Network takeover'])
       for (final scenario in ['add-remove', 'reorder', 'failed-save']) (card, scenario),
   ]) {
     testWidgets('dashboard edits $card in place: $scenario', (tester) async {
@@ -28,7 +28,7 @@ void main() {
         'hiddenCards': ['Connections', 'Memory', 'Intranet IP'],
       });
       }
-      final systemProxy = card == 'System HTTP proxy';
+      final systemProxy = card == 'Network takeover';
       if (systemProxy && scenario != 'add-remove') {
         preferences['dashboardCards'] = [
         'Status', card, 'Network speed', 'Outbound mode', 'Current profile', 'Proxy groups',

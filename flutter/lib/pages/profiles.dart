@@ -6,6 +6,7 @@ import '../components/profile_card.dart';
 import 'profile_editor.dart';
 import 'profile_details.dart';
 import 'group_settings.dart';
+import 'protocol_form.dart';
 
 // libbox remote_profile.go stores the display name in the URL fragment.
 String remoteProfileLink(Json profile) => Uri(
@@ -13,6 +14,17 @@ String remoteProfileLink(Json profile) => Uri(
   queryParameters: {'url': profile['url'].toString()},
   fragment: profile['name'].toString(),
 ).toString();
+
+// The typed-form protocols the manual "New node" flow can start from, in the native editor's order.
+const manualProtocols = <(String, String)>[
+  ('shadowsocks', 'Shadowsocks'), ('vmess', 'VMess'), ('vless', 'VLESS'),
+  ('xrayvless', 'VLESS (Xray)'), ('trojan', 'Trojan'), ('hysteria', 'Hysteria'),
+  ('tuic', 'TUIC'), ('juicity', 'Juicity'), ('anytls', 'AnyTLS'), ('shadowtls', 'ShadowTLS'),
+  ('socks', 'Socks'), ('http', 'HTTP'), ('wireguard', 'WireGuard'), ('masque', 'MASQUE'),
+  ('ssh', 'SSH'), ('snell', 'Snell'), ('naive', 'Naive'), ('mieru', 'Mieru'),
+  ('trusttunnel', 'TrustTunnel'), ('openconnect', 'OpenConnect'), ('openvpn', 'OpenVPN'),
+  ('direct', 'Direct'),
+];
 
 class ProfilesPage extends StatefulWidget {
   const ProfilesPage({super.key, this.picker = false});
@@ -229,6 +241,16 @@ class _AddProfileMenuState extends State<AddProfileMenu> {
     } catch (error) { if (mounted) context.box.report(error); }
     finally { if (mounted) setState(() => _busy = false); }
   }
+  Future<void> _createNode(String type) async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      // A fresh node of the chosen protocol, opened straight into the typed form.
+      final info = json(await context.box.call('profiles.createNode', {'groupId': context.box.selectedProfileId, 'type': type}));
+      if (mounted) await openForm(context, ProtocolFormPage(id: (info['id'] as num?)?.toInt() ?? 0));
+    } catch (error) { if (mounted) context.box.report(error); }
+    finally { if (mounted) setState(() => _busy = false); }
+  }
   @override Widget build(BuildContext context) => AbsorbPointer(absorbing: _busy, child: PopupAnchor(
     targetBuilder: widget.builder,
     popupBuilder: (_) => PopupMenu(items: [
@@ -237,7 +259,11 @@ class _AddProfileMenuState extends State<AddProfileMenu> {
       PopupMenuItem(glyph: AppGlyphs.cloudDownload, label: context.tr('Import from URL'),
         onPressed: () => openForm(context, const ProfileForm(initial: {'url': '', 'remote': true}))),
       PopupMenuItem(glyph: AppGlyphs.copy, label: context.tr('Clipboard'), onPressed: () => _import('Clipboard')),
-      PopupMenuItem(section: const PopupMenuSection(), glyph: AppGlyphs.customize,
+      PopupMenuItem(section: const PopupMenuSection(), glyph: AppGlyphs.add, label: context.tr('New node'), subItems: [
+        for (final (type, label) in manualProtocols)
+          PopupMenuItem(label: label, onPressed: () => _createNode(type)),
+      ]),
+      PopupMenuItem(glyph: AppGlyphs.customize,
         label: context.tr('New profile'), onPressed: () => openForm(context, const ProfileForm(initial: {'content': '{}'}))),
       PopupMenuItem(glyph: AppGlyphs.shuffle, label: context.tr('Auto selector'), onPressed: _createSelector),
     ]),
@@ -266,6 +292,27 @@ class _AddProfilePageState extends State<AddProfilePage> {
     } catch (error) { if (mounted) context.box.report(error); }
     finally { if (mounted) setState(() => _loading = false); }
   }
+  Future<void> _createNode(String type) async {
+    if (_loading) return;
+    setState(() => _loading = true);
+    try {
+      final info = json(await context.box.call('profiles.createNode', {'groupId': context.box.selectedProfileId, 'type': type}));
+      if (mounted) await openForm(context, ProtocolFormPage(id: (info['id'] as num?)?.toInt() ?? 0));
+    } catch (error) { if (mounted) context.box.report(error); }
+    finally { if (mounted) setState(() => _loading = false); }
+  }
+  Future<void> _pickNode() async {
+    if (_loading) return;
+    final type = await showDialog<String>(context: context, builder: (context) => SimpleDialog(
+      title: Text(context.tr('New node')),
+      children: [
+        for (final (type, label) in manualProtocols)
+          SimpleDialogOption(onPressed: () => Navigator.pop(context, type), child: Text(label)),
+      ],
+    ));
+    if (type == null || !mounted) return;
+    await _createNode(type);
+  }
   @override Widget build(BuildContext context) => BoxPage(
     title: 'Add profile', loading: _loading,
     children: [
@@ -274,6 +321,8 @@ class _AddProfilePageState extends State<AddProfilePage> {
           widget: const ProfileForm(initial: {'url': '', 'remote': true}), forceFull: false),
         for (final item in [('File', AppGlyphs.profiles), ('Clipboard', AppGlyphs.copy), ('Scan QR code', AppGlyphs.qrCode)])
           ListItem(leading: GlyphIcon(item.$2), title: Text(context.tr(item.$1)), onTap: _loading ? null : () => _import(item.$1)),
+        ListItem(leading: const GlyphIcon(AppGlyphs.add), title: Text(context.tr('New node')),
+          onTap: _loading ? null : _pickNode),
         ListItem.open(leading: const GlyphIcon(AppGlyphs.add), title: Text(context.tr('New profile')),
           widget: const ProfileForm(initial: {'content': '{}'}), forceFull: false),
         ListItem(leading: const GlyphIcon(AppGlyphs.shuffle), title: Text(context.tr('Auto selector')),
@@ -354,7 +403,7 @@ class _ProfileFormState extends State<ProfileForm> {
         ], footer: _remote
             ? context.tr('This URL must serve a sing-box JSON configuration.')
             : imported == null ? null : imported == 1
-                ? context.tr('One node will be imported.')
+                ? context.tr('One node will be imported into the Default group.')
                 : '$imported ${context.tr('nodes will be imported.')}'),
         if (_remote) generateSection(items: [
           FormRow(title: context.tr('Auto update'), onPressed: () => setState(() => _auto = !_auto),

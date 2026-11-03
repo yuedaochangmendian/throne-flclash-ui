@@ -23,6 +23,7 @@ import io.nekohasekai.sagernet.group.SubscriptionScheduler
 import io.nekohasekai.sagernet.ktx.app
 import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.outbound.Outbound
+import io.nekohasekai.sagernet.outbound.OutboundFactory
 import io.nekohasekai.sagernet.outbound.common.MUX_CUSTOM
 import io.nekohasekai.sagernet.outbound.common.Multiplex
 import io.nekohasekai.sagernet.outbound.common.Tls
@@ -109,6 +110,20 @@ object BboxProfiles {
             if (text.isEmpty() || text == "{}") emptyList() else parseOutbounds(text)
         } else {
             emptyList()
+        }
+        // A single imported node joins the shared Default group instead of becoming a group of its own:
+        // the configuration list then shows one "默认" tab the hand-imported nodes accumulate in, matching
+        // Throne's Default group of an empty table. The form's name renames the node itself.
+        if (id <= 0L && !group.isSubscription && import.size == 1) {
+            val target = defaultGroup()
+            val outbound = import.single()
+            val renamed = name?.trim().orEmpty()
+            if (renamed.isNotEmpty() && renamed != outbound.displayName()) outbound.name = renamed
+            val added = ProfileManager.addProfileBatch(listOf(outbound), target.id)
+            GroupRepo.setCurrent(target.id)
+            added.singleOrNull()?.let { BboxCommands.select(it.id) }
+            BboxBridge.scheduleRefresh(immediate = true)
+            return@withContext target.id
         }
         if (group.name.isNullOrBlank() && import.size == 1) group.name = import.single().displayName()
 
@@ -442,6 +457,21 @@ object BboxProfiles {
         )
     }
 
+    /**
+     * Creates a fresh node of [type] in [groupId] (the first group when omitted) and answers its
+     * editor seed, so the typed form can open on it and the user fills the fields. The default name
+     * is the protocol's own display type; the empty server/port keep it unselectable until saved.
+     */
+    suspend fun createNode(groupId: Long?, type: String): Map<String, Any?> = withContext(Dispatchers.IO) {
+        val outbound = OutboundFactory.newByType(type)
+        if (outbound.invalid) error("Unknown proxy type: $type")
+        val gid = groupId?.takeIf { it > 0L } ?: GroupRepo.all().firstOrNull()?.id ?: error("No proxy group")
+        if (outbound.name.isBlank()) outbound.name = outbound.displayType().ifBlank { type }
+        val entity = ProfileManager.addProfile(outbound, gid)
+        BboxBridge.scheduleRefresh(immediate = true)
+        mapOf("id" to entity.id, "name" to entity.displayName(), "type" to entity.displayType())
+    }
+
     /** The typed form's seed: the node's canonical sing-box JSON (ProfileJson), which the form reads and writes. */
     suspend fun nodeConfig(id: Long): Map<String, Any?> = withContext(Dispatchers.IO) {
         val profile = ProfileManager.getProfile(id) ?: error("No proxy with id $id")
@@ -769,6 +799,11 @@ object BboxProfiles {
         BboxBridge.scheduleRefresh(immediate = true)
         config(id)
     }
+
+    /** The Default group single-node imports accumulate in, created when it does not exist yet. */
+    private suspend fun defaultGroup(): ProxyGroup =
+        GroupRepo.all().firstOrNull { !it.isSubscription && it.name == SagerDatabase.defaultGroupName() }
+            ?: GroupRepo.add(ProxyGroup().apply { name = SagerDatabase.defaultGroupName() })
 
     /** Throne's own clipboard/file/QR parser, with the same global settings the native importer reads. */
     private fun parseOutbounds(text: String): List<Outbound> {
