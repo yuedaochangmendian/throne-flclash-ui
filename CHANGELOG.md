@@ -1,3 +1,8 @@
+#### 3.2.3
+
+* The TV banner carries the new mark as well: the painting's range sits on the paper tone where the crown used to be, and the "Throne" wordmark is left exactly as it was, pixel for pixel
+* The status-bar and quick-settings glyph follows it: a three-peak silhouette traced from the same painting, kept solid rather than painted because the system tints it, with the summits rounded so it still reads at 24dp
+
 #### 3.2.2
 
 * The app's mark is a watercolour range now: three peaks in ink and gold on cream paper, in place of the green crown. Every launcher density carries it — a rounded square where a plain bitmap is still expected, and an adaptive icon whose layers hold the same painting, the paper tone as the background and the range inset a little so no mask cuts it; the monochrome layer is a silhouette traced from the ink, so themed icons follow the new brand too
