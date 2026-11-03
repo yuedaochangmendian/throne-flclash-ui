@@ -36,9 +36,6 @@ flutter:
     - family: JetBrainsMono
       fonts:
         - asset: assets/fonts/JetBrainsMono-Regular.ttf
-    - family: Twemoji
-      fonts:
-        - asset: assets/fonts/Twemoji.Mozilla.ttf
   module:
     androidX: true
     androidPackage: io.ericlee.bbox_ui

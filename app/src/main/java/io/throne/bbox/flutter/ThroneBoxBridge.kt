@@ -635,7 +635,10 @@ class ThroneBoxBridge(
                     result.success(null)
                 }
                 "dashboard.releaseMemory" -> {
-                    System.gc()
+                    // A full GC on a UI tap pauses the heap for a perceptible hitch and
+                    // buys nothing: the runtime reclaims on its own. Debug builds keep the
+                    // explicit call so the button can still be exercised there.
+                    if (BuildConfig.DEBUG) System.gc()
                     result.success(null)
                 }
 

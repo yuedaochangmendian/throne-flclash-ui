@@ -21,8 +21,8 @@
 
 | # | 内容 | 证据 | 归属 |
 |---|---|---|---|
-| 1 | 依赖链 pin：coroutines force 1.6.4、stdlib 2.0.21 排除重编、全局 `-Xskip-metadata-version-check`（`buildSrc/Helpers.kt:80`）——Flutter AAR 调新版 API 会有运行时 NoSuchMethodError 风险，`scan_aar_apis.py` 结论需复查收窄 | `app/build.gradle.kts` | M |
-| 2 | compileSdk 36 被 androidx.camera 1.6.1 绑架（targetSdk 仍 35） | `app/build.gradle.kts:55` | M |
+| 1 | 依赖链 pin：coroutines force 1.6.4、stdlib 2.0.21 排除重编、全局 `-Xskip-metadata-version-check`（`buildSrc/Helpers.kt:80`）——Flutter AAR 调新版 API 会有运行时 NoSuchMethodError 风险，`scan_aar_apis.py` 结论需复查收窄 | `app/build.gradle.kts` | M → 详见 `docs/toolchain-upgrade.md`（批次 U1–U3） |
+| 2 | compileSdk 36 被 androidx.camera 1.6.1 绑架（targetSdk 仍 35） | `app/build.gradle.kts:55` | M → 同上，U1 解 CameraX 钉 |
 | 3 | analyze 存量 167 条 info（多为 test 的 curly_braces / unnecessary_import） | `flutter analyze` | M |
 | 4 | README 仍是上游 Throne 原文（捐赠链接指 throneproj、文档指 throneproj.github.io、命名混乱：仓库名 flclash / 应用名 Flrone / 包名 com.throneflclash） | `README.md` | M |
 | 5 | docs 失实风险：`bbox-bridge.md`/`bbox-flutter.md` 在 0.5 修过一轮，3.0.x 又漂移了十余轮 | docs/ | M |
@@ -118,8 +118,10 @@
 |---|---|---|---|
 | **v3.0.12** | ✅ W1 日志轮收尾（2026-11-03 发，commit `41636a9`） | — | 已发，latest 已指向 |
 | **v3.1.0** | ✅ 批次 M + N 合并发版（含 analyze 清零、README/docs、通道审计、噪音折叠、崩溃存储、设备清单、更新拒绝测试；双 agent 评审 18 项） | — | 已发，latest 已指向 |
+| **v3.2.4** | ✅ 体积与运行时过一遍：R8 精确 keep + full mode、Twemoji 删除/字体子集/图标 WebP、`useLegacyPackaging=false`、GC debug-only、Jetifier 关闭 | — | 见 `openspec/changes/2026-11-03-size-pass/` |
 | ~~v3.2.0~~ | 并入 v3.1.0（N 批次随 M 同轮落地） | — | — |
 | **v3.3.0** | 批次 O（quality 或 dnsObject，二选一） | 可行性侦察结论 | 同上 |
+| **v3.4.0** | 工具链解钉（`docs/toolchain-upgrade.md` U1→U2，U3 可随附） | U1/U2 前置链 | 单独评审轮 + N3 设备清单 |
 | **v4.0.0** | 核心大版本跟随 + targetSdk 36 + 上游 schema 适配 | 上游 release 节奏 | 单独评审轮 |
 | 常驻 | W5 上游 pin 升级（每个安全修复） | 无 | patch 版 |
 

@@ -36,7 +36,12 @@ android {
     namespace = "io.nekohasekai.sagernet"
     packaging {
         jniLibs {
-            useLegacyPackaging = true
+            // extractNativeLibs=false: the .so files stay inside the APK and are
+            // loaded straight from it (page-aligned), instead of being stored
+            // uncompressed and copied out at install time — which doubled the disk
+            // footprint of libflutter.so + the Go core. minSdk 24 and the NDK 28
+            // strip task both handle the 16 KB page alignment this needs.
+            useLegacyPackaging = false
             // Flutter's *debug* engine ships the Vulkan validation layer: 237 MB uncompressed, ~65 MB inside the APK,
             // second only to libflutter.so itself. It exists purely for graphics debugging and is absent from the
             // release engine jar (verified: 0 VkLayer entries there), so nothing can depend on it at runtime.

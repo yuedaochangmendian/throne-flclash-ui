@@ -37,7 +37,7 @@ void main() {
       expect(find.byWidgetPredicate((widget) {
         final decoration = widget is DecoratedBox ? widget.decoration : null;
         final image = decoration is ShapeDecoration ? decoration.image?.image : null;
-        return image is AssetImage && image.assetName == 'assets/images/app_icon.png';
+        return image is AssetImage && image.assetName == 'assets/images/app_icon.webp';
       }), findsOneWidget);
       final check = find.widgetWithText(TonalButton, 'Check for updates');
       await tester.ensureVisible(check);

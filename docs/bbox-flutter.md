@@ -3,8 +3,8 @@
 > Status 2026-11-03: current. `Capabilities.kt` is the source of truth for what exists; `tools/diagnostics/channel_audit.py` (wired into CI) enforces the Dart/Kotlin contract on every push.
 
 The app runs **B-box's own Flutter interface** over Throne's backend. `flutter/` starts as a copy of
-`giturass/B-box`'s `flutter/` module (FlClash 0.9.2 presentation, M3 Expressive) — 99 files vendored
-unchanged and 33 adapted, all recorded with hashes in `flclash-manifest.json`. On top of that the
+`giturass/B-box`'s `flutter/` module (FlClash 0.9.2 presentation, M3 Expressive) — 97 files vendored
+unchanged and 34 adapted, all recorded with hashes in `flclash-manifest.json`. On top of that the
 port carries its own Dart code (the manifest's `ownFiles` partition: the channel client, the pages
 Throne adds — routes, settings, logs — and the capability-gated shells), plus the Android host that
 answers the channels the screens call. Claims of "nothing on the Dart side was rewritten" describe

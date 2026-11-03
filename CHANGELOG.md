@@ -1,3 +1,13 @@
+#### 3.2.4
+
+* R8 finally shrinks the app: the keep rules now cover only what is actually reflective — the outbound types `OutboundFactory` instantiates by name and the preference classes the `res/xml` screens inflate by tag — instead of the whole `io.nekohasekai.sagernet` and `moe.matsuri.nb4a` packages. R8 full mode turns on with them, and crash records keep line numbers now
+* Twemoji leaves the bundle: the emoji font hook is never wired (no `emojiFont` reaches the app's widget tree, and the font picker never offered the family), so its 1.4 MB were dead weight. JetBrainsMono is subset to the Latin, punctuation and box-drawing glyphs the code, reports and terminal surfaces actually use — 267 KB down to 71 KB
+* Launcher, monochrome and TV banner artwork is WebP now (the About page's hero art with it); together with the fonts this is roughly 1.9 MB out of the source tree and most of it out of every APK
+* Native libraries load from the APK instead of being extracted to `/data` at install time, so a second copy of the Flutter engine and the Go core no longer sits on the device's disk
+* The dashboard's release-memory button no longer runs a full GC on release builds (a perceptible pause that bought nothing); debug builds keep the call for the button's sake
+* Jetifier is off: nothing ships `com.android.support` artifacts any more, and the rewrite taxed every build for nothing
+* `docs/toolchain-upgrade.md` schedules the dependency-pin cleanup (AGP to 8.9 and the CameraX unpin, Kotlin to 2.2 and the deletion of `-Xskip-metadata-version-check` and the version `force` block) as batches U1–U3, with the AAR API scan staying as the permanent gate
+
 #### 3.2.3
 
 * The TV banner carries the new mark as well: the painting's range sits on the paper tone where the crown used to be, and the "Throne" wordmark is left exactly as it was, pixel for pixel

@@ -2,7 +2,6 @@ import 'package:flutter/widgets.dart';
 
 /// The fonts FlClash bundles, declared in its `pubspec.yaml`.
 enum FontFamily {
-  twEmoji('Twemoji'),
   jetBrainsMono('JetBrainsMono');
 
   final String value;

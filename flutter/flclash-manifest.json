@@ -2,11 +2,9 @@
   "repository": "https://github.com/chen08209/FlClash",
   "version": "v0.9.2",
   "commit": "7fd417fb9a9a277c6a9339a8ac87f907df7c25f7",
-  "changes": "Dart package imports renamed from fl_clash to b_box_ui. No Clash core included. ownFiles covers lib/ only — the port's own tests live under test/ and are not vendored material.",
+  "changes": "Dart package imports renamed from fl_clash to b_box_ui. No Clash core included. ownFiles covers lib/ only — the port's own tests live under test/ and are not vendored material. A size pass: Twemoji.Mozilla.ttf removed (the emojiFont hook is never wired, so the family was never applied — 1.4 MB of dead weight), JetBrainsMono subset, launcher/banner artwork converted to WebP.",
   "files": {
     "shaders/liquid_glass.frag": "b6aabbfbc332491cabff85ab1ae7437995d11e13c8adf9b321d0c11115f237ae",
-    "assets/fonts/JetBrainsMono-Regular.ttf": "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f",
-    "assets/fonts/Twemoji.Mozilla.ttf": "61db6397b8b32b72c585d538ef698a84cf78cf2558a14046b3fa0ec4cc362540",
     "lib/ui/activate_box.dart": "13225d7bf66095baa1c15f555da0cf8de88557eb64d7b86e7e1fdd3f20d95a76",
     "lib/ui/animated_entries.dart": "afef15574118c2f8800575fa5dd55a60e8565322b618171643cbc83ef5e13636",
     "lib/ui/animated_visibility.dart": "db4157a3a8ae8ab62edc9c1fc34cd4271581986ad2a1a0b153eb54c8b9c8e090",
@@ -335,6 +333,11 @@
         }
       ],
       "changes": "Profile row height, title strut, selected badge, updating transition and compact update-age labels retained. Uses Room timestamps for local content saves and remote subscription updates; missing timestamps show unknown. Refresh is scoped to visible/resumed pages. Does not invent subscription quotas or expiry badges absent from the native model. Accept a disabled selection callback while retaining the profile metadata and context menu."
+    },
+    "assets/fonts/JetBrainsMono-Regular.ttf": {
+      "source": "assets/fonts/JetBrainsMono-Regular.ttf",
+      "sourceSHA256": "a0bf60ef0f83c5ed4d7a75d45838548b1f6873372dfac88f71804491898d138f",
+      "changes": "Subset to Latin, combining marks, punctuation and box-drawing glyphs (267 KB to 71 KB): the code, reports and terminal surfaces it drives are Latin, and anything else falls back per glyph to the system families in appFontFamilyFallback."
     }
   },
   "adaptedNativeFiles": {

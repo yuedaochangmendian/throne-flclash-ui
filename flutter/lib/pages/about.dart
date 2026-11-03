@@ -55,7 +55,7 @@ class _AboutPageState extends State<AboutPage> {
           DecoratedBox(decoration: ShapeDecoration(
             shape: AppShape.all(22).copyWith(side: const BorderSide(color: Color(0x14000000), width: 0.5)),
             shadows: const [BoxShadow(color: Color(0x14000000), blurRadius: 18, offset: Offset(0, 6))],
-            image: const DecorationImage(image: AssetImage('assets/images/app_icon.png'), fit: BoxFit.cover),
+            image: const DecorationImage(image: AssetImage('assets/images/app_icon.webp'), fit: BoxFit.cover),
           ), child: const SizedBox.square(dimension: 96)),
           const SizedBox(height: 20),
           Text('Flrone', style: AppTextStyle.title2.of(context, emphasized: true)),

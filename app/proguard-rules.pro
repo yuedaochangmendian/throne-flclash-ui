@@ -1,10 +1,22 @@
 -repackageclasses ''
 -allowaccessmodification
 
--keep class io.nekohasekai.sagernet.** { *;}
--keep class moe.matsuri.nb4a.** { *;}
 # OutboundFactory instantiates the profile types reflectively by class name
+# (Class.forName("io.nekohasekai.sagernet.outbound.types." + className)).
 -keep class io.nekohasekai.sagernet.outbound.types.** { *; }
+
+# Preference screens in res/xml inflate these by tag name only — no Kotlin
+# reference exists anywhere in the app, so R8 would otherwise strip them.
+-keep class moe.matsuri.nb4a.ui.ColorPickerPreference { *; }
+-keep class moe.matsuri.nb4a.ui.EditConfigPreference { *; }
+-keep class moe.matsuri.nb4a.ui.LongClickListPreference { *; }
+-keep class moe.matsuri.nb4a.ui.MTUPreference { *; }
+-keep class moe.matsuri.nb4a.ui.SimpleMenuPreference { *; }
+-keep class moe.matsuri.nb4a.ui.UrlTestPreference { *; }
+-keep class io.nekohasekai.sagernet.ui.settings.DnsServerPreference { *; }
+-keep class io.nekohasekai.sagernet.ui.settings.StringListPreference { *; }
+-keep class io.nekohasekai.sagernet.ui.settings.WarpEntryPreference { *; }
+-keep class io.nekohasekai.sagernet.widget.StringLinesPreference { *; }
 
 # Clean Kotlin
 -assumenosideeffects class kotlin.jvm.internal.Intrinsics {
@@ -21,11 +33,14 @@
     static void throwUninitializedPropertyAccessException(java.lang.String);
 }
 
-# SnakeYaml
--keep class org.yaml.snakeyaml.** { *; }
+# SnakeYaml is only driven through its event/Composer API and SafeConstructor
+# (outbound/import/ClashYaml.kt), which never reflects over app classes, so no
+# -keep is needed. Its java.beans references are absent on Android — see the
+# -dontwarn list below.
 
 -dontobfuscate
--keepattributes SourceFile
+# LineNumberTable feeds the app's seven-day exception records (MessageStore).
+-keepattributes SourceFile,LineNumberTable
 
 -dontwarn java.beans.BeanInfo
 -dontwarn java.beans.FeatureDescriptor
