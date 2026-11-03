@@ -1,8 +1,8 @@
 part of 'box.dart';
 
-/// Semantic facade (Bettbox `ClashCore`-style): folds the scattered
-/// `call('method.name', ...)` string invocations into typed, discoverable methods so the
-/// method name is checked at compile time and the parameter shape lives in one place.
+/// Semantic facade (Bettbox `ClashCore`-style): folds the scattered raw bridge
+/// invocations — a bare name string plus an argument map — into typed, discoverable methods,
+/// so the name is checked at compile time and the parameter shape lives in one place.
 /// Grouped by domain as `extension`s on [BoxController].
 extension ProfilesApi on BoxController {
   Future<dynamic> profileDecodeIntent(String uri) => call('profiles.decodeIntent', {'uri': uri});
