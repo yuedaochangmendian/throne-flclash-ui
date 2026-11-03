@@ -194,7 +194,7 @@ class DetailRow extends StatelessWidget {
   Future<void> _copy(BuildContext context, String text) async {
     await Clipboard.setData(ClipboardData(text: text));
     if (!context.mounted) return;
-    context.box.messages.add(context.tr('Copied'));
+    context.box.showMessage(context.tr('Copied'));
   }
 
   @override

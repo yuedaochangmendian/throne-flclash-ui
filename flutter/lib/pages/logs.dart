@@ -72,13 +72,11 @@ class _LogsPageState extends State<LogsPage> {
     final box = context.box;
     setState(() => _exporting = true);
     try {
-      final saved = await box.call('document.save', {
-        // Log lines carry URLs and keys; the bridge redacts like the native export.
-        'name': _logcat ? 'Logcat.log' : 'B-box.log', 'redact': true,
-        'content': logs.map((line) => '${recordTime(line['receivedAt'])} [${line['level']}] ${line['message']}').join('\n'),
-      });
+      // Log lines carry URLs and keys; the bridge redacts like the native export.
+      final saved = await box.documentSave(_logcat ? 'Logcat.log' : 'B-box.log',
+        logs.map((line) => '${recordTime(line['receivedAt'])} [${line['level']}] ${line['message']}').join('\n'), redact: true);
       // A cancelled system picker is neither an export nor an error.
-      if (mounted && saved != null) box.messages.add(context.tr(saved == true ? 'Exported' : 'Export failed'));
+      if (mounted && saved != null) box.showMessage(context.tr(saved == true ? 'Exported' : 'Export failed'));
     } catch (error) {
       box.report(error);
     } finally {
@@ -93,17 +91,17 @@ class _LogsPageState extends State<LogsPage> {
     final box = context.box;
     setState(() => _exporting = true);
     try {
-      final files = rows(await box.call('crashes.list', {}));
+      final files = rows(await box.crashesList());
       if (!mounted) return;
       if (files.isEmpty) {
-        box.messages.add(context.tr('No crash logs'));
+        box.showMessage(context.tr('No crash logs'));
         return;
       }
       final parts = <String>[];
       for (final file in files) {
         // One unreadable record (pruned mid-export, say) must not sink the whole file.
         try {
-          final read = json(await box.call('crashes.read', {'name': file['name']}));
+          final read = json(await box.crashesRead(file['name']));
           parts.add('===== ${file['name']} =====\n${read['content']}');
         } catch (error) {
           parts.add('===== ${file['name']} =====\n(unreadable: ${BoxController.describe(error)})');
@@ -112,11 +110,8 @@ class _LogsPageState extends State<LogsPage> {
       final stamp = DateTime.fromMillisecondsSinceEpoch(files.first['time'] as int);
       final date = '${stamp.year}-${stamp.month.toString().padLeft(2, '0')}-${stamp.day.toString().padLeft(2, '0')}'
           '-${stamp.hour.toString().padLeft(2, '0')}-${stamp.minute.toString().padLeft(2, '0')}-${stamp.second.toString().padLeft(2, '0')}';
-      final saved = await box.call('document.save', {
-        'name': 'crashes-$date.log', 'redact': true,
-        'content': parts.join('\n\n'),
-      });
-      if (mounted && saved != null) box.messages.add(context.tr(saved == true ? 'Exported' : 'Export failed'));
+      final saved = await box.documentSave('crashes-$date.log', parts.join('\n\n'), redact: true);
+      if (mounted && saved != null) box.showMessage(context.tr(saved == true ? 'Exported' : 'Export failed'));
     } catch (error) {
       box.report(error);
     } finally {
@@ -219,7 +214,7 @@ class _LogsPageState extends State<LogsPage> {
                     onTap: () async {
                       await Clipboard.setData(ClipboardData(text: log['message'].toString()));
                       if (!context.mounted) return;
-                      box.messages.add(context.tr('Copied'));
+                      box.showMessage(context.tr('Copied'));
                     },
                     header: RecordHeader(children: [
                       if ((log['receivedAt'] as num? ?? 0) > 0) RecordTimestamp(recordTime(log['receivedAt'])),

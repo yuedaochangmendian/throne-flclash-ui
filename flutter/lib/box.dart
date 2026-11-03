@@ -6,6 +6,8 @@ import 'package:flutter/widgets.dart';
 import 'capabilities.dart';
 import 'common/ip_quality_cache.dart';
 
+part 'box_api.dart';
+
 typedef Json = Map<String, dynamic>;
 
 Json json(Object? value) => value is Map
@@ -16,6 +18,53 @@ List<Json> rows(Object? value) => value is List ? value.map(json).toList() : [];
 enum BoxAspect { state, appearance, traffic, memory, connections, logs, logcat, testSession }
 enum BoxData { memory, logs, logcat, testSession }
 
+/// A single event flowing from the backend / core to the UI, mirroring Bettbox's
+/// `ClashMessage` bus: one typed stream instead of several ad-hoc controllers. A listener
+/// subscribes to the subset it cares about via `whereType<X>()`.
+sealed class BoxEvent {
+  const BoxEvent();
+}
+
+/// A banner / snackbar message: backend `error`/`openUrl`, the non-popup branch of a
+/// subscription report, and UI-initiated notices.
+class BoxMessageEvent extends BoxEvent {
+  const BoxMessageEvent(this.text);
+  final String text;
+}
+
+/// A subscription update's change window that should open the report dialog.
+class SubscriptionReportEvent extends BoxEvent {
+  const SubscriptionReportEvent(this.report);
+  final Json report;
+}
+
+/// An external intent (share / import) is waiting to be drained.
+class IntentAvailableEvent extends BoxEvent {
+  const IntentAvailableEvent();
+}
+
+/// The embedded browser (OAuth and friends) completed a callback.
+class BrowserCompleteEvent extends BoxEvent {
+  const BrowserCompleteEvent(this.payload);
+  final Json payload;
+}
+
+/// Pluggable event bus, one-way from backend to UI.
+class BoxEventBus {
+  final _controller = StreamController<BoxEvent>.broadcast();
+  Stream<BoxEvent> get stream => _controller.stream;
+  bool _closed = false;
+  void emit(BoxEvent event) {
+    if (_closed) return;
+    _controller.add(event);
+  }
+  Future<void> close() async {
+    if (_closed) return;
+    _closed = true;
+    await _controller.close();
+  }
+}
+
 class BoxController extends ChangeNotifier {
   BoxController({MethodChannel? channel, Stream<dynamic>? events})
       : _channel = channel ?? const MethodChannel('io.ericlee.bfa/box'),
@@ -23,10 +72,14 @@ class BoxController extends ChangeNotifier {
 
   final MethodChannel _channel;
   final Stream<dynamic> _events;
-  final messages = StreamController<String>.broadcast();
-  final subscriptionReports = StreamController<Json>.broadcast();
-  final intents = StreamController<String>.broadcast();
-  final browserEvents = StreamController<Json>.broadcast();
+  /// Unified event bus (Bettbox `ClashMessage`-style): the single one-way stream between
+  /// backend and UI. Consumers subscribe to the slice they need via `whereType<X>()`.
+  final eventBus = BoxEventBus();
+  Stream<T> _eventsOf<T extends BoxEvent>() => eventBus.stream.where((event) => event is T).cast<T>();
+  Stream<String> get messages => _eventsOf<BoxMessageEvent>().map((event) => event.text);
+  Stream<Json> get subscriptionReports => _eventsOf<SubscriptionReportEvent>().map((event) => event.report);
+  Stream<Json> get browserEvents => _eventsOf<BrowserCompleteEvent>().map((event) => event.payload);
+  Stream<IntentAvailableEvent> get intents => _eventsOf<IntentAvailableEvent>();
   StreamSubscription<dynamic>? _subscription;
   final _revisions = List<int>.filled(BoxAspect.values.length, 0);
   final _stateChanges = ChangeNotifier();
@@ -266,7 +319,10 @@ class BoxController extends ChangeNotifier {
     } catch (error) { report(error); return false; }
   }
 
-  void report(Object error) { if (!_disposed) messages.add(describe(error)); }
+  void report(Object error) { if (!_disposed) eventBus.emit(BoxMessageEvent(describe(error))); }
+
+  /// UI-initiated banner message (previously written directly into `messages`).
+  void showMessage(String text) { if (!_disposed) eventBus.emit(BoxMessageEvent(text)); }
   static String describe(Object error) => error is PlatformException
       ? error.message ?? error.code : error.toString();
 
@@ -291,7 +347,7 @@ class BoxController extends ChangeNotifier {
         memory = nextMemory;
         aspects = const [BoxAspect.memory];
       case 'lan': lan = json(value);
-      case 'browserComplete': browserEvents.add(json(value)); return;
+      case 'browserComplete': eventBus.emit(BrowserCompleteEvent(json(value))); return;
       case 'dashboard':
         final nextDashboard = json(value);
         if (const DeepCollectionEquality().equals(dashboard, nextDashboard)) return;
@@ -349,25 +405,25 @@ class BoxController extends ChangeNotifier {
         if (uploadHistory.length > 30) uploadHistory.removeAt(0);
         if (downloadHistory.length > 30) downloadHistory.removeAt(0);
         aspects = const [BoxAspect.traffic];
-      case 'error': messages.add(value.toString()); return;
+      case 'error': eventBus.emit(BoxMessageEvent(value.toString())); return;
       case 'applyRequired': applyRequired = value.toString();
       case 'subscriptionReport':
         // Errors and untitled status lines are snackbars; a popup report opens the change window
         // (SubscriptionReportDialog equivalence) — the app shell listens on the stream.
         final report = json(value);
         if (report['kind'] == 'popup') {
-          subscriptionReports.add(report);
+          eventBus.emit(SubscriptionReportEvent(report));
         } else {
           final group = report['groupName']?.toString() ?? '';
-          messages.add(group.isEmpty ? report['text'].toString() : '$group: ${report['text']}');
+          eventBus.emit(BoxMessageEvent(group.isEmpty ? report['text'].toString() : '$group: ${report['text']}'));
         }
         return;
       case 'intentAvailable':
-        call('intent.take').then((uri) { if (uri is String) { pendingIntents.add(uri); intents.add(uri); } }).catchError(report);
+        call('intent.take').then((uri) { if (uri is String) { pendingIntents.add(uri); eventBus.emit(const IntentAvailableEvent()); } }).catchError(report);
         return;
       case 'openUrl':
         // A backend request remains a visible user action in the Flutter UI.
-        messages.add(value.toString());
+        eventBus.emit(BoxMessageEvent(value.toString()));
         return;
       default: return;
     }
@@ -378,9 +434,7 @@ class BoxController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _subscription?.cancel();
-    messages.close();
-    intents.close();
-    browserEvents.close();
+    eventBus.close();
     _stateChanges.dispose();
     super.dispose();
   }

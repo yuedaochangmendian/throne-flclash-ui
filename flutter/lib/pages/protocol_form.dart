@@ -33,7 +33,7 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
   Future<void> _load() async {
     setState(() { _error = null; _loading = true; });
     try {
-      final data = json(await context.box.call('profiles.nodeConfig', {'id': widget.id}));
+      final data = json(await context.box.profileNodeConfig(widget.id));
       if (!mounted) return;
       _name.text = data['name']?.toString() ?? '';
       final decoded = convert.jsonDecode(data['json']?.toString() ?? '{}');
@@ -573,11 +573,7 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
         }
       }
       strip(root);
-      await box.call('profiles.nodeUpdate', {
-        'id': widget.id,
-        'name': _name.text.trim(),
-        'content': convert.jsonEncode(root),
-      });
+      await box.profileNodeUpdate(widget.id, _name.text.trim(), convert.jsonEncode(root));
       if (mounted) context.safeNestedPop();
     } catch (error) {
       if (mounted) setState(() { _saving = false; _attempted = true; _error = BoxController.describe(error); });

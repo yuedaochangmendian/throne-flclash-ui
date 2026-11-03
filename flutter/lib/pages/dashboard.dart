@@ -95,13 +95,13 @@ class _DashboardPageState extends State<DashboardPage> {
               onDone: () { if (mounted) setState(() => _editing = false); })
             else SliverPadding(padding: padding, sliver: SliverToBoxAdapter(child: Column(spacing: gap, children: [
               if (box.remote) ListItem(title: Text(box.dashboard['remote'].toString()), subtitle: Text(context.tr('Remote control')),
-                trailing: TextButton(onPressed: () => box.act('remote.disconnect'), child: Text(context.tr('Disconnect')))),
+                trailing: TextButton(onPressed: () => box.remoteDisconnect(), child: Text(context.tr('Disconnect')))),
               if (box.applyRequired != null) ListItem(title: Text(context.tr('Restart required')), trailing: TextButton(
-                onPressed: () async { if (await box.act('service.reload', {'restart': true})) box.clearApplyRequired(); },
+                onPressed: () async { if (await box.serviceReload(restart: true)) box.clearApplyRequired(); },
                 child: Text(context.tr('Apply')))),
               for (final card in shown) RepaintBoundary(key: _keyOf(card), child: cards[card]),
               for (final note in rows(box.dashboard['deprecated'])) ListItem(title: Text(note['message'].toString()),
-                onTap: note['url'] == null ? null : () => box.act('url.open', {'url': note['url']})),
+                onTap: note['url'] == null ? null : () => box.openUrl(note['url'])),
             ]))),
           ],
         );
@@ -181,7 +181,7 @@ class _ModePanel extends StatelessWidget {
           selected: mode.toLowerCase() == selected, first: index == 0, last: index == modes.length - 1,
           outer: 26, inner: 12, background: SurfaceLevel.block.colorOf(context.colorScheme),
           semanticLabel: context.tr({'rule': 'Rule', 'global': 'Global', 'direct': 'Direct'}[mode.toLowerCase()] ?? mode),
-          onTap: () { if (mode.toLowerCase() != selected) box.act('mode.set', {'mode': mode}); },
+          onTap: () { if (mode.toLowerCase() != selected) box.modeSet(mode); },
           builder: (foreground) => SizedBox(height: 52, child: Column(
             mainAxisAlignment: MainAxisAlignment.center, spacing: 2, children: [
               GlyphIcon({'rule': AppGlyphs.rules, 'global': AppGlyphs.proxies, 'direct': AppGlyphs.target}[mode.toLowerCase()] ?? AppGlyphs.split, size: 18, color: foreground),

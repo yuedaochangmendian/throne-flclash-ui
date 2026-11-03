@@ -28,7 +28,7 @@ class _BackupPageState extends State<BackupPage> {
   Future<void> _loadAccount() async {
     final revision = _accountRevision;
     try {
-      final value = await context.box.call('webdav.get');
+      final value = await context.box.webdavGet();
       if (mounted && revision == _accountRevision) _updateAccount(value == null ? null : json(value));
     } catch (error) { if (mounted && revision == _accountRevision) setState(() => _accountError = error); }
   }
@@ -47,7 +47,7 @@ class _BackupPageState extends State<BackupPage> {
     if (_account == null) { setState(() { _checking = false; _connected = null; }); return; }
     setState(() { _checking = true; _connected = null; _connectionError = null; });
     try {
-      final connected = await context.box.call('webdav.check') == true;
+      final connected = await context.box.webdavCheck() == true;
       if (mounted && generation == _generation) setState(() => _connected = connected);
     } catch (error) {
       if (mounted && generation == _generation) setState(() { _connected = false; _connectionError = BoxController.describe(error); });
@@ -68,7 +68,7 @@ class _BackupPageState extends State<BackupPage> {
     final box = context.box;
     setState(() => _locked = true);
     try {
-      final result = await box.call('webdav.set', {'value': {..._account!, 'fileName': value}});
+      final result = await box.webdavSet({..._account!, 'fileName': value});
       if (mounted) _updateAccount(json(result));
     } catch (error) { box.report(error); }
     finally { if (mounted) setState(() => _locked = false); }
@@ -87,10 +87,10 @@ class _BackupPageState extends State<BackupPage> {
     try {
       bool saved;
       if (remote) {
-        saved = await box.call('webdav.upload') == true;
+        saved = await box.webdavUpload() == true;
       } else {
-        final data = await box.call('backup.create');
-        saved = await box.call('document.save', {'name': defaultBackupFileName, 'content': jsonEncode(data)}) == true;
+        final data = await box.backupCreate();
+        saved = await box.documentSave(defaultBackupFileName, jsonEncode(data)) == true;
       }
       _showLoading(false);
       if (saved && mounted) await _success('Backup', 'Backup complete');
@@ -190,7 +190,7 @@ Future<void> restorePayload(BuildContext context, Json payload, {required String
   if (approved != true || !context.mounted) return;
   onLoading?.call(true);
   try {
-    await box.call('backup.restore', {'backup': payload, 'scope': scope, 'strategy': strategy});
+    await box.backupRestore(payload, scope, strategy);
   } finally { onLoading?.call(false); }
   if (!context.mounted) return;
   await showFloatingDialog<void>(context: context, child: AlertDialog(
@@ -280,8 +280,8 @@ class _WebDAVFormState extends State<WebDAVForm> {
     final box = context.box;
     setState(() { _saving = true; _error = null; });
     try {
-      final result = await box.call('webdav.set', {'value': {'uri': _uri.text.trim(), 'user': _user.text, 'password': _password.text,
-        'fileName': widget.initial?['fileName'] ?? defaultBackupFileName}});
+      final result = await box.webdavSet({'uri': _uri.text.trim(), 'user': _user.text, 'password': _password.text,
+        'fileName': widget.initial?['fileName'] ?? defaultBackupFileName});
       if (mounted) context.safeNestedPop(json(result));
     } catch (error) { if (mounted) setState(() => _error = BoxController.describe(error)); }
     finally { if (mounted) setState(() => _saving = false); }
@@ -292,7 +292,7 @@ class _WebDAVFormState extends State<WebDAVForm> {
     if (!await confirm(context, 'Delete WebDAV account', action: 'Delete') || !mounted) return;
     setState(() { _saving = true; _error = null; });
     try {
-      await context.box.call('webdav.set', {'value': null});
+      await context.box.webdavSet(null);
       if (mounted) context.safeNestedPop({'deleted': true});
     } catch (error) { if (mounted) setState(() => _error = BoxController.describe(error)); }
     finally { if (mounted) setState(() => _saving = false); }

@@ -49,7 +49,7 @@ class _NodeJsonPageState extends State<NodeJsonPage> {
     if (!mounted) return;
     setState(() { _loadError = null; _loading = true; });
     try {
-      final data = json(await context.box.call('profiles.nodeConfig', {'id': widget.id}));
+      final data = json(await context.box.profileNodeConfig(widget.id));
       if (!mounted) return;
       _name.text = data['name']?.toString() ?? '';
       final content = data['json']?.toString() ?? '';
@@ -137,7 +137,7 @@ class _NodeJsonPageState extends State<NodeJsonPage> {
     final box = context.box;
     setState(() => _saving = true);
     try {
-      await box.call('profiles.nodeUpdate', {'id': widget.id, 'name': _name.text.trim(), 'content': _text.text});
+      await box.profileNodeUpdate(widget.id, _name.text.trim(), _text.text);
       if (!mounted) return;
       setState(() { _original = _text.text; _saving = false; });
       showAppBanner(context, context.tr('Done'));

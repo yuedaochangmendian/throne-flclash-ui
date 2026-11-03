@@ -25,10 +25,10 @@ class _TerminalPageState extends State<TerminalPage> {
   }
   Future<void> _load() async {
     try {
-      final snapshot = json(await _box!.call('ssh.snapshot'));
+      final snapshot = json(await _box!.sshSnapshot());
       _box!.terminal = snapshot;
       if (_prompt) {
-        final options = json(await _box!.call('ssh.options', {'endpoint': widget.endpoint, 'peer': widget.peer}));
+        final options = json(await _box!.sshOptions(widget.endpoint, widget.peer));
         if (!mounted) return;
         _username.text = options['username'] as String? ?? 'root';
         _terminalType.text = options['terminalType'] as String? ?? 'xterm-256color';
@@ -43,8 +43,8 @@ class _TerminalPageState extends State<TerminalPage> {
     if (_busy || _username.text.trim().isEmpty) return;
     setState(() => _busy = true);
     try {
-      final snapshot = json(await _box!.call('ssh.start', {'endpoint': widget.endpoint, 'peer': widget.peer,
-        'username': _username.text.trim(), 'terminalType': _terminalType.text.trim(), 'remember': _remember}));
+      final snapshot = json(await _box!.sshStart(widget.endpoint, widget.peer,
+        username: _username.text.trim(), terminalType: _terminalType.text.trim(), remember: _remember));
       if (!mounted) return;
       _box!.terminal = snapshot;
       setState(() { _prompt = false; _error = null; });
@@ -104,7 +104,7 @@ class _TerminalPageState extends State<TerminalPage> {
             color: progress['state'] == 'ERROR' ? context.colorScheme.error : null),
           if (active['banner'] != null) Padding(padding: const EdgeInsets.all(12), child: SelectableText(active['banner'].toString())),
           Expanded(child: _covered ? const SizedBox() : GhosttySurface(sessionId: active['id'] as String, settingsRevision: _settingsRevision)),
-          if (active['phase'] == 'FINISHED') TextButton(onPressed: () => box.act('ssh.close', {'id': active!['id']}), child: Text(context.tr('Close session'))),
+          if (active['phase'] == 'FINISHED') TextButton(onPressed: () => box.sshClose(active!['id']), child: Text(context.tr('Close session'))),
         ])),
     );
   }
@@ -180,7 +180,7 @@ class TerminalSessionsPage extends StatelessWidget {
     final box = context.box, sessions = rows(context.box.terminal['sessions']);
     return BoxPage(title: 'Sessions', actions: [
       if (sessions.isNotEmpty) IconButtonData(glyph: AppGlyphs.copy, tooltip: context.tr('Duplicate session'), onPressed: () async {
-        if (await box.act('ssh.duplicate') && context.mounted) context.safeNestedPop();
+        if (await box.sshDuplicate() && context.mounted) context.safeNestedPop();
       }),
     ], children: [
       if (sessions.isEmpty) const EmptyState('No terminal sessions'),
@@ -188,9 +188,9 @@ class TerminalSessionsPage extends StatelessWidget {
         leading: session['id'] == box.terminal['activeId'] ? const SelectionCheck() : const GlyphIcon(AppGlyphs.code),
         title: Text(session['name'].toString()), subtitle: Text('${session['username']}@${session['host']} · ${context.tr(session['phase'] == 'RUNNING' ? 'Running' : session['phase'] == 'CONNECTING' ? 'Connecting' : 'Disconnected')}'),
         trailing: IconButton(tooltip: context.tr('Close session'), icon: const GlyphIcon(AppGlyphs.close), onPressed: () async {
-          if (await confirm(context, 'Close this SSH session?', action: 'Close')) await box.act('ssh.close', {'id': session['id']});
+          if (await confirm(context, 'Close this SSH session?', action: 'Close')) await box.sshClose(session['id']);
         }),
-        onTap: () async { if (await box.act('ssh.select', {'id': session['id']}) && context.mounted) context.safeNestedPop(); },
+        onTap: () async { if (await box.sshSelect(session['id']) && context.mounted) context.safeNestedPop(); },
       )]),
     ]);
   }

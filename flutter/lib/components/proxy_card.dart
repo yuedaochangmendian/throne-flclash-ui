@@ -36,14 +36,14 @@ class ProxyNodeCard extends StatelessWidget {
   final VoidCallback onSelect, onTest;
 
   Future<String> _link(BuildContext context, {bool json = false}) async =>
-      (await context.box.call('profiles.nodeLink', {'group': group['tag'], 'tag': node['tag'], 'json': json})).toString();
+      (await context.box.profileNodeLink(group['tag'], node['tag'], json)).toString();
 
   /// A speed session over this node alone (download, upload or both); the panel that opens shows
   /// its live curve and the finished ranking, since a card only carries latency.
   Future<void> _speedTest(BuildContext context, int speedMode) async {
     final box = context.box;
     try {
-      final started = await box.call('groups.testSession.start', {
+      final started = await box.groupTestSessionStart({
         'kind': 2, 'profileIds': [node['id']], 'speedMode': speedMode,
       });
       if (!context.mounted) return;
@@ -102,7 +102,7 @@ class ProxyNodeCard extends StatelessWidget {
         }),
         PopupMenuItem(glyph: AppGlyphs.upload, label: context.tr('Share'), onPressed: () async {
           final box = context.box;
-          try { await box.call('share.text', {'content': await _link(context)}); }
+          try { await box.shareText(await _link(context)); }
           catch (error) { box.report(error); }
         }),
         PopupMenuItem(glyph: AppGlyphs.edit, label: context.tr('Edit'), onPressed: () async {
@@ -129,7 +129,7 @@ class ProxyNodeCard extends StatelessWidget {
                 TextButton(onPressed: () => Navigator.pop(context, true), child: Text(context.tr('Delete'))),
               ],
             ));
-            if (confirmed == true) await box.call('profiles.nodeDelete', {'id': node['id']});
+            if (confirmed == true) await box.profileNodeDelete(node['id']);
           } catch (error) { box.report(error); }
         }),
         PopupMenuItem(glyph: AppGlyphs.info, label: context.tr('Details'), onPressed: () => openForm(context, BoxPage(title: 'Details', children: [

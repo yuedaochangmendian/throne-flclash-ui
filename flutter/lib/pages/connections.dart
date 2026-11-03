@@ -32,18 +32,18 @@ class _ConnectionsPageState extends State<ConnectionsPage> {
     super.didChangeDependencies();
     if (_box == null) {
       _box = context.box;
-      _box!.act('connections.visible', {'visible': true});
+      _box!.connectionsSetVisible(true);
     }
   }
   @override void dispose() {
     _keywords.removeListener(_keywordsChanged);
     _keywords.dispose();
-    _box?.act('connections.visible', {'visible': false});
+    _box?.connectionsSetVisible(false);
     super.dispose();
   }
   Future<void> _closeAll() async {
     final box = context.box;
-    if (await confirm(context, 'Close all active connections?', action: 'Close')) await box.act('connections.closeAll');
+    if (await confirm(context, 'Close all active connections?', action: 'Close')) await box.connectionsCloseAll();
   }
   @override Widget build(BuildContext context) {
     final box = context.watchBox(BoxAspect.connections);
@@ -103,7 +103,7 @@ class ConnectionRecord extends StatelessWidget {
       header: RecordHeader(
         trailing: !closed && box.running ? Tooltip(
           message: context.tr('Close this connection'), child: Semantics(button: true, child: InkWell(
-            customBorder: AppShape.circle, onTap: () => box.act('connections.close', {'id': c['id']}),
+            customBorder: AppShape.circle, onTap: () => box.connectionsClose(c['id']),
             child: SizedBox.square(dimension: 28, child: Center(child: GlyphIcon(AppGlyphs.block, size: 16, color: context.colorScheme.onSurfaceVariant))),
           )),
         ) : null,
@@ -158,10 +158,10 @@ class _ConnectionDetailState extends State<ConnectionDetail> {
         IconButtonData(glyph: AppGlyphs.copy, tooltip: context.tr('Copy'), onPressed: () async {
           await Clipboard.setData(ClipboardData(text: values.entries.map((e) => '${e.key}: ${e.value}').join('\n')));
           if (!context.mounted) return;
-          box.messages.add(context.tr('Copied'));
+          box.showMessage(context.tr('Copied'));
         }),
         IconButtonData(glyph: AppGlyphs.close, tooltip: context.tr('Close this connection'),
-          onPressed: box.running && present && (c['closedAt'] as num? ?? 0) == 0 ? () => box.act('connections.close', {'id': c['id']}) : null),
+          onPressed: box.running && present && (c['closedAt'] as num? ?? 0) == 0 ? () => box.connectionsClose(c['id']) : null),
       ],
       children: [generateGroup([for (final value in values.entries) DetailRow.text(title: context.tr(value.key), value: value.value?.toString() ?? '—')])],
     );

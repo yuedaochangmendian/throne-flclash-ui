@@ -46,7 +46,7 @@ class EndpointPage extends StatelessWidget {
           'Address': (json(endpoint['selfPeer'])['tailscaleIPs'] as List? ?? []).join('\n')}),
         if ((endpoint['authURL'] as String? ?? '').isNotEmpty)
           ListItem(title: Text(context.tr('Sign in')), trailing: const GlyphIcon(AppGlyphs.openExternal),
-            onTap: () => box.act('url.open', {'url': endpoint['authURL']})),
+            onTap: () => box.openUrl(endpoint['authURL'])),
         if (endpoint['canShareFiles'] == true) generateSection(title: 'Taildrop', items: [
           ListItem.open(title: Text(context.tr('Received files')), subtitle: Text('${endpoint['waitingFileCount'] ?? 0}'), widget: InboxPage(endpoint: tag)),
           ListItem.open(title: Text(context.tr('Transfers')), widget: const TransfersPage()),
@@ -56,7 +56,7 @@ class EndpointPage extends StatelessWidget {
             options: ['', ...endpointPeers(endpoint).where((p) => p['exitNodeOption'] == true).map((p) => p['stableID'].toString())],
             value: json(endpoint['exitNode'])['stableID'] as String? ?? '',
             textBuilder: (id) => id.isEmpty ? context.tr('None') : peerName(endpointPeers(endpoint).firstWhere((p) => p['stableID'] == id, orElse: () => {'id': id})),
-            onChanged: (id) => box.act('tailscale.exit', {'endpoint': tag, 'peer': id})),
+            onChanged: (id) => box.tailscaleExit(tag, id)),
         ]),
         for (final group in rows(endpoint['userGroups'])) generateSection(title: (group['displayName'] ?? group['loginName']).toString(), items: [
           for (final peer in rows(group['peers'])) ListItem.open(
@@ -66,7 +66,7 @@ class EndpointPage extends StatelessWidget {
           ),
         ]),
         ListItem(title: Text(context.tr('Sign out')), onTap: () async {
-          if (await confirm(context, 'Sign out', action: 'Sign out')) await box.act('tailscale.logout', {'endpoint': tag});
+          if (await confirm(context, 'Sign out', action: 'Sign out')) await box.tailscaleLogout(tag);
         }),
       ] else if (kind == 'usbip') ...[
         generateSection(title: context.tr('Shared devices'), items: [
@@ -80,7 +80,7 @@ class EndpointPage extends StatelessWidget {
           for (final device in box.usbDevices.where((d) => d['server'] == tag)) ListItem(
             title: Text(device['label'].toString()), subtitle: Text('${device['state']}\n${device['error'] ?? ''}'),
             trailing: IconButton(tooltip: context.tr('Detach'), icon: const GlyphIcon(AppGlyphs.close),
-              onPressed: () => box.act('usb.detach', {'id': device['id']})),
+              onPressed: () => box.usbDetach(device['id'])),
           ),
         ],
       ] else ...[
@@ -103,7 +103,7 @@ class _PeerPageState extends State<PeerPage> {
   BoxController? _box;
   bool _ping = false;
   @override void didChangeDependencies() { super.didChangeDependencies(); _box ??= context.box; }
-  @override void dispose() { if (_ping) _box?.act('tailscale.stopPing'); super.dispose(); }
+  @override void dispose() { if (_ping) _box?.tailscaleStopPing(); super.dispose(); }
   @override Widget build(BuildContext context) {
     final box = context.box;
     final endpoint = rows(box.toolState['tailscale']).where((e) => e['endpointTag'] == widget.endpoint).firstOrNull;
@@ -115,12 +115,12 @@ class _PeerPageState extends State<PeerPage> {
         'Status': context.tr(peer['online'] == true ? 'Online' : 'Offline'),
         'Download': bytes(peer['rxBytes'] as num? ?? 0), 'Upload': bytes(peer['txBytes'] as num? ?? 0)}),
       generateSection(items: [
-        ListItem(title: const Text('Ping'), onTap: () { setState(() => _ping = true); box.act('tailscale.ping', args); }),
+        ListItem(title: const Text('Ping'), onTap: () { setState(() => _ping = true); box.tailscalePing(args); }),
         if ((peer['sshHostKeys'] as List? ?? []).isNotEmpty) ListItem.open(
           title: const Text('SSH'), widget: TerminalPage(endpoint: widget.endpoint, peer: widget.id, name: peerName(peer))),
         if (peer['canReceiveFiles'] == true) ListItem(title: Text(context.tr('Send file')), onTap: () async {
           try {
-            final id = await box.call('taildrop.send', args);
+            final id = await box.taildropSend(args);
             if (id != null && context.mounted) await openPage(context, const TransfersPage());
           } catch (error) { box.report(error); }
         }),
@@ -147,7 +147,7 @@ class _UsbPickerState extends State<UsbPicker> {
   @override void didChangeDependencies() { super.didChangeDependencies(); if (_devices == null && !_loading) _load(); }
   Future<void> _load() async {
     _loading = true;
-    try { final devices = rows(await context.box.call('usb.list')); if (mounted) setState(() { _devices = devices; _error = null; }); }
+    try { final devices = rows(await context.box.usbList()); if (mounted) setState(() { _devices = devices; _error = null; }); }
     catch (error) { if (mounted) setState(() => _error = error); }
     finally { _loading = false; }
   }
@@ -156,7 +156,7 @@ class _UsbPickerState extends State<UsbPicker> {
     if (_devices?.isEmpty == true) const EmptyState('No USB devices'),
     for (final device in _devices ?? <Json>[]) ListItem(title: Text(device['name'].toString()),
       onTap: () async {
-        if (await context.box.act('usb.attach', {'server': widget.server, 'device': device['id']}) && context.mounted) Navigator.pop(context);
+        if (await context.box.usbAttach(widget.server, device['id']) && context.mounted) Navigator.pop(context);
       }),
   ]);
 }

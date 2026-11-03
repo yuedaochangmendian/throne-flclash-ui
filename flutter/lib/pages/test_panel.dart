@@ -42,7 +42,7 @@ class _TestPanelPageState extends State<TestPanelPage> {
     final scopeId = _scopeId;
     final kind = _kind;
     try {
-      await context.box.act('groups.testSession.start', {
+      await context.box.groupTestSessionStartChecked({
         'kind': kind, 'groupId': scopeId,
         'speedMode': kind == 2 ? _effectiveSpeedMode : -1,
       });
@@ -62,7 +62,7 @@ class _TestPanelPageState extends State<TestPanelPage> {
     if (ids.isEmpty) return;
     final confirmed = await confirm(context, 'Remove the unavailable profiles?', action: 'Delete');
     if (!confirmed || !mounted) return;
-    final answer = json(await context.box.call('groups.testSession.remove', {'ids': ids}));
+    final answer = json(await context.box.groupTestSessionRemove(ids));
     if (mounted) {
       final removed = (answer['removed'] as num? ?? 0).toInt();
       showAppBanner(context, context.tr('Removed N profiles').replaceFirst('N', '$removed'));
@@ -149,15 +149,15 @@ class _TestPanelPageState extends State<TestPanelPage> {
     return BoxDataSubscription(data: BoxData.testSession, child: Scaffold(
       title: context.tr('Test panel'),
       confirmationAction: running
-          ? IconButtonData(glyph: AppGlyphs.playPause(1), tooltip: context.tr('Stop'), onPressed: () => box.act('groups.testSession.stop'))
+          ? IconButtonData(glyph: AppGlyphs.playPause(1), tooltip: context.tr('Stop'), onPressed: () => box.groupTestSessionStop())
           : IconButtonData(glyph: AppGlyphs.playPause(0), tooltip: context.tr('Start'), isLoading: _starting, onPressed: _starting ? null : _start),
       menuItems: [
         if (finished && groupId > 0) PopupMenuItem(glyph: AppGlyphs.sort, label: context.tr('Sort'),
-          onPressed: () => box.act('groups.testSession.sort', {'groupId': groupId})),
+          onPressed: () => box.groupTestSessionSort(groupId)),
         if (finished && _failedIds(session).isNotEmpty) PopupMenuItem(glyph: AppGlyphs.delete,
           label: context.tr('Remove unavailable'), onPressed: () => _removeUnavailable(session)),
         if (finished) PopupMenuItem(glyph: AppGlyphs.close, label: context.tr('Dismiss'),
-          onPressed: () => box.act('groups.testSession.dismiss')),
+          onPressed: () => box.groupTestSessionDismiss()),
       ],
       body: ListView(shrinkWrap: true,
         padding: EdgeInsets.fromLTRB(16, context.sectionsTopPadding, 16, 20 + context.bottomInset),
@@ -255,10 +255,10 @@ class _TestPanelPageState extends State<TestPanelPage> {
                     if (ranked['country']?.toString().isNotEmpty == true) ranked['country'].toString(),
                   ].join(' · ')),
                   trailing: index == 0 && !running
-                      ? TextButton(onPressed: () => box.act('profiles.select', {'id': (ranked['profileId'] as num).toInt()}),
+                      ? TextButton(onPressed: () => box.profileSelect((ranked['profileId'] as num).toInt()),
                           child: Text(context.tr('Connect')))
                       : null,
-                  onTap: running ? null : () => box.act('profiles.select', {'id': (ranked['profileId'] as num).toInt()}),
+                  onTap: running ? null : () => box.profileSelect((ranked['profileId'] as num).toInt()),
                 ),
             ], footer: context.tr('Tap a result to connect through it.')),
           ],

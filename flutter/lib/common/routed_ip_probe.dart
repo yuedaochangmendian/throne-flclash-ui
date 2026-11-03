@@ -22,12 +22,12 @@ class RoutedIpProbe implements IpProbeTransport {
     if (cancelled || _closed) throw const IpProbeCancelled();
   }
   Future<void> _open() async {
-    await box.call('dashboard.probe.open', {'id': id});
+    await box.dashboardProbeOpen(id);
   }
 
   Future<Json> egress({bool force = false}) async {
     if (cancelled || _closed) throw const IpProbeCancelled();
-    final result = json(await box.call('dashboard.egress', {'id': id, if (force) 'force': true}));
+    final result = json(await box.dashboardEgress(id, force: force));
     if (cancelled || _closed) throw const IpProbeCancelled();
     return result;
   }
@@ -38,7 +38,7 @@ class RoutedIpProbe implements IpProbeTransport {
     await open();
     if (cancelled || _closed) throw const IpProbeCancelled();
     try {
-      final result = json(await box.call('dashboard.probe.get', {'id': id, 'url': url, 'timeoutMillis': timeout.inMilliseconds}));
+      final result = json(await box.dashboardProbeGet(id, url, timeout.inMilliseconds));
       if (cancelled || _closed) throw const IpProbeCancelled();
       return IpProbeResponse(status: (result['status'] as num?)?.toInt() ?? 503, body: result['body'] as String? ?? '');
     } on PlatformException {
@@ -58,7 +58,7 @@ class RoutedIpProbe implements IpProbeTransport {
   Future<void> _close() async {
     // A delayed open must finish before close, or it could leave a session behind.
     try { await _opening; } catch (_) { /* The opener reports its own failure. */ }
-    try { await box.call('dashboard.probe.close', {'id': id}); }
+    try { await box.dashboardProbeClose(id); }
     catch (error) { debugPrint('Unable to close IP probe: ${BoxController.describe(error)}'); }
   }
 }

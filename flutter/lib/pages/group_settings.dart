@@ -51,7 +51,7 @@ class _GroupSettingsPageState extends State<GroupSettingsPage> {
   Future<void> _load() async {
     setState(() { _error = null; _loading = true; });
     try {
-      final data = json(await context.box.call('groupSettings.get', {'id': widget.id}));
+      final data = json(await context.box.groupSettingsGet(widget.id));
       if (!mounted) return;
       _name.text = data['name']?.toString() ?? '';
       _url.text = data['url']?.toString() ?? '';
@@ -151,7 +151,7 @@ class _GroupSettingsPageState extends State<GroupSettingsPage> {
     final box = context.box;
     setState(() => _saving = true);
     try {
-      final answer = json(await box.call('groupSettings.set', {'value': {
+      final answer = json(await box.groupSettingsSet({
         'id': widget.id,
         'type': _data?['type'],
         'name': _name.text.trim(),
@@ -189,7 +189,7 @@ class _GroupSettingsPageState extends State<GroupSettingsPage> {
           'nameExclude': _nameExclude.text.trim(),
           'showInfoCard': _optionBool('showInfoCard'),
         },
-      }}));
+      }));
       if (!mounted) return;
       // A changed routing profile of the running group reloaded the service already.
       if (answer['restartNeeded'] == true) {

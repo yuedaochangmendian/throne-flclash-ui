@@ -15,7 +15,7 @@ class _AboutPageState extends State<AboutPage> {
     final box = context.box;
     setState(() => _checking = true);
     try {
-      final result = json(await box.call('updates.check'));
+      final result = json(await box.updatesCheck());
       if (!mounted) return;
       setState(() => _checking = false);
       await showDialog<void>(context: context, builder: (context) => material.AlertDialog(
@@ -30,7 +30,7 @@ class _AboutPageState extends State<AboutPage> {
           TextButton(onPressed: () => Navigator.pop(context), child: Text(context.tr('Close'))),
           if (result['available'] == true || result['hasMetadata'] == false) TextButton(onPressed: () {
             Navigator.pop(context);
-            box.act('url.open', {'url': result['downloadUrl'] ?? result['url'] ?? 'https://github.com/yuedaochangmendian/throne-flclash-ui/releases'});
+            box.openUrl(result['downloadUrl'] ?? result['url'] ?? 'https://github.com/yuedaochangmendian/throne-flclash-ui/releases');
           }, child: Text(context.tr(result['downloadUrl'] == null ? 'Releases' : 'Download'))),
         ],
       ));
@@ -42,7 +42,7 @@ class _AboutPageState extends State<AboutPage> {
     leading: _LinkBadge(glyph: glyph), title: Text(context.tr(title)),
     subtitle: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
     trailing: const GlyphIcon(AppGlyphs.openExternal),
-    onTap: () => context.box.act('url.open', {'url': url}),
+    onTap: () => context.box.openUrl(url),
   );
 
   @override Widget build(BuildContext context) {

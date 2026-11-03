@@ -145,7 +145,7 @@ class SettingDnsServer extends StatelessWidget {
         // A missing suggestion list (the API is off) only leaves the field freehand.
         var suggestions = const <String>[];
         try {
-          final wire = json(await context.box.call('dns.suggestions'));
+          final wire = json(await context.box.dnsSuggestions());
           suggestions = (wire[kind] as List? ?? const []).whereType<String>().toList();
         } catch (_) {}
         if (!context.mounted) return;
@@ -575,9 +575,9 @@ class _WarpRegisterRowState extends State<_WarpRegisterRow> {
     try {
       // MASQUE registers a MASQUE identity; the other two modes run WireGuard key material.
       final masque = box.settings['warpMode']?.toString() == 'masque';
-      final answer = json(await box.call('warp.register', {'tunnelType': masque ? 'masque' : 'wireguard'}));
+      final answer = json(await box.warpRegister(masque ? 'masque' : 'wireguard'));
       if (!mounted) return;
-      if (answer['reload'] == true) box.act('service.reload');
+      if (answer['reload'] == true) box.serviceReload();
       final packetsError = answer['packetsError']?.toString() ?? '';
       final message = packetsError.isEmpty
         ? 'Identity generated'

@@ -39,15 +39,15 @@ class _ProxiesPageState extends State<ProxiesPage> {
   Future<void> _test(String tag) async {
     if (_testing.contains(tag)) return;
     setState(() => _testing.add(tag));
-    await context.box.act('groups.test', {'tag': tag});
+    await context.box.groupTest(tag);
     if (mounted) setState(() => _testing.remove(tag));
   }
 
   Future<void> _select(Json group, Json node) async {
     final box = context.box;
     if (group['selectable'] != true || node['tag'] == group['selected']) return;
-    if (await box.act('groups.select', {'group': group['tag'], 'tag': node['tag']})) {
-      if (box.preferences['closeConnectionsOnSelect'] == true) await box.act('connections.closeAll');
+    if (await box.groupSelect(group['tag'], node['tag'])) {
+      if (box.preferences['closeConnectionsOnSelect'] == true) await box.connectionsCloseAll();
     }
   }
 

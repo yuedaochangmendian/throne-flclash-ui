@@ -38,7 +38,7 @@ class _ProfilesPageState extends State<ProfilesPage> {
     final id = (profile['id'] as num).toInt();
     if (_updating.contains(id)) return;
     setState(() => _updating.add(id));
-    try { await context.box.act('profiles.update', {'id': id}); }
+    try { await context.box.profileUpdate(id); }
     finally { if (mounted) setState(() => _updating.remove(id)); }
   }
   Future<void> _updateAll() async {
@@ -57,15 +57,15 @@ class _ProfilesPageState extends State<ProfilesPage> {
   Future<void> _export(Json profile) async {
     final box = context.box;
     try {
-      final content = await box.call('profiles.read', {'id': profile['id']});
-      await box.call('document.save', {'name': '${profile['name']}.json', 'content': content});
+      final content = await box.profileRead(profile['id']);
+      await box.documentSave('${profile['name']}.json', content);
     } catch (error) { box.report(error); }
   }
   Future<void> _share(Json profile) async {
     final box = context.box;
     try {
-      final content = profile['remote'] == true ? remoteProfileLink(profile) : await box.call('profiles.read', {'id': profile['id']});
-      await box.call('share.text', {'content': content});
+      final content = profile['remote'] == true ? remoteProfileLink(profile) : await box.profileRead(profile['id']);
+      await box.shareText(content);
     } catch (error) { box.report(error); }
   }
   List<PopupMenuItem> _menu(Json profile) => [
@@ -88,18 +88,18 @@ class _ProfilesPageState extends State<ProfilesPage> {
     PopupMenuItem(glyph: AppGlyphs.bolt, label: context.tr('Clear test results'), onPressed: () async {
       final box = context.box;
       if (await confirm(context, context.tr('Clear test results'), action: context.tr('Clear'), message: context.tr('This cannot be undone.'))) {
-        await box.act('profiles.clearTestResults', {'id': profile['id']});
+        await box.profileClearTestResults(profile['id']);
       }
     }),
     PopupMenuItem(glyph: AppGlyphs.dataUsage, label: context.tr('Clear traffic statistics'), onPressed: () async {
       final box = context.box;
       if (await confirm(context, context.tr('Clear traffic statistics'), action: context.tr('Clear'), message: context.tr('This cannot be undone.'))) {
-        await box.act('profiles.clearTraffic', {'id': profile['id']});
+        await box.profileClearTraffic(profile['id']);
       }
     }),
     PopupMenuItem(danger: true, glyph: AppGlyphs.delete, label: context.tr('Delete'), onPressed: () async {
       final box = context.box;
-      if (await confirm(context, 'Delete this profile?', message: 'This cannot be undone.')) await box.act('profiles.delete', {'id': profile['id']});
+      if (await confirm(context, 'Delete this profile?', message: 'This cannot be undone.')) await box.profileDelete(profile['id']);
     }),
   ];
 
@@ -117,9 +117,9 @@ class _ProfilesPageState extends State<ProfilesPage> {
         // previous / next server pair (TvControls.addServerSwitch gated on isTv there).
         if (box.capabilities.of('tv') && profiles.length > 1) ...[
           IconButtonData(glyph: AppGlyphs.chevronBack, tooltip: context.tr('Previous server'),
-            onPressed: () => box.act('profiles.switchRelative', {'step': -1})),
+            onPressed: () => box.profileSwitchRelative(-1)),
           IconButtonData(glyph: AppGlyphs.chevronForward, tooltip: context.tr('Next server'),
-            onPressed: () => box.act('profiles.switchRelative', {'step': 1})),
+            onPressed: () => box.profileSwitchRelative(1)),
         ],
         IconButtonData(glyph: AppGlyphs.sync, tooltip: context.tr('Update all'), isLoading: _updatingAll || _updating.isNotEmpty,
           onPressed: _updatingAll || _updating.isNotEmpty || !profiles.any((p) => p['remote'] == true) ? null : _updateAll),
@@ -141,7 +141,7 @@ class _ProfilesPageState extends State<ProfilesPage> {
             menuItems: _menu(profile),
             onPressed: box.transitioning ? null : () async {
               if (box.transitioning || box.remote) return;
-              if (await box.act('profiles.select', {'id': profile['id']}) && widget.picker && context.mounted) context.safeNestedPop();
+              if (await box.profileSelect(profile['id']) && widget.picker && context.mounted) context.safeNestedPop();
             },
           ),
         ),
@@ -204,7 +204,7 @@ Future<void> _importProfile(BuildContext context, String source) async {
     Json? data;
     switch (source) {
       case 'File':
-        final result = await box.call('profiles.importFile');
+        final result = await box.profileImportFile();
         if (result != null) data = json(result);
       case 'Clipboard':
         final text = (await Clipboard.getData(Clipboard.kTextPlain))?.text?.trim();
@@ -236,7 +236,7 @@ class _AddProfileMenuState extends State<AddProfileMenu> {
     setState(() => _busy = true);
     try {
       // The new selector tracks the group the user is looking at, not whichever group happens to be first.
-      final info = json(await context.box.call('profiles.autoSelectorCreate', {'groupId': context.box.selectedProfileId}));
+      final info = json(await context.box.profileAutoSelectorCreate(context.box.selectedProfileId));
       if (mounted) await openPage(context, AutoSelectorPage(id: (info['id'] as num?)?.toInt() ?? 0));
     } catch (error) { if (mounted) context.box.report(error); }
     finally { if (mounted) setState(() => _busy = false); }
@@ -246,7 +246,7 @@ class _AddProfileMenuState extends State<AddProfileMenu> {
     setState(() => _busy = true);
     try {
       // A fresh node of the chosen protocol, opened straight into the typed form.
-      final info = json(await context.box.call('profiles.createNode', {'groupId': context.box.selectedProfileId, 'type': type}));
+      final info = json(await context.box.profileCreateNode(context.box.selectedProfileId, type));
       if (mounted) await openForm(context, ProtocolFormPage(id: (info['id'] as num?)?.toInt() ?? 0));
     } catch (error) { if (mounted) context.box.report(error); }
     finally { if (mounted) setState(() => _busy = false); }
@@ -287,7 +287,7 @@ class _AddProfilePageState extends State<AddProfilePage> {
     setState(() => _loading = true);
     try {
       // The new selector tracks the group the user is looking at, not whichever group happens to be first.
-      final info = json(await context.box.call('profiles.autoSelectorCreate', {'groupId': context.box.selectedProfileId}));
+      final info = json(await context.box.profileAutoSelectorCreate(context.box.selectedProfileId));
       if (mounted) await openPage(context, AutoSelectorPage(id: (info['id'] as num?)?.toInt() ?? 0));
     } catch (error) { if (mounted) context.box.report(error); }
     finally { if (mounted) setState(() => _loading = false); }
@@ -296,7 +296,7 @@ class _AddProfilePageState extends State<AddProfilePage> {
     if (_loading) return;
     setState(() => _loading = true);
     try {
-      final info = json(await context.box.call('profiles.createNode', {'groupId': context.box.selectedProfileId, 'type': type}));
+      final info = json(await context.box.profileCreateNode(context.box.selectedProfileId, type));
       if (mounted) await openForm(context, ProtocolFormPage(id: (info['id'] as num?)?.toInt() ?? 0));
     } catch (error) { if (mounted) context.box.report(error); }
     finally { if (mounted) setState(() => _loading = false); }
@@ -335,7 +335,7 @@ class _AddProfilePageState extends State<AddProfilePage> {
 Future<Json> decodeImport(BoxController box, String text) async {
   // The host runs Throne's own importer: share links, base64 subscriptions and JSON/YAML documents
   // all come back as the same editor draft, and invalid text reports the importer's own reason.
-  return json(await box.call('profiles.decodeIntent', {'uri': text.trim()}));
+  return json(await box.profileDecodeIntent(text.trim()));
 }
 
 class ProfileForm extends StatefulWidget {
@@ -374,7 +374,7 @@ class _ProfileFormState extends State<ProfileForm> {
     try {
       final interval = int.tryParse(_interval.text);
       final previousInterval = (widget.initial['interval'] as num?)?.toInt() ?? 60;
-      await box.call('profiles.save', {
+      await box.profileSave({
         ...widget.initial, 'name': _name.text.trim(), 'url': _remote ? _url.text.trim() : '',
         'autoUpdate': _remote && _auto,
         'interval': interval != null && interval >= 15 ? interval : previousInterval >= 15 ? previousInterval : 60,
@@ -445,7 +445,7 @@ class _ProfileOrderPageState extends State<ProfileOrderPage> {
     return Scaffold(title: context.tr('Reorder'),
       confirmationAction: IconButtonData(glyph: AppGlyphs.check, tooltip: context.tr('Save'), isLoading: _saving, onPressed: _saving ? null : () async {
         setState(() => _saving = true);
-        final saved = await context.box.act('profiles.reorder', {'ids': _profiles!.map((p) => p['id']).toList()});
+        final saved = await context.box.profileReorder(_profiles!.map((p) => p['id']).toList());
         if (!context.mounted) return;
         if (saved) {
           context.safeNestedPop();
@@ -478,7 +478,7 @@ class _ScanPageState extends State<ScanPage> {
   String? _error;
   @override void didChangeDependencies() { super.didChangeDependencies(); _box ??= context.box; }
   @override void dispose() {
-    _box?.act('profiles.scan.close', {'session': _session});
+    _box?.profileScanClose(_session);
     _camera.dispose();
     super.dispose();
   }
@@ -487,7 +487,7 @@ class _ScanPageState extends State<ScanPage> {
     if (_busy || _complete) return;
     _busy = true;
     try {
-      final result = json(await _box!.call('profiles.scan', {'session': _session, 'text': text}));
+      final result = json(await _box!.profileScan(_session, text));
       if (!mounted) return;
       // An incomplete multi-frame payload still carries its partial text (decoded: 0); opening it
       // would fail on every intermediate frame. Only a payload the bridge marks complete gets parsed.

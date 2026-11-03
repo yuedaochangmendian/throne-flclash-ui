@@ -13,7 +13,7 @@ class _CaptureDomainsPageState extends State<CaptureDomainsPage> {
   final _selected = <String>{};
   bool _busy = false;
 
-  Future<List<String>> _load() => context.box.call('capture.domains', {'query': widget.query})
+  Future<List<String>> _load() => context.box.captureDomains(widget.query)
     .then((value) => (value as List? ?? []).cast<String>());
 
   @override void didChangeDependencies() {
@@ -23,7 +23,7 @@ class _CaptureDomainsPageState extends State<CaptureDomainsPage> {
 
   Future<void> _copy(String text) async {
     await Clipboard.setData(ClipboardData(text: text));
-    if (mounted) context.box.messages.add(context.tr('Copied'));
+    if (mounted) context.box.showMessage(context.tr('Copied'));
   }
 
   @override Widget build(BuildContext context) {
@@ -37,7 +37,7 @@ class _CaptureDomainsPageState extends State<CaptureDomainsPage> {
           IconButtonData(glyph: AppGlyphs.copy, tooltip: context.tr('Copy domains'), onPressed: domains.isEmpty ? null : () => _copy(domains.join('\n'))),
           if (!widget.select) IconButtonData(glyph: AppGlyphs.arrowDown, tooltip: context.tr('Export domains'), onPressed: domains.isEmpty || _busy ? null : () async {
             setState(() => _busy = true);
-            await context.box.act('capture.export', {'format': 'domains', 'query': widget.query});
+            await context.box.captureExport({'format': 'domains', 'query': widget.query});
             if (mounted) setState(() => _busy = false);
           }),
           IconButtonData(glyph: AppGlyphs.refresh, tooltip: context.tr('Refresh'), onPressed: () => setState(() => _domains = _load())),

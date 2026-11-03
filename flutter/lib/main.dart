@@ -36,12 +36,12 @@ class _BoxAppState extends State<BoxApp> with WidgetsBindingObserver {
   @override void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _messages = widget.controller.messages.stream.listen((message) {
+    _messages = widget.controller.messages.listen((message) {
       _banner.currentState?.show(message);
     });
     // A subscription update's change window (SubscriptionReportDialog): the report body selectable,
     // a copy action beside OK.
-    _reports = widget.controller.subscriptionReports.stream.listen((report) {
+    _reports = widget.controller.subscriptionReports.listen((report) {
       final context = _banner.currentState?.context;
       if (context == null) return;
       final text = report['text']?.toString() ?? '';
@@ -167,7 +167,7 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int _index = 0;
-  StreamSubscription<String>? _intents;
+  StreamSubscription<IntentAvailableEvent>? _intents;
   BoxController? _box;
   bool _handlingIntent = false;
 
@@ -175,7 +175,7 @@ class _HomePageState extends State<HomePage> {
     super.didChangeDependencies();
     if (_box != null) return;
     _box = context.box;
-    _intents = _box!.intents.stream.listen((_) => _drainIntents());
+    _intents = _box!.intents.listen((_) => _drainIntents());
     WidgetsBinding.instance.addPostFrameCallback((_) => _drainIntents());
   }
 
@@ -198,7 +198,7 @@ class _HomePageState extends State<HomePage> {
       // A file the platform handed us: the host reads it and says which it is, because a .thrbackup is a
       // binary container the config importer cannot parse and a document is text it can.
       if (uri.startsWith('content://') || uri.startsWith('file://')) {
-        final data = json(await _box!.call('files.open', {'uri': uri}));
+        final data = json(await _box!.filesOpen(uri));
         final backup = json(data['backup']);
         if (backup.isNotEmpty) {
           if (mounted) await restoreBackupFile(context, backup);
@@ -207,7 +207,7 @@ class _HomePageState extends State<HomePage> {
         }
         return;
       }
-      final data = json(await _box!.call('profiles.decodeIntent', {'uri': uri}));
+      final data = json(await _box!.profileDecodeIntent(uri));
       if (mounted) await openForm(context, ProfileForm(initial: data));
     } catch (error) { _box!.report(error); }
   }

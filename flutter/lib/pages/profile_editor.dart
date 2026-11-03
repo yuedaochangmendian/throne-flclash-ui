@@ -39,7 +39,7 @@ class _ProfileEditorState extends State<ProfileEditor> {
     if (!mounted) return;
     setState(() { _error = null; _loading = true; });
     try {
-      final data = json(await context.box.call('profiles.config', {'id': widget.profile['id']}));
+      final data = json(await context.box.profileConfig(widget.profile['id']));
       final content = data['content'] as String;
       if (!mounted) return;
       _text.text = content;
@@ -53,7 +53,7 @@ class _ProfileEditorState extends State<ProfileEditor> {
     final box = context.box;
     setState(() { _saving = true; _error = null; });
     try {
-      final saved = json(await box.call('profiles.write', {'id': widget.profile['id'], 'content': _text.text, 'revision': _revision}));
+      final saved = json(await box.profileWrite(widget.profile['id'], _text.text, _revision));
       if (mounted) {
         setState(() { _original = _text.text; _revision = saved['revision'] as String; });
         showAppBanner(context, context.tr('Done'));
@@ -88,7 +88,7 @@ class _ProfileEditorState extends State<ProfileEditor> {
         _text.text = formatted;
         showAppBanner(context, context.tr('Done'));
       } else {
-        final result = await box.call('config.check', {'content': _text.text});
+        final result = await box.configCheck(_text.text);
         if (!mounted) return;
         if (result != null) {
           showAppBanner(context, context.tr('Configuration is valid'));

@@ -75,7 +75,7 @@ class _AuthenticationPageState extends State<AuthenticationPage> {
           )),
       ] else if (challenge['kind'] == 'open-url') ListItem(
         title: Text(context.tr('Open sign-in page')), subtitle: SelectableText((challenge['url'] ?? '').toString()),
-        onTap: () => _box!.act('url.open', {'url': challenge['url']}),
+        onTap: () => _box!.openUrl(challenge['url']),
       ) else ...[
         if (challenge['kind'] == 'credentials') ...[
           _field('username', 'Username'), _field('password', 'Password', secret: true),
@@ -102,7 +102,7 @@ class _AuthBrowserState extends State<AuthBrowser> {
   StreamSubscription<Json>? _subscription;
   @override void didChangeDependencies() {
     super.didChangeDependencies();
-    _subscription ??= context.box.browserEvents.stream.listen((event) {
+    _subscription ??= context.box.browserEvents.listen((event) {
       if (event['id'] == widget.challenge && mounted) Navigator.pop(context, event['success'] == true);
     });
   }

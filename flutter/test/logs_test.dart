@@ -59,7 +59,7 @@ void main() {
       return null;
     });
     box = BoxController(channel: channel, events: events.stream);
-    final messageSubscription = box.messages.stream.listen(messages.add);
+    final messageSubscription = box.messages.listen(messages.add);
     exported = null;
     await tester.pumpWidget(BoxApp(controller: box));
     await tester.pumpAndSettle();

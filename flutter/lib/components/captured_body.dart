@@ -34,7 +34,7 @@ class _CapturedBodyState extends State<CapturedBody> {
 
   Future<void> _copy() async {
     await Clipboard.setData(ClipboardData(text: _text));
-    if (mounted) context.box.messages.add(context.tr('Copied'));
+    if (mounted) context.box.showMessage(context.tr('Copied'));
   }
 
   @override Widget build(BuildContext context) {

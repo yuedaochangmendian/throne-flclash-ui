@@ -55,9 +55,9 @@ class _RequestsPageState extends State<RequestsPage> {
             PopupMenuItem(glyph: AppGlyphs.sliders, label: context.tr('Capture settings'), onPressed: _busy || active ? null : () async {
               setState(() => _busy = true);
               try {
-                final source = json(await context.box.call('capture.settings'));
+                final source = json(await context.box.captureSettings());
                 if (context.mounted) await openPage(context, RequestSettingsPage(initial: json(source['config']), source: source));
-              } catch (error) { if (context.mounted) context.box.messages.add(BoxController.describe(error)); }
+              } catch (error) { if (context.mounted) context.box.showMessage(BoxController.describe(error)); }
               finally { if (mounted) setState(() { _busy = false; _revision++; }); }
             }),
             PopupMenuItem(glyph: AppGlyphs.arrowDown, label: context.tr('Export HAR'), onPressed: _busy || entries.isEmpty ? null : () => _act('capture.export', {'format': 'har', 'query': _search})),
@@ -132,7 +132,7 @@ class _RequestDetailPageState extends State<RequestDetailPage> {
 
   Future<void> _copy(String text) async {
     await Clipboard.setData(ClipboardData(text: text));
-    if (mounted) context.box.messages.add(context.tr('Copied'));
+    if (mounted) context.box.showMessage(context.tr('Copied'));
   }
 
   Widget _headers(Json message, bool response) {
@@ -186,7 +186,7 @@ class _RequestDetailPageState extends State<RequestDetailPage> {
         IconButtonData(glyph: AppGlyphs.copy, tooltip: context.tr('Copy URL'), onPressed: detail == null ? null : () => _copy(request['url']?.toString() ?? '')),
         IconButtonData(glyph: AppGlyphs.arrowDown, tooltip: context.tr('Export cURL'), onPressed: detail == null || _busy || request['bodyComplete'] != true || request['bodyTruncated'] == true || request['headersTruncated'] == true || request['method'] == 'TLS' ? null : () async {
           setState(() => _busy = true);
-          await context.box.act('capture.export', {'format': 'curl', 'id': widget.id});
+          await context.box.captureExport({'format': 'curl', 'id': widget.id});
           if (mounted) setState(() => _busy = false);
         }),
       ], menuItems: [

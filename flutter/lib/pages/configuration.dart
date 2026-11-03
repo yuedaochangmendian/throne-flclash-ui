@@ -28,7 +28,7 @@ class ProfileConfigStore extends ChangeNotifier {
     error = null;
     notifyListeners();
     try {
-      final data = json(await box.call('profiles.config', {'id': profile['id']}));
+      final data = json(await box.profileConfig(profile['id']));
       if (!_disposed && generation == _generation) _receive(data);
     } catch (failure) {
       if (!_disposed && generation == _generation) error = BoxController.describe(failure);

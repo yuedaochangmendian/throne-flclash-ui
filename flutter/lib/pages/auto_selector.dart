@@ -38,7 +38,7 @@ class _AutoSelectorPageState extends State<AutoSelectorPage> {
   Future<void> _load() async {
     final box = context.box;
     try {
-      final data = json(await box.call('profiles.autoSelectorInfo', {'id': widget.id}));
+      final data = json(await box.profileAutoSelectorInfo(widget.id));
       if (!mounted) return;
       setState(() {
         _info = data;
@@ -55,7 +55,7 @@ class _AutoSelectorPageState extends State<AutoSelectorPage> {
   Future<void> _loadStatus() async {
     final box = context.box;
     try {
-      final raw = await box.call('profiles.autoSelectorStatus');
+      final raw = await box.profileAutoSelectorStatus();
       if (mounted) setState(() => _status = json(raw));
     } catch (error) {
       // The status is a live read; a service that is not running simply has none.
@@ -65,7 +65,7 @@ class _AutoSelectorPageState extends State<AutoSelectorPage> {
   Future<void> _pin(int memberId) async {
     final box = context.box;
     try {
-      await box.call('profiles.autoSelectorPin', {'id': widget.id, 'memberId': memberId});
+      await box.profileAutoSelectorPin(widget.id, memberId);
       if (mounted) await _load();
     } catch (error) {
       if (mounted) box.report(error);
@@ -75,7 +75,7 @@ class _AutoSelectorPageState extends State<AutoSelectorPage> {
   Future<void> _recheck() async {
     final box = context.box;
     try {
-      await box.call('profiles.autoSelectorRecheck', {});
+      await box.profileAutoSelectorRecheck();
       if (mounted) await _loadStatus();
     } catch (error) {
       if (mounted) box.report(error);
@@ -86,10 +86,10 @@ class _AutoSelectorPageState extends State<AutoSelectorPage> {
     setState(() { _saving = true; _error = null; });
     final box = context.box;
     try {
-      await box.call('profiles.autoSelectorSave', {'id': widget.id, 'value': {
+      await box.profileAutoSelectorSave(widget.id, {
         ..._info,
         'gids': _gids.toList(),
-      }});
+      });
       if (mounted) context.safeNestedPop();
     } catch (error) {
       if (!mounted) return;

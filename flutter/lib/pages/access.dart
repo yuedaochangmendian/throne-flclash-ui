@@ -37,7 +37,7 @@ class _AccessPageState extends State<AccessPage> {
     _apps ??= _load(refresh: true);
   }
 
-  Future<List<Json>> _load({bool refresh = false}) async => rows(await context.box.call('apps.list', {
+  Future<List<Json>> _load({bool refresh = false}) async => rows(await context.box.appsList({
     'refresh': refresh, 'system': _system, 'nonInternet': _nonInternet,
   }));
 
@@ -161,7 +161,7 @@ class _AccessPageState extends State<AccessPage> {
         onChanged: (value) async { await (pendingMode = box.setSetting('queryMode', value, restart: false)); }),
       ListItem(title: Text(context.tr('Grant Shizuku permission')), onTap: () {
         permissionRequested = true;
-        box.act('apps.permission');
+        box.appsPermission();
       }),
     ]));
     await pendingMode;

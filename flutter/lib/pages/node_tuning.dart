@@ -26,7 +26,7 @@ class _NodeTuningPageState extends State<NodeTuningPage> {
   Future<void> _load() async {
     final box = context.box;
     try {
-      final data = json(await box.call('profiles.nodeTuningInfo', {'id': widget.id}));
+      final data = json(await box.profileNodeTuningInfo(widget.id));
       if (mounted) setState(() { _info = data; _loading = false; });
     } catch (error) {
       if (!mounted) return;
@@ -38,7 +38,7 @@ class _NodeTuningPageState extends State<NodeTuningPage> {
     setState(() { _saving = true; _error = null; });
     final box = context.box;
     try {
-      final data = await box.call('profiles.nodeTuningSave', {'id': widget.id, 'value': _info});
+      final data = await box.profileNodeTuningSave(widget.id, _info);
       if (mounted) setState(() { _saving = false; _info = json(data); });
     } catch (error) {
       if (!mounted) return;

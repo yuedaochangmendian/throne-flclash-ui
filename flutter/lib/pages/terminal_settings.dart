@@ -14,7 +14,7 @@ class _TerminalSettingsPageState extends State<TerminalSettingsPage> {
   @override void initState() { super.initState(); WidgetsBinding.instance.addPostFrameCallback((_) => _load()); }
   Future<void> _load() async {
     try {
-      final settings = json(await context.box.call('terminal.settings'));
+      final settings = json(await context.box.terminalSettings());
       if (mounted) setState(() { _settings = settings; _error = null; });
     } catch (error) { if (mounted) setState(() => _error = BoxController.describe(error)); }
   }
@@ -22,7 +22,7 @@ class _TerminalSettingsPageState extends State<TerminalSettingsPage> {
     if (_saving) return;
     setState(() => _saving = true);
     try {
-      final settings = json(await context.box.call('terminal.set', {'key': key, 'value': value}));
+      final settings = json(await context.box.terminalSet(key, value));
       if (mounted) setState(() => _settings = settings);
     } catch (error) { if (mounted) context.box.report(error); }
     if (mounted) setState(() => _saving = false);
@@ -78,8 +78,8 @@ class _TerminalThemePageState extends State<TerminalThemePage> {
   Future<void> _load() async {
     try {
       final box = context.box;
-      final settings = json(await box.call('terminal.settings'));
-      final themes = rows(await box.call('terminal.themes', {'dark': widget.dark}));
+      final settings = json(await box.terminalSettings());
+      final themes = rows(await box.terminalThemes(widget.dark));
       if (mounted) setState(() { _themes = themes; _selected = settings[widget.dark ? 'darkTheme' : 'lightTheme'] as String?; _error = null; });
     } catch (error) { if (mounted) setState(() => _error = BoxController.describe(error)); }
   }
@@ -104,7 +104,7 @@ class _TerminalThemePageState extends State<TerminalThemePage> {
                   color: color == null ? foreground : Color((color as num).toInt())))]),
               ])),
             onPressed: () async {
-              if (await context.box.act('terminal.set', {'key': widget.dark ? 'darkTheme' : 'lightTheme', 'value': theme['name']}) && context.mounted) context.safeNestedPop();
+              if (await context.box.terminalSetChecked(widget.dark ? 'darkTheme' : 'lightTheme', theme['name']) && context.mounted) context.safeNestedPop();
             },
           ));
         }),
@@ -123,8 +123,8 @@ class _TerminalFontPageState extends State<TerminalFontPage> {
   @override void initState() { super.initState(); WidgetsBinding.instance.addPostFrameCallback((_) => _load()); }
   Future<void> _load() async {
     try {
-      final box = context.box, fonts = json(await context.box.call('terminal.fonts'));
-      final settings = json(await box.call('terminal.settings'));
+      final box = context.box, fonts = json(await context.box.terminalFonts());
+      final settings = json(await box.terminalSettings());
       for (final font in rows(fonts['imported'])) {
         final path = font['path'] as String;
         if (_loaded.add(path)) {
@@ -136,11 +136,11 @@ class _TerminalFontPageState extends State<TerminalFontPage> {
     } catch (error) { if (mounted) setState(() => _error = BoxController.describe(error)); }
   }
   Future<void> _select(String key, String value) async {
-    if (await context.box.act('terminal.set', {'key': key, 'value': value}) && mounted) await _load();
+    if (await context.box.terminalSetChecked(key, value) && mounted) await _load();
   }
   @override Widget build(BuildContext context) => BoxPage(title: 'Font', loading: _fonts == null && _error == null,
     actions: [IconButtonData(glyph: AppGlyphs.add, tooltip: context.tr('Import font'), onPressed: () async {
-      await context.box.act('terminal.importFont'); if (mounted) await _load();
+      await context.box.terminalImportFont(); if (mounted) await _load();
     })], children: [
       if (_error != null) ErrorState(_error!, retry: _load),
       generateSection(title: context.tr('System fonts'), items: [
@@ -155,7 +155,7 @@ class _TerminalFontPageState extends State<TerminalFontPage> {
           isSelected: _settings?['fontPath'] == font['path'], onPressed: () => _select('fontPath', font['path'] as String),
           trailing: IconButton(tooltip: context.tr('Delete'), icon: const GlyphIcon(AppGlyphs.delete), onPressed: () async {
             final box = context.box;
-            if (await confirm(context, 'Delete this font?')) { await box.act('terminal.deleteFont', {'path': font['path']}); if (mounted) await _load(); }
+            if (await confirm(context, 'Delete this font?')) { await box.terminalDeleteFont(font['path']); if (mounted) await _load(); }
           })),
       ]),
     ]);
@@ -180,7 +180,7 @@ class _TerminalConfigEditorState extends State<TerminalConfigEditor> {
   }
   Future<void> _save() async {
     setState(() => _saving = true);
-    if (await context.box.act('terminal.set', {'key': widget.dark ? 'darkConfig' : 'lightConfig', 'value': _text.text}) && mounted) {
+    if (await context.box.terminalSetChecked(widget.dark ? 'darkConfig' : 'lightConfig', _text.text) && mounted) {
       setState(() => _saved = _text.text);
       showAppBanner(context, context.tr('Done'));
     }

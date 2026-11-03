@@ -1,3 +1,8 @@
+#### 3.2.12
+
+* The backend-to-UI path now mirrors Bettbox's architecture: a single typed `BoxEventBus` (with sealed `BoxMessageEvent` / `SubscriptionReportEvent` / `IntentAvailableEvent` / `BrowserCompleteEvent`) replaces the four ad-hoc event controllers, and listeners subscribe to the slice they care about
+* Every scattered `call('method.name', ...)` string invocation across the pages is folded into a semantic facade (`box_api.dart`), grouped by domain as extensions on `BoxController`, so method names are checked at compile time and parameter shapes live in one place
+
 #### 3.2.11
 
 * The VPN service now restarts itself when the system reclaims it under memory pressure (`START_STICKY`), so the proxy reconnects instead of dropping silently; a manual stop still ends the service for good

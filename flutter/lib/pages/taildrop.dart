@@ -12,9 +12,9 @@ class _InboxPageState extends State<InboxPage> {
     super.didChangeDependencies();
     if (_box != null) return;
     _box = context.box;
-    _box!.act('taildrop.subscribe', {'endpoint': widget.endpoint});
+    _box!.taildropSubscribe(widget.endpoint);
   }
-  @override void dispose() { _box?.act('taildrop.unsubscribe'); super.dispose(); }
+  @override void dispose() { _box?.taildropUnsubscribe(); super.dispose(); }
   @override Widget build(BuildContext context) {
     final box = context.box, state = context.box.inbox;
     return BoxPage(title: 'Received files', children: [
@@ -22,12 +22,12 @@ class _InboxPageState extends State<InboxPage> {
       for (final file in rows(state['receiving'])) ListItem(title: Text(file['name'].toString()),
         subtitle: Text('${bytes(file['receivedBytes'] as num? ?? 0)} / ${bytes(file['size'] as num? ?? 0)}'),
         trailing: IconButton(tooltip: context.tr('Cancel'), icon: const GlyphIcon(AppGlyphs.close),
-          onPressed: () => box.act('taildrop.cancelReceive', {'endpoint': widget.endpoint, 'name': file['name'], 'sender': file['senderID']}))),
+          onPressed: () => box.taildropCancelReceive(widget.endpoint, file['name'], file['senderID']))),
       for (final file in rows(state['files'])) ListItem(title: Text(file['name'].toString()),
         subtitle: Text('${bytes(file['size'] as num? ?? 0)} · ${file['senderName']}'),
-        onTap: () => box.act('taildrop.save', {'endpoint': widget.endpoint, 'name': file['name']}),
+        onTap: () => box.taildropSave(widget.endpoint, file['name']),
         trailing: IconButton(tooltip: context.tr('Delete'), icon: const GlyphIcon(AppGlyphs.delete), onPressed: () async {
-          if (await confirm(context, 'Delete', message: file['name'].toString())) await box.act('taildrop.delete', {'endpoint': widget.endpoint, 'name': file['name']});
+          if (await confirm(context, 'Delete', message: file['name'].toString())) await box.taildropDelete(widget.endpoint, file['name']);
         })),
     ]);
   }
@@ -61,20 +61,20 @@ class _SharePageState extends State<SharePage> {
   BoxController? _box;
   bool _sending = false, _sent = false;
   @override void didChangeDependencies() { super.didChangeDependencies(); _box ??= context.box; }
-  @override void dispose() { if (!_sent) _box?.act('share.discard', {'token': widget.token}); super.dispose(); }
+  @override void dispose() { if (!_sent) _box?.shareDiscard(widget.token); super.dispose(); }
   @override Widget build(BuildContext context) {
     final box = context.box;
     final endpoints = rows(box.toolState['tailscale']).where((e) => e['canShareFiles'] == true).toList();
     return BoxPage(title: 'Send with Taildrop', loading: _sending, children: [
       if (!box.running) EmptyState('Service not started', action: FilledButton(
-        onPressed: () => box.act('service.start'), child: Text(context.tr('Start')))),
+        onPressed: () => box.serviceStart(), child: Text(context.tr('Start')))),
       if (box.running && endpoints.isEmpty) const EmptyState('No recipients'),
       for (final endpoint in endpoints) generateSection(title: endpoint['endpointTag'].toString(), items: [
         for (final peer in endpointPeers(endpoint).where((p) => p['canReceiveFiles'] == true && p['stableID'] != json(endpoint['selfPeer'])['stableID']))
           ListItem(title: Text(peerName(peer)), subtitle: Text(context.tr(peer['online'] == true ? 'Online' : 'Offline')),
             onTap: _sending || peer['online'] != true ? null : () async {
               setState(() => _sending = true);
-              final ok = await box.act('share.send', {'token': widget.token, 'endpoint': endpoint['endpointTag'], 'peer': peer['id']});
+              final ok = await box.shareSend(widget.token, endpoint['endpointTag'], peer['id']);
               if (!context.mounted) return;
               setState(() { _sending = false; _sent = ok; });
               if (ok) { Navigator.pop(context); await openPage(context, const TransfersPage()); }

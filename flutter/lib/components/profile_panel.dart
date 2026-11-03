@@ -21,7 +21,7 @@ class _ProfilePanelState extends State<ProfilePanel> {
           if (profile?['remote'] == true) SizedBox.square(dimension: 26, child: _updating ? const Center(child: ActivityIndicator(size: 18)) : IconButton(
             padding: EdgeInsets.zero, tooltip: context.tr('Update'), icon: const GlyphIcon(AppGlyphs.sync, size: 18), onPressed: () async {
               setState(() => _updating = true);
-              await box.act('profiles.update', {'id': profile!['id']});
+              await box.profileUpdate(profile!['id']);
               if (mounted) setState(() => _updating = false);
             })),
           const GlyphIcon(AppGlyphs.chevronForward, size: 18),

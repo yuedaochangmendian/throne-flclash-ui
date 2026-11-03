@@ -26,7 +26,7 @@ class _RouteProfilesPageState extends State<RouteProfilesPage> {
 
   Future<void> _load() async {
     try {
-      final data = json(await context.box.call('routes.list'));
+      final data = json(await context.box.routeList());
       if (!mounted) return;
       setState(() {
         _profiles = (data['profiles'] as List? ?? const []).map((item) => json(item)).toList();
@@ -50,7 +50,7 @@ class _RouteProfilesPageState extends State<RouteProfilesPage> {
     final box = context.box;
     List<Json> bundles;
     try {
-      final data = json(await box.call('routes.presets'));
+      final data = json(await box.routePresets());
       bundles = (data['bundles'] as List? ?? const []).map((e) => json(e)).toList();
     } catch (error) {
       box.report(error);
@@ -73,9 +73,7 @@ class _RouteProfilesPageState extends State<RouteProfilesPage> {
     ));
     if (picked == null || !mounted) return;
     try {
-      final result = json(await box.call('routes.addPreset', {
-        'country': picked['country'], 'autoUpdate': true,
-      }));
+      final result = json(await box.routeAddPreset(picked['country']));
       final added = (result['added'] as num?)?.toInt() ?? 0;
       if (mounted) {
         showAppBanner(context, '$added ${context.tr('route profiles added')}');
@@ -170,8 +168,8 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
   Future<void> _load() async {
     final box = context.box;
     try {
-      final data = json(await box.call('routes.get', {'id': widget.id}));
-      final list = json(await box.call('routes.list'));
+      final data = json(await box.routeGet(widget.id));
+      final list = json(await box.routeList());
       if (!mounted) return;
       setState(() {
         _name.text = data['name']?.toString() ?? '';
@@ -193,7 +191,7 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
     if (widget.id == 0) return;
     final box = context.box;
     try {
-      final data = json(await box.call('routes.rules', {'id': widget.id}));
+      final data = json(await box.routeRules(widget.id));
       if (!mounted) return;
       setState(() => _rules = (data['rules'] as List? ?? const []).map((e) => json(e)).toList());
     } catch (error) {
@@ -224,7 +222,7 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
     if (text == null || text.trim().isEmpty || !mounted) return;
     final box = context.box;
     try {
-      await box.call('routes.batchAddRules', {'id': widget.id, 'text': text});
+      await box.routeBatchAddRules(widget.id, text);
       if (mounted) await _loadRules();
     } catch (error) {
       if (mounted) box.report(error);
@@ -243,7 +241,7 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
     if (!ok || !mounted) return;
     final box = context.box;
     try {
-      await box.call('routes.resetRules', {'id': widget.id});
+      await box.routeResetRules(widget.id);
       if (mounted) await _loadRules();
     } catch (error) {
       if (mounted) box.report(error);
@@ -253,7 +251,7 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
   Future<void> _save() async {
     setState(() { _saving = true; _error = null; });
     try {
-      await context.box.call('routes.save', {'value': {
+      await context.box.routeSave({
         'id': widget.id,
         'name': _name.text,
         'defaultOutbound': _defaultOutbound,
@@ -261,7 +259,7 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
         'remoteUrl': _url.text,
         'autoUpdate': _autoUpdate,
         'endpointIds': _endpointIds.split(',').map((e) => int.tryParse(e.trim())).whereType<int>().toList(),
-      }});
+      });
       if (mounted) context.safeNestedPop();
     } catch (error) {
       if (mounted) setState(() { _saving = false; _error = BoxController.describe(error); });
@@ -279,7 +277,7 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
     ));
     if (confirmed != true || !mounted) return;
     try {
-      await context.box.call('routes.delete', {'id': widget.id});
+      await context.box.routeDelete(widget.id);
       if (mounted) { context.safeNestedPop(); }
     } catch (error) {
       if (mounted) context.box.report(error);
@@ -398,7 +396,7 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
               if (!value) return;
               final box = context.box;
               try {
-                await box.call('routes.setCurrent', {'id': widget.id});
+                await box.routeSetCurrent(widget.id);
                 if (mounted) setState(() => _current = true);
               } catch (error) {
                 if (mounted) box.report(error);
@@ -476,7 +474,7 @@ class _RuleOrderPageState extends State<RuleOrderPage> {
       onPressed: _saving ? null : () async {
         setState(() => _saving = true);
         try {
-          await context.box.call('routes.saveRules', {'id': widget.profileId, 'rules': _rules});
+          await context.box.routeSaveRules(widget.profileId, _rules);
           if (context.mounted) context.safeNestedPop(true);
         } catch (error) {
           if (context.mounted) { setState(() => _saving = false); context.box.report(error); }
@@ -548,14 +546,14 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
       // ran it before completing the save); a refusal leaves the rules inactive but the save stands.
       final usesWifi = _listOf('wifi_ssid').any((v) => v.trim().isNotEmpty)
           || _listOf('wifi_bssid').any((v) => v.trim().isNotEmpty);
-      if (usesWifi && !box.remote) await box.act('wifiPermissions.ensure');
+      if (usesWifi && !box.remote) await box.wifiPermissionsEnsure();
       final rules = [...widget.rules];
       if (widget.index < 0) {
         rules.add(_rule);
       } else {
         rules[widget.index] = _rule;
       }
-      await box.call('routes.saveRules', {'id': widget.profileId, 'rules': rules});
+      await box.routeSaveRules(widget.profileId, rules);
       if (mounted) context.safeNestedPop(true);
     } catch (error) {
       if (!mounted) return;
@@ -577,7 +575,7 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
     final box = context.box;
     try {
       final rules = [...widget.rules]..removeAt(widget.index);
-      await box.call('routes.saveRules', {'id': widget.profileId, 'rules': rules});
+      await box.routeSaveRules(widget.profileId, rules);
       if (mounted) context.safeNestedPop(true);
     } catch (error) {
       if (mounted) box.report(error);
@@ -1011,7 +1009,7 @@ class _RuleSetDialogState extends State<_RuleSetDialog> {
   Future<void> _search() async {
     setState(() => _loading = true);
     try {
-      final wire = json(await widget.box.call('routes.ruleSets', {'query': _query.text, 'limit': 200}));
+      final wire = json(await widget.box.routeRuleSets(_query.text, 200));
       if (mounted) setState(() { _entries = rows(wire['entries']); _loading = false; });
     } catch (_) {
       if (mounted) setState(() => _loading = false);

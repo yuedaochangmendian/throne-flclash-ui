@@ -43,7 +43,7 @@ void main() {
 
   test('command errors are visible and never become successful actions', () async {
     messenger.setMockMethodCallHandler(channel, (_) async => throw PlatformException(code: 'core', message: 'automatic group'));
-    final error = box.messages.stream.first;
+    final error = box.messages.first;
     expect(await box.act('groups.select', {'group': 'auto', 'tag': 'node'}), false);
     expect(await error, 'automatic group');
   });
@@ -119,7 +119,7 @@ void main() {
     });
     await box.initialize();
     box.applyRequired = 'Restart';
-    final error = box.messages.stream.first;
+    final error = box.messages.first;
     final saving = box.setSetting('allowBypass', true, autoRestart: true);
     await Future<void>.delayed(Duration.zero);
     expect(box.settings['allowBypass'], true);

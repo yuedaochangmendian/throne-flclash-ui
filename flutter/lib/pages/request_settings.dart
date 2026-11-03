@@ -33,13 +33,13 @@ class _RequestSettingsPageState extends State<RequestSettingsPage> {
     try {
       final ports = _lines(_ports.text).map(int.parse).toList();
       if (ports.isEmpty || ports.any((port) => port < 1 || port > 65535)) throw const FormatException('Ports must be between 1 and 65535');
-      await context.box.call('capture.configure', {'revision': widget.source['revision'], 'config': {
+      await context.box.captureConfigure(widget.source['revision'], {
         'https': _https, 'decryptHosts': _lines(_decrypt.text), 'includeHosts': _lines(_include.text),
         'excludeHosts': _lines(_exclude.text), 'packages': _packages, 'ports': ports,
         'bodyLimit': _bodyKiB * 1024,
         'decryptBypassHosts': _lines(_decryptBypass.text), 'extractHosts': _extract,
         'tlsLibraries': _libraries.text.split('\n').map((line) => line.trim()).where((line) => line.isNotEmpty).toSet().toList(),
-      }});
+      });
       if (mounted) { setState(() { _dirty = false; _busy = false; }); Navigator.pop(context); }
     } catch (error) {
       if (mounted) setState(() { _error = error is FormatException ? context.tr('Ports must be between 1 and 65535') : BoxController.describe(error); _busy = false; });
@@ -121,7 +121,7 @@ class _CaptureAppsPageState extends State<CaptureAppsPage> {
   String _query = '';
   @override void didChangeDependencies() {
     super.didChangeDependencies();
-    _apps ??= context.box.call('apps.list', {'system': true, 'refresh': true}).then(rows);
+    _apps ??= context.box.appsList({'system': true, 'refresh': true}).then(rows);
   }
   @override Widget build(BuildContext context) => Scaffold(title: context.tr('Capture applications'),
     searchState: AppBarSearchState(onSearch: (query) => setState(() => _query = query.toLowerCase())),
@@ -137,7 +137,7 @@ class _CaptureAppsPageState extends State<CaptureAppsPage> {
           if (index == 0) {
             return Column(children: [
             Padding(padding: const EdgeInsets.all(12), child: Text(context.tr('An empty selection captures applications in this Android user. Flrone itself is excluded from eBPF capture. Applications sharing a UID share the same filter.'))),
-            if (snapshot.hasError) ErrorState(snapshot.error!, retry: () => setState(() => _apps = context.box.call('apps.list', {'system': true, 'refresh': true}).then(rows))),
+            if (snapshot.hasError) ErrorState(snapshot.error!, retry: () => setState(() => _apps = context.box.appsList({'system': true, 'refresh': true}).then(rows))),
             if (!snapshot.hasData && !snapshot.hasError) const Center(child: CircularProgressIndicator()),
           ]);
           }

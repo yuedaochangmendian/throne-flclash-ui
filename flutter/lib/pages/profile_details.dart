@@ -20,7 +20,7 @@ class ProfileDetailsPage extends StatelessWidget {
     }
     return BoxPage(title: 'Edit', actions: [
       IconButtonData(glyph: AppGlyphs.edit, tooltip: context.tr('Edit'), onPressed: () => openForm(context, ProfileForm(initial: p))),
-      if (p['remote'] == true) IconButtonData(glyph: AppGlyphs.sync, tooltip: context.tr('Update'), onPressed: () => box.act('profiles.update', {'id': p['id']})),
+      if (p['remote'] == true) IconButtonData(glyph: AppGlyphs.sync, tooltip: context.tr('Update'), onPressed: () => box.profileUpdate(p['id'])),
     ], children: [
       Padding(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 14, children: [
         EmojiText(p['name'].toString(), style: AppTextStyle.title2.of(context, emphasized: true)),
