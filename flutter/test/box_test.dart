@@ -158,4 +158,93 @@ void main() {
     await Future<void>.delayed(Duration.zero);
     expect(box.pendingIntents.single, startsWith('sing-box://'));
   });
+
+  group('event bus', () {
+    void wire({Object? intake}) {
+      messenger.setMockMethodCallHandler(channel, (call) async => switch (call.method) {
+        'ready' => {'version': 'test', 'coreVersion': 'test', 'dashboard': {'status': 'Stopped'}},
+        'intent.take' => intake,
+        _ => <String, dynamic>{},
+      });
+    }
+
+    test('the derived slices are cached rather than rebuilt on every read', () {
+      expect(identical(box.messages, box.messages), true);
+      expect(identical(box.subscriptionReports, box.subscriptionReports), true);
+      expect(identical(box.browserEvents, box.browserEvents), true);
+      expect(identical(box.intents, box.intents), true);
+    });
+
+    test('each event reaches only its own slice', () async {
+      wire(intake: 'sing-box://import-remote-profile?url=https%3A%2F%2Fexample.org');
+      await box.initialize();
+      final messages = <String>[];
+      final reports = <Json>[];
+      final browsers = <Json>[];
+      final intents = <IntentAvailableEvent>[];
+      box.messages.listen(messages.add);
+      box.subscriptionReports.listen(reports.add);
+      box.browserEvents.listen(browsers.add);
+      box.intents.listen(intents.add);
+
+      events.add({'type': 'subscriptionReport', 'value': {'kind': 'popup', 'groupName': 'Sub', 'text': 'Updated'}});
+      events.add({'type': 'browserComplete', 'value': {'url': 'https://example.org/callback'}});
+      events.add({'type': 'intentAvailable', 'value': true});
+      events.add({'type': 'error', 'value': 'boom'});
+      await pumpEventQueue();
+
+      expect(reports, [{'kind': 'popup', 'groupName': 'Sub', 'text': 'Updated'}]);
+      expect(browsers, [{'url': 'https://example.org/callback'}]);
+      expect(intents, hasLength(1));
+      expect(messages, ['boom']);
+    });
+
+    test('a subscription report without a popup becomes a banner, prefixed by its group', () async {
+      wire();
+      await box.initialize();
+      final messages = <String>[];
+      final reports = <Json>[];
+      box.messages.listen(messages.add);
+      box.subscriptionReports.listen(reports.add);
+
+      events.add({'type': 'subscriptionReport', 'value': {'kind': 'status', 'groupName': 'Sub', 'text': 'Updated 3 nodes'}});
+      events.add({'type': 'subscriptionReport', 'value': {'kind': 'error', 'text': 'Update failed'}});
+      await pumpEventQueue();
+
+      expect(messages, ['Sub: Updated 3 nodes', 'Update failed']);
+      expect(reports, isEmpty);
+    });
+
+    test('a UI notice goes to the banner stream without touching the backend', () async {
+      final banner = box.messages.first;
+      box.showMessage('copied');
+      expect(await banner, 'copied');
+    });
+
+    test('an intent the backend cannot supply is not announced', () async {
+      wire();
+      await box.initialize();
+      final intents = <IntentAvailableEvent>[];
+      box.intents.listen(intents.add);
+
+      events.add({'type': 'intentAvailable', 'value': true});
+      await pumpEventQueue();
+
+      expect(intents, isEmpty);
+      expect(box.pendingIntents, isEmpty);
+    });
+
+    test('closing the controller ends every slice', () async {
+      final local = BoxController(channel: channel, events: events.stream);
+      final ended = Future.wait([
+        local.messages.toList(),
+        local.subscriptionReports.toList(),
+        local.browserEvents.toList(),
+        local.intents.toList(),
+      ]);
+      local.dispose();
+
+      expect(await ended, [[], [], [], []]);
+    });
+  });
 }
