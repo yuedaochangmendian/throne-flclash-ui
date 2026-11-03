@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.app.*
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
@@ -31,6 +32,7 @@ import io.nekohasekai.sagernet.ktx.runOnDefaultDispatcher
 import io.nekohasekai.sagernet.ui.MainActivity
 import io.nekohasekai.sagernet.update.UpdateManager
 import io.nekohasekai.sagernet.utils.*
+import io.throne.bbox.bridge.BboxMemory
 import io.throne.bbox.bridge.BboxRuntime
 import kotlinx.coroutines.DEBUG_PROPERTY_NAME
 import kotlinx.coroutines.DEBUG_PROPERTY_VALUE_ON
@@ -116,6 +118,29 @@ class SagerNet : Application(),
                     .build()
             )
         }
+    }
+
+    /**
+     * Bettbox's background-GC strategy on Android: the system's own memory-pressure signal is the
+     * trigger, and the response is proportional to how urgent the signal is. Runs in both the UI and
+     * the :bg process; ART's trim only touches the Java heap, so the Go core's own allocator is left
+     * alone.
+     */
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        when {
+            level >= ComponentCallbacks2.TRIM_MEMORY_COMPLETE -> {
+                BboxMemory.gc()
+                BboxMemory.purgeMemory()
+            }
+            level >= ComponentCallbacks2.TRIM_MEMORY_MODERATE -> BboxMemory.gc()
+        }
+    }
+
+    override fun onLowMemory() {
+        super.onLowMemory()
+        BboxMemory.gc()
+        BboxMemory.purgeMemory()
     }
 
     override fun onConfigurationChanged(newConfig: Configuration) {

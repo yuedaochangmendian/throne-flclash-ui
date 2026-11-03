@@ -147,14 +147,18 @@ class _LogsPageState extends State<LogsPage> {
       keywords: _keywords,
       searchState: AppBarSearchState(onSearch: (query) => setState(() => _query = query)),
       iconActions: [
+        // Bettbox's explicit auto-scroll toggle: highlighted while the list follows
+        // the newest record, a tap freezes it in place (and a second tap resumes).
+        IconButtonData(glyph: AppGlyphs.playPause(_paused == null ? 1 : 0),
+          tooltip: context.tr(_paused == null ? 'Pause' : 'Resume'),
+          isSelected: _paused == null,
+          onPressed: _paused == null ? _pause : _resume),
         IconButtonData(glyph: AppGlyphs.export, tooltip: context.tr('Export'),
           onPressed: exportable.isEmpty || _exporting ? null : () => _export(exportable)),
         IconButtonData(glyph: AppGlyphs.error, tooltip: context.tr('Export crash logs'),
           onPressed: _exporting ? null : _exportCrashes),
       ],
       menuItems: [
-        PopupMenuItem(glyph: _paused == null ? AppGlyphs.playPause(1) : AppGlyphs.playPause(0),
-          label: context.tr(_paused == null ? 'Pause' : 'Resume'), onPressed: _paused == null ? _pause : _resume),
         PopupMenuItem(glyph: AppGlyphs.delete, label: context.tr('Clear'), onPressed: () async {
           if (await box.act(_logcat ? 'logs.logcat.clear' : 'logs.clear') && mounted) setState(() => _paused = null);
         }),

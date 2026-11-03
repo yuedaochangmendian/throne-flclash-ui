@@ -1,3 +1,9 @@
+#### 3.2.11
+
+* The VPN service now restarts itself when the system reclaims it under memory pressure (`START_STICKY`), so the proxy reconnects instead of dropping silently; a manual stop still ends the service for good
+* The app answers Android memory pressure (`onTrimMemory` / `onLowMemory`) by hinting the ART runtime and trimming the heap back to the OS — Bettbox's background-GC strategy on Android, leaving the Go core's own allocator untouched
+* The Log screen's follow-newest control moves to the toolbar as a highlighted auto-scroll toggle, matching Bettbox's log view
+
 #### 3.2.10
 
 * The status card's bottom row no longer overflows on a narrow display with large text: Run time joins Location and Operator as an equally flexible column, so all three shrink (with ellipsis) instead of spilling past the card edge

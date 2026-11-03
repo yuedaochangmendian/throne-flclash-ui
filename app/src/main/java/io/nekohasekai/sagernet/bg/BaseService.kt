@@ -586,9 +586,12 @@ class BaseService {
         fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
             DataStore.baseService = this
 
-            if (data.state != State.Stopped) return Service.START_NOT_STICKY
+            // START_STICKY: when the system reclaims the service under memory pressure it is
+            // restarted with a null intent, so the proxy reconnects instead of silently dropping.
+            // A user-initiated stop still ends it for good, because stopRunner() calls stopSelf().
+            if (data.state != State.Stopped) return Service.START_STICKY
             startProxy()
-            return Service.START_NOT_STICKY
+            return Service.START_STICKY
         }
 
         /** Starts the selected profile; the notification and the receiver of a restart are reused. */
