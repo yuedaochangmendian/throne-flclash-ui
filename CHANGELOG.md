@@ -1,3 +1,7 @@
+#### 3.2.5
+
+* Reverts 3.2.4's packaging experiment: `useLegacyPackaging = false` stores every native library uncompressed inside the APK so it can be loaded in place, and libthrone.so alone is 82 MB — the download doubled to 120 MB per ABI for a disk saving the extracted copy mostly paid back anyway. Native libraries are deflated in the APK and extracted at install again; do not update to 3.2.4 on a metered connection, its size advantage over 3.2.3 is negative. Everything else in 3.2.4 stands (R8's precise keeps, the Twemoji removal, the font subset, the WebP artwork, the debug-only GC, Jetifier off)
+
 #### 3.2.4
 
 * R8 finally shrinks the app: the keep rules now cover only what is actually reflective — the outbound types `OutboundFactory` instantiates by name and the preference classes the `res/xml` screens inflate by tag — instead of the whole `io.nekohasekai.sagernet` and `moe.matsuri.nb4a` packages. R8 full mode turns on with them, and crash records keep line numbers now
