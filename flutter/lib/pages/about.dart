@@ -75,6 +75,9 @@ class _AboutPageState extends State<AboutPage> {
           _link(AppGlyphs.code, 'Source code', 'yuedaochangmendian/throne-flclash-ui', 'https://github.com/yuedaochangmendian/throne-flclash-ui'),
           _link(AppGlyphs.cpu, 'Core', 'sing-box ${box.coreVersion}', 'https://github.com/SagerNet/sing-box'),
           _link(AppGlyphs.paintbrush, 'FlClash interface', 'chen08209/FlClash · v0.9.2 · GPL-3.0', 'https://github.com/chen08209/FlClash/tree/7fd417fb9a9a277c6a9339a8ac87f907df7c25f7'),
+          // Credit where it is due: B-box's bridge + Flutter-module setup is the migration
+          // approach this port follows, so the thanks belongs in the app, not just the README.
+          _link(AppGlyphs.star, 'Thanks for the migration approach', 'giturass/B-box', 'https://github.com/giturass/B-box'),
           ListItem(leading: const _LinkBadge(glyph: AppGlyphs.info), title: Text(context.tr('Open-source licenses')),
             onTap: () => showLicensePage(context: context, applicationName: 'Flrone', applicationVersion: box.version)),
         ]),

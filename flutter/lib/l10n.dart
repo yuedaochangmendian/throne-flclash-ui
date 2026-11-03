@@ -231,6 +231,7 @@ const _zh = <String, String>{
   'You are up to date': '已是最新版本', 'No release metadata available': '暂无可验证的版本信息', 'Releases': '发布版本',
   'A sing-box client with the FlClash Android interface.': '采用 FlClash Android 界面的 sing-box 客户端。',
   'FlClash interface': 'FlClash 界面', 'Version': '版本', 'Network diagnostics': '网络诊断',
+  'Thanks for the migration approach': '感谢迁移思路',
   'Network quality': '网络质量', 'STUN test': 'STUN 测试',
   'No endpoints': '没有端点', 'Endpoints': '端点', 'Peers': '设备',
   'Exit node': '出口节点', 'Logout': '退出登录', 'Terminal': '终端', 'Inbox': '收件箱',

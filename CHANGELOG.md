@@ -1,3 +1,7 @@
+#### 3.2.6
+
+* The About page credits `giturass/B-box` in the app itself: its bridge and Flutter-module setup is the migration approach this port follows, and until now the thanks lived only in the README. The entry sits with Source code / Core / FlClash interface and links to the project; a test pins the line so it cannot be dropped silently
+
 #### 3.2.5
 
 * Reverts 3.2.4's packaging experiment: `useLegacyPackaging = false` stores every native library uncompressed inside the APK so it can be loaded in place, and libthrone.so alone is 82 MB — the download doubled to 120 MB per ABI for a disk saving the extracted copy mostly paid back anyway. Native libraries are deflated in the APK and extracted at install again; do not update to 3.2.4 on a metered connection, its size advantage over 3.2.3 is negative. Everything else in 3.2.4 stands (R8's precise keeps, the Twemoji removal, the font subset, the WebP artwork, the debug-only GC, Jetifier off)
