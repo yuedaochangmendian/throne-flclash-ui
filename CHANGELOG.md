@@ -1,3 +1,9 @@
+#### 3.2.13
+
+* The Log screen is now FlClash's own log view: a single export action, the empty state, a scrollbar that names the record at the thumb, and a list that stops following the newest line as soon as you scroll away from it
+* Each record is split into what it actually says and where it came from: the level, uptime counter and subsystem prefix (`INFO[0001] inbound/tun[tun-in]:`) are parsed off, so the message reads on its own with the subsystem (`inbound/tun · tun-in`) beneath it, and tapping the level chip filters by it
+* Following FlClash, the Log screen no longer carries this fork's extra controls: the level-filter menu, pause toggle, clear, crash-log export, Logcat switch and connection-reset folding are gone. Logcat remains available to the core, but the screen no longer shows it
+
 #### 3.2.12
 
 * The backend-to-UI path now mirrors Bettbox's architecture: a single typed `BoxEventBus` (with sealed `BoxMessageEvent` / `SubscriptionReportEvent` / `IntentAvailableEvent` / `BrowserCompleteEvent`) replaces the four ad-hoc event controllers, and listeners subscribe to the slice they care about

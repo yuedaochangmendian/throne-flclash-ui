@@ -1,71 +1,62 @@
 import 'package:super_sliver_list/super_sliver_list.dart';
-import 'package:flutter/services.dart';
 import '../widgets.dart';
+import '../common/log_payload.dart';
 import '../components/record.dart';
 import '../components/data_subscription.dart';
 
+/// FlClash's log view, carried over as-is: one export action, an empty state, a scrollbar that
+/// names the record at the thumb, and a list that follows the newest line until the reader
+/// scrolls away from it. The records themselves are rendered by [_LogItem] / [_LogBody], which
+/// keep FlClash's shape and parse this fork's sing-box / Xray lines instead of mihomo's.
 class LogsPage extends StatefulWidget {
   const LogsPage({super.key});
   @override State<LogsPage> createState() => _LogsPageState();
 }
 
 class _LogsPageState extends State<LogsPage> {
-  String _query = '', _level = 'Default';
+  String _query = '';
   // Labels tapped on a record filter by them; the search field keeps its own text.
   final _keywords = ValueNotifier<List<ScaffoldKeyword>>(const []);
+  bool _exporting = false;
+  /// The records frozen when the reader scrolled away from the newest line; null while following.
+  List<Json>? _paused;
+  late final _scroll = ScrollController(initialScrollOffset: double.maxFinite);
+  late final _physics = FollowEndScrollPhysics(isFollowing: () => _paused == null);
+
   String get _search => [
     _query,
     ..._keywords.value.map((keyword) => '${keyword.key}'),
   ].where((word) => word.trim().isNotEmpty).join(' ');
+
+  @override void initState() {
+    super.initState();
+    _keywords.addListener(_keywordsChanged);
+  }
+
+  @override void dispose() {
+    _keywords.removeListener(_keywordsChanged);
+    _keywords.dispose();
+    _scroll.dispose();
+    super.dispose();
+  }
+
   void _keywordsChanged() => setState(() {});
+
   void _addFilter(String word) {
     if (_keywords.value.any((keyword) => keyword.key == word)) return;
     _keywords.value = [..._keywords.value, ScaffoldKeyword(key: word, label: word, onDeleted: () => _removeFilter(word))];
   }
+
   void _removeFilter(String word) =>
     _keywords.value = [for (final keyword in _keywords.value) if (keyword.key != word) keyword];
 
-  bool _logcat = false, _exporting = false, _showNoise = false;
-  static const _priorities = {
-    'panic': 0, 'fatal': 1, 'error': 2, 'warn': 3, 'warning': 3,
-    'info': 4, 'debug': 5, 'trace': 6,
-  };
-  List<Json>? _paused;
-  late final _scroll = ScrollController(initialScrollOffset: double.maxFinite);
-  late final _physics = FollowEndScrollPhysics(isFollowing: () => _paused == null);
-  @override void dispose() {
-    _keywords.removeListener(_keywordsChanged);
-    _keywords.dispose(); _scroll.dispose(); super.dispose(); }
-
   void _pause() {
-    if (_paused == null) setState(() => _paused = List.of(_logcat ? context.box.logcat : context.box.logs));
+    if (_paused == null) setState(() => _paused = List.of(context.box.logs));
   }
 
   void _resume() {
     if (_paused != null) setState(() => _paused = null);
   }
-
-  bool _matchesLevel(Json item, String? defaultLevel) {
-    final level = item['level'].toString().toLowerCase();
-    if (_level == 'Default') {
-      // Logcat has no configured level to follow, so Default means everything there.
-      final threshold = _logcat ? null : _priorities[defaultLevel?.toLowerCase()];
-      // Before the core reports its level, keep received records available.
-      if (threshold == null) return true;
-      final priority = _priorities[level];
-      return priority != null && priority <= threshold;
-    }
-    return _level == 'All' || level == _level.toLowerCase();
-  }
-
-  /// The sing-box lazy handshake reports an ERROR when the local app resets a
-  /// connection before the remote dial finished; the connection was dead anyway,
-  /// so the log line is noise a VPN always produces (analysis of 2026-11-03).
-  /// Only the core log carries it — Logcat noise is the system's own.
-  bool _isNoise(Json item) => !_logcat &&
-    item['level'].toString().toLowerCase() == 'error' &&
-    item['message'].toString().contains('report handshake success') &&
-    item['message'].toString().contains('connection reset by peer');
 
   Future<void> _export(List<Json> logs) async {
     if (_exporting || logs.isEmpty) return;
@@ -73,7 +64,7 @@ class _LogsPageState extends State<LogsPage> {
     setState(() => _exporting = true);
     try {
       // Log lines carry URLs and keys; the bridge redacts like the native export.
-      final saved = await box.documentSave(_logcat ? 'Logcat.log' : 'B-box.log',
+      final saved = await box.documentSave('B-box.log',
         logs.map((line) => '${recordTime(line['receivedAt'])} [${line['level']}] ${line['message']}').join('\n'), redact: true);
       // A cancelled system picker is neither an export nor an error.
       if (mounted && saved != null) box.showMessage(context.tr(saved == true ? 'Exported' : 'Export failed'));
@@ -84,109 +75,23 @@ class _LogsPageState extends State<LogsPage> {
     }
   }
 
-  /// Dumps every kept crash record into one redacted file; the records survive
-  /// core.log's rotation, so the user can hand them over after a restart.
-  Future<void> _exportCrashes() async {
-    if (_exporting) return;
-    final box = context.box;
-    setState(() => _exporting = true);
-    try {
-      final files = rows(await box.crashesList());
-      if (!mounted) return;
-      if (files.isEmpty) {
-        box.showMessage(context.tr('No crash logs'));
-        return;
-      }
-      final parts = <String>[];
-      for (final file in files) {
-        // One unreadable record (pruned mid-export, say) must not sink the whole file.
-        try {
-          final read = json(await box.crashesRead(file['name']));
-          parts.add('===== ${file['name']} =====\n${read['content']}');
-        } catch (error) {
-          parts.add('===== ${file['name']} =====\n(unreadable: ${BoxController.describe(error)})');
-        }
-      }
-      final stamp = DateTime.fromMillisecondsSinceEpoch(files.first['time'] as int);
-      final date = '${stamp.year}-${stamp.month.toString().padLeft(2, '0')}-${stamp.day.toString().padLeft(2, '0')}'
-          '-${stamp.hour.toString().padLeft(2, '0')}-${stamp.minute.toString().padLeft(2, '0')}-${stamp.second.toString().padLeft(2, '0')}';
-      final saved = await box.documentSave('crashes-$date.log', parts.join('\n\n'), redact: true);
-      if (mounted && saved != null) box.showMessage(context.tr(saved == true ? 'Exported' : 'Export failed'));
-    } catch (error) {
-      box.report(error);
-    } finally {
-      if (mounted) setState(() => _exporting = false);
-    }
-  }
-
-  @override void initState() {
-    super.initState();
-    _keywords.addListener(_keywordsChanged);
-  }
-
   @override Widget build(BuildContext context) {
     final box = context.watchBox(BoxAspect.logs);
-    if (_logcat) context.watchBox(BoxAspect.logcat);
-    final words = _search.toLowerCase().trim().split(RegExp(r'\s+'));
-    final matches = (_paused ?? (_logcat ? box.logcat : box.logs)).where((item) =>
-      _matchesLevel(item, box.defaultLogLevel) &&
-      words.every(([item['level'], item['message']].join(' ').toLowerCase()).contains),
-    );
-    final noiseCount = matches.where(_isNoise).length;
-    // The fold is a display convenience: exports carry every matching record, and the
-    // export button stays alive while only folded noise is on screen.
-    final exportable = matches.toList();
-    final logs = (_showNoise ? matches : matches.where((item) => !_isNoise(item))).toList();
-    return BoxDataSubscription(data: _logcat ? BoxData.logcat : BoxData.logs, child: Scaffold(
+    final words = _search.toLowerCase().trim().split(RegExp(r'\s+')).where((word) => word.isNotEmpty).toList();
+    final logs = (_paused ?? box.logs).where((item) =>
+      words.every((word) => [item['level'], item['message']].join(' ').toLowerCase().contains(word)),
+    ).toList();
+    return BoxDataSubscription(data: BoxData.logs, child: Scaffold(
       title: context.tr('Logs'),
       keywords: _keywords,
       searchState: AppBarSearchState(onSearch: (query) => setState(() => _query = query)),
       iconActions: [
-        // Bettbox's explicit auto-scroll toggle: highlighted while the list follows
-        // the newest record, a tap freezes it in place (and a second tap resumes).
-        IconButtonData(glyph: AppGlyphs.playPause(_paused == null ? 1 : 0),
-          tooltip: context.tr(_paused == null ? 'Pause' : 'Resume'),
-          isSelected: _paused == null,
-          onPressed: _paused == null ? _pause : _resume),
         IconButtonData(glyph: AppGlyphs.export, tooltip: context.tr('Export'),
-          onPressed: exportable.isEmpty || _exporting ? null : () => _export(exportable)),
-        IconButtonData(glyph: AppGlyphs.error, tooltip: context.tr('Export crash logs'),
-          onPressed: _exporting ? null : _exportCrashes),
+          onPressed: logs.isEmpty || _exporting ? null : () => _export(logs)),
       ],
-      menuItems: [
-        PopupMenuItem(glyph: AppGlyphs.delete, label: context.tr('Clear'), onPressed: () async {
-          if (await box.act(_logcat ? 'logs.logcat.clear' : 'logs.clear') && mounted) setState(() => _paused = null);
-        }),
-        for (final level in ['Default', 'All', 'Trace', 'Debug', 'Info', 'Warn', 'Error', 'Fatal', 'Panic'])
-          PopupMenuItem(label: level == 'Default'
-              ? '${context.tr('Follow configuration')}${_logcat || box.defaultLogLevel == null ? '' : ' (${context.tr(box.defaultLogLevel!)})'}'
-              : context.tr(level), checked: _level == level,
-            section: level == 'Default' ? PopupMenuSection(title: context.tr('Log level')) : null,
-            onPressed: () => setState(() => _level = level)),
-      ],
-      // The body starts at the top of the window with the app bar floating over it, so the switch needs the
-      // same inset every other page's content takes — without it the segments drew across the status bar.
-      body: Padding(padding: EdgeInsets.only(top: context.contentTopPadding), child: Column(children: [
-        Padding(
-          padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
-          child: SegmentedControl<bool>(
-            segments: [(false, context.tr('Core log')), (true, 'Logcat')],
-            value: _logcat,
-            onChanged: (value) => setState(() { _logcat = value; _paused = null; _showNoise = false; }),
-          ),
-        ),
-        if (noiseCount > 0) Padding(
-          padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
-          child: Align(alignment: AlignmentDirectional.centerStart, child: _NoiseChip(
-            label: _showNoise
-              ? context.tr('Hide connection-reset noise')
-              : context.tr('Folded {count} connection resets').replaceAll('{count}', '$noiseCount'),
-            active: _showNoise,
-            onPressed: () => setState(() => _showNoise = !_showNoise),
-          )),
-        ),
-        Expanded(child: NullStatusSwitcher(
-        isEmpty: logs.isEmpty, isSearching: _search.trim().isNotEmpty || !['Default', 'All'].contains(_level),
+      body: NullStatusSwitcher(
+        isEmpty: logs.isEmpty,
+        isSearching: _search.trim().isNotEmpty,
         nullStatus: NullStatus(label: context.tr('No logs'), illustration: NullStatusIllustration.logs),
         child: logs.isEmpty ? const SizedBox.shrink() : Align(
           alignment: Alignment.topCenter,
@@ -198,66 +103,59 @@ class _LogsPageState extends State<LogsPage> {
               onCancelToEnd: _pause, onResumeToEnd: _resume,
               child: SuperListView.separated(
                 controller: _scroll, physics: _physics, reverse: true, shrinkWrap: true,
-                padding: EdgeInsets.only(top: 8, bottom: 16 + context.bottomInset),
+                // The body starts at the top of the window with the app bar floating over it.
+                padding: EdgeInsets.only(top: context.contentTopPadding, bottom: 16 + context.bottomInset),
                 extentEstimation: recordListExtentEstimation,
                 itemCount: logs.length,
                 separatorBuilder: (_, _) => const SizedBox(height: recordListGap),
-                itemBuilder: (context, index) {
-                  final log = logs[index];
-                  final level = log['level'].toString().toLowerCase();
-                  final tone = ['error', 'fatal', 'panic'].contains(level) ? RecordTone.error
-                      : ['warn', 'warning'].contains(level) ? RecordTone.warning : RecordTone.neutral;
-                  return RecordListItem(
-                    key: ValueKey(log['id']),
-                    // Tap copies the line: the wrapping Text body has no selection handles,
-                    // and a crash line is exactly what gets pasted into a bug report.
-                    onTap: () async {
-                      await Clipboard.setData(ClipboardData(text: log['message'].toString()));
-                      if (!context.mounted) return;
-                      box.showMessage(context.tr('Copied'));
-                    },
-                    header: RecordHeader(children: [
-                      if ((log['receivedAt'] as num? ?? 0) > 0) RecordTimestamp(recordTime(log['receivedAt'])),
-                      RecordLabel(label: level, tone: tone, onPressed: () => _addFilter(level)),
-                    ]),
-                    body: Text(log['message'].toString(), style: RecordTextStyles.of(context).primary),
-                  );
-                },
+                itemBuilder: (context, index) => _LogItem(log: logs[index], onLabel: _addFilter),
               ),
             ),
           ),
         ),
-        ))],
-      )),
+      ),
     ));
   }
 }
 
-/// The fold toggle for the core log's known-benign connection-reset errors: a quiet
-/// pill that states the count while folded and asks nothing while expanded.
-class _NoiseChip extends StatelessWidget {
-  const _NoiseChip({required this.label, required this.active, required this.onPressed});
-  final String label;
-  final bool active;
-  final VoidCallback onPressed;
+class _LogItem extends StatelessWidget {
+  const _LogItem({required this.log, required this.onLabel});
 
-  @override
-  Widget build(BuildContext context) {
-    final scheme = context.colorScheme;
-    return Material(
-      color: active ? scheme.secondaryContainer : SurfaceLevel.card.colorOf(scheme),
-      shape: AppShape.all(20),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onPressed,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: Row(mainAxisSize: MainAxisSize.min, children: [
-            Flexible(child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis,
-              style: AppTextStyle.caption1.of(context))),
-          ]),
-        ),
-      ),
+  final Json log;
+  final ValueChanged<String> onLabel;
+
+  @override Widget build(BuildContext context) {
+    final level = log['level'].toString().toLowerCase();
+    final tone = switch (level) {
+      'warn' || 'warning' => RecordTone.warning,
+      'error' || 'fatal' || 'panic' => RecordTone.error,
+      _ => RecordTone.neutral,
+    };
+    return RecordListItem(
+      key: ValueKey(log['id']),
+      onTap: () {},
+      header: RecordHeader(children: [
+        if ((log['receivedAt'] as num? ?? 0) > 0) RecordTimestamp(recordTime(log['receivedAt'])),
+        RecordLabel(label: level, tone: tone, onPressed: () => onLabel(level)),
+      ]),
+      body: _LogBody(payload: LogPayload.parse(log['message'].toString())),
+    );
+  }
+}
+
+class _LogBody extends StatelessWidget {
+  const _LogBody({required this.payload});
+
+  final LogPayload payload;
+
+  @override Widget build(BuildContext context) {
+    final styles = RecordTextStyles.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SelectableText(payload.message, style: styles.primary),
+        if (payload.source.isNotEmpty) Text(payload.source, style: styles.secondary),
+      ],
     );
   }
 }

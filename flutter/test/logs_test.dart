@@ -1,14 +1,15 @@
 import 'dart:async';
+import 'package:b_box_ui/components/record.dart';
 import 'package:b_box_ui/main.dart';
 import 'package:b_box_ui/pages/logs.dart';
 import 'package:b_box_ui/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-const _levels = ['Trace', 'Debug', 'Info', 'Warn', 'Error', 'Fatal', 'Panic'];
 final _records = <Json>[
-  for (var index = 0; index < _levels.length; index++)
-    {'id': index + 1, 'level': _levels[index], 'message': 'core ${_levels[index]} record'},
+  {'id': 1, 'level': 'info', 'message': 'INFO[0001] inbound/tun[tun-in]: inbound connection from 10.0.0.2:51234'},
+  {'id': 2, 'level': 'warn', 'message': 'WARN[0002] dns: lookup failed for example.com'},
+  {'id': 3, 'level': 'error', 'message': 'ERROR[0003] outbound/vless[proxy]: dial failed'},
 ];
 
 void main() {
@@ -19,9 +20,8 @@ void main() {
   final messages = <String>[];
   Object? saveResult = true;
   Completer<Object?>? pendingSave;
-  List<Json> crashFiles = [];
 
-  Future<void> mount(WidgetTester tester, {bool remote = false}) async {
+  Future<void> mount(WidgetTester tester) async {
     tester.binding.platformDispatcher.localesTestValue = const [Locale('en')];
     addTearDown(tester.binding.platformDispatcher.clearLocalesTestValue);
     tester.view.physicalSize = const Size(360, 1200);
@@ -31,36 +31,21 @@ void main() {
     const channel = MethodChannel('test.logs');
     events = StreamController<dynamic>.broadcast();
     final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-    calls.clear(); messages.clear(); saveResult = true; pendingSave = null;
+    calls.clear(); messages.clear(); saveResult = true; pendingSave = null; exported = null;
     messenger.setMockMethodCallHandler(channel, (call) async {
       calls.add(call);
       if (call.method == 'ready') {
-        return {
-        'version': 'test', 'coreVersion': 'test',
-        'dashboard': {'status': 'Stopped',
-          if (remote) ...{'remote': 'Server', 'remoteConnected': true}},
-      };
+        return {'version': 'test', 'coreVersion': 'test', 'dashboard': {'status': 'Stopped'}};
       }
       if (call.method == 'document.save') {
         exported = json(call.arguments)['content'] as String;
         if (saveResult is PlatformException) throw saveResult!;
         return pendingSave == null ? saveResult : await pendingSave!.future;
       }
-      if (call.method == 'logs.clear') {
-        events.add({'type': 'logs', 'value': {'defaultLogLevel': box.defaultLogLevel, 'entries': []}});
-      }
-      if (call.method == 'logs.logcat.clear') {
-        events.add({'type': 'logcat', 'value': {'reset': true, 'entries': []}});
-      }
-      if (call.method == 'crashes.list') return crashFiles;
-      if (call.method == 'crashes.read') {
-        return {'name': json(call.arguments)['name'], 'content': 'stack line'};
-      }
       return null;
     });
     box = BoxController(channel: channel, events: events.stream);
     final messageSubscription = box.messages.listen(messages.add);
-    exported = null;
     await tester.pumpWidget(BoxApp(controller: box));
     await tester.pumpAndSettle();
     addTearDown(() async {
@@ -77,131 +62,90 @@ void main() {
     find.descendant(of: find.byType(LogsPage), matching: find.byType(Scaffold)).first,
   );
 
-  // The toolbar holds a limited number of buttons and folds the rest into the overflow menu,
-  // so the actions are looked up by label instead of by position.
+  // The toolbar folds whatever does not fit into its overflow menu, so the action is found by
+  // label rather than by position.
   IconButtonData exportAction(WidgetTester tester) =>
       scaffold(tester).iconActions.firstWhere((item) => item.tooltip == 'Export');
 
-  /// The auto-scroll toggle, whichever way it currently reads.
-  Future<void> toggleFollow(WidgetTester tester) async {
-    scaffold(tester).iconActions
-        .firstWhere((item) => item.tooltip == 'Pause' || item.tooltip == 'Resume')
-        .onPressed!();
+  /// The message bodies as rendered: the parsed text, not the raw core line.
+  List<String?> bodies(WidgetTester tester) =>
+      tester.widgetList<SelectableText>(find.byType(SelectableText)).map((text) => text.data).toList();
+
+  Future<void> emit(WidgetTester tester, [List<Json>? records]) async {
+    events.add({'type': 'logs', 'value': {'entries': records ?? _records}});
     await tester.pumpAndSettle();
   }
 
-  Future<void> emit(WidgetTester tester, String? level, [List<Json>? records]) async {
-    events.add({'type': 'logs', 'value': {'defaultLogLevel': level, 'entries': records ?? _records}});
-    await tester.pumpAndSettle();
-  }
-
-  Future<void> choose(WidgetTester tester, String label) async {
-    await tester.tap(find.byTooltip('More').last);
-    await tester.pumpAndSettle();
-    await tester.tap(find.text(label).last);
-    await tester.pumpAndSettle();
-  }
-
-  Future<void> expectExport(WidgetTester tester, List<String> levels) async {
-    exportAction(tester).onPressed!();
-    await tester.pumpAndSettle();
-    expect(exported, isNotNull);
-    expect(exported!.split('\n').where((line) => line.isNotEmpty),
-      levels.map((level) => '— [$level] core $level record'));
-  }
-
-  for (final remote in [false, true]) {
-    testWidgets('default follows the core threshold including severe logs, remote=$remote', (tester) async {
-      await mount(tester, remote: remote);
-      for (var index = 0; index < _levels.length; index++) {
-        final level = _levels[index];
-        await emit(tester, level);
-        final selected = scaffold(tester).menuItems.where((item) => item.checked == true);
-        expect(selected.map((item) => item.label), ['Follow configuration ($level)']);
-        await expectExport(tester, _levels.sublist(index));
-        expect(box.logs, hasLength(_levels.length), reason: 'Filtering must retain the original records.');
-        if (level == 'Warn') {
-          expect(find.text('core Error record'), findsOneWidget);
-          expect(find.text('core Info record'), findsNothing);
-        }
-      }
-      expect(tester.takeException(), isNull);
-    });
-  }
-
-  testWidgets('manual filters survive core updates and can return to following configuration', (tester) async {
+  testWidgets('an empty log shows the empty state and offers no export', (tester) async {
     await mount(tester);
-    await emit(tester, 'Info');
-    await choose(tester, 'All');
-    await emit(tester, 'Error');
-    await expectExport(tester, _levels);
-    await choose(tester, 'Debug');
-    await emit(tester, 'Warn');
-    await expectExport(tester, ['Debug']);
-    await choose(tester, 'Follow configuration (Warn)');
-    await expectExport(tester, ['Warn', 'Error', 'Fatal', 'Panic']);
-    await emit(tester, 'Info');
-    await expectExport(tester, ['Info', 'Warn', 'Error', 'Fatal', 'Panic']);
+    expect(find.text('No logs'), findsOneWidget);
+    expect(exportAction(tester).onPressed, isNull);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('logcat switches subscriptions, retains only the live window, exports and clears', (tester) async {
+  testWidgets('records show the subsystem beside the message instead of the raw line', (tester) async {
     await mount(tester);
-    await emit(tester, 'Error');
-    await tester.tap(find.text('Logcat'));
-    await tester.pumpAndSettle();
-    expect(calls.where((call) => call.method == 'logs.visible').last.arguments, {'visible': false});
-    expect(calls.where((call) => call.method == 'logs.logcat.visible').last.arguments, {'visible': true});
-    events.add({'type': 'logcat', 'value': {'reset': true, 'entries': _records}});
-    await tester.pumpAndSettle();
-    await expectExport(tester, _levels);
-    final saved = json(calls.lastWhere((call) => call.method == 'document.save').arguments);
-    expect(saved['name'], 'Logcat.log');
-    expect(saved['redact'], true);
-    expect(messages.last, 'Exported');
+    await emit(tester);
+    expect(bodies(tester), unorderedEquals([
+      'inbound connection from 10.0.0.2:51234',
+      'lookup failed for example.com',
+      'dial failed',
+    ]));
+    expect(find.text('inbound/tun  ·  tun-in'), findsOneWidget);
+    expect(find.text('outbound/vless  ·  proxy'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 
-    events.add({'type': 'logcat', 'value': {'reset': false, 'firstId': 4, 'entries': [
-      _records.last, {'id': 8, 'level': 'info', 'message': 'later logcat record'},
-    ]}});
-    await tester.pumpAndSettle();
-    expect(box.logcat.map((line) => line['id']), [4, 5, 6, 7, 8]);
-    await toggleFollow(tester);
-    await choose(tester, 'Clear');
-    expect(calls.where((call) => call.method == 'logs.logcat.clear'), hasLength(1));
-    expect(box.logcat, isEmpty);
-    expect(find.text('No logs'), findsOneWidget);
-    expect(exportAction(tester).onPressed, isNull);
+  testWidgets('a record\'s tone follows its level', (tester) async {
+    await mount(tester);
+    await emit(tester);
+    final tones = {for (final label in tester.widgetList<RecordLabel>(find.byType(RecordLabel))) label.label: label.tone};
+    expect(tones, {'info': RecordTone.neutral, 'warn': RecordTone.warning, 'error': RecordTone.error});
+  });
 
-    events.add({'type': 'logcat', 'value': {'reset': true, 'entries': [
-      {'id': 9, 'level': 'info', 'message': 'after clear'},
-    ]}});
+  testWidgets('tapping a level label keeps only that level', (tester) async {
+    await mount(tester);
+    await emit(tester);
+    tester.widget<RecordLabel>(find.widgetWithText(RecordLabel, 'warn')).onPressed!();
     await tester.pumpAndSettle();
-    expect(find.text('after clear'), findsOneWidget);
-    expect(find.text('later logcat record'), findsNothing);
-    await tester.tap(find.text('Core log'));
+    expect(scaffold(tester).keywords!.value.map((keyword) => '${keyword.key}'), ['warn']);
+    expect(bodies(tester), ['lookup failed for example.com']);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('removing the filter chip brings the other levels back', (tester) async {
+    await mount(tester);
+    await emit(tester);
+    tester.widget<RecordLabel>(find.widgetWithText(RecordLabel, 'warn')).onPressed!();
     await tester.pumpAndSettle();
-    expect(calls.where((call) => call.method == 'logs.logcat.visible').last.arguments, {'visible': false});
-    expect(calls.where((call) => call.method == 'logs.visible').last.arguments, {'visible': true});
+    expect(bodies(tester), ['lookup failed for example.com']);
+    scaffold(tester).keywords!.value.single.onDeleted!();
+    await tester.pumpAndSettle();
+    expect(scaffold(tester).keywords!.value, isEmpty);
+    expect(bodies(tester), hasLength(3));
     expect(tester.takeException(), isNull);
   });
 
   for (final result in [true, false, null]) {
-    testWidgets('export distinguishes success, failure and cancellation: $result', (tester) async {
+    testWidgets('export reports success, failure and cancellation: $result', (tester) async {
       await mount(tester);
-      await emit(tester, 'Error');
+      await emit(tester);
       saveResult = result;
-      await expectExport(tester, ['Error', 'Fatal', 'Panic']);
+      exportAction(tester).onPressed!();
+      await tester.pumpAndSettle();
+      expect(exported!.split('\n').where((line) => line.isNotEmpty), [
+        for (final record in _records) '— [${record['level']}] ${record['message']}',
+      ]);
       expect(messages, result == null ? isEmpty : [result ? 'Exported' : 'Export failed']);
       expect(exportAction(tester).onPressed, isNotNull);
       expect(tester.takeException(), isNull);
     });
   }
 
-  testWidgets('export prevents reentry and reports platform errors without losing logs', (tester) async {
+  testWidgets('export prevents reentry and reports platform errors without losing records', (tester) async {
     await mount(tester);
-    expect(exportAction(tester).onPressed, isNull);
-    await emit(tester, 'Error');
     pendingSave = Completer<Object?>();
+    await emit(tester);
     final export = exportAction(tester).onPressed!;
     export(); export();
     await tester.pumpAndSettle();
@@ -216,109 +160,8 @@ void main() {
     exportAction(tester).onPressed!();
     await tester.pumpAndSettle();
     expect(messages, ['Cannot write document']);
-    expect(box.logs, hasLength(_levels.length));
+    expect(box.logs, hasLength(_records.length));
     expect(exportAction(tester).onPressed, isNotNull);
-    (scaffold(tester).keywords! as ValueNotifier<List<ScaffoldKeyword>>).value = [ScaffoldKeyword(key: 'no matching records', label: 'no matching records')];
-    await tester.pumpAndSettle();
-    expect(exportAction(tester).onPressed, isNull);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('unknown defaults, pause, search, export and clear keep records available', (tester) async {
-    await mount(tester);
-    await emit(tester, null);
-    await expectExport(tester, _levels);
-    await emit(tester, 'Warn');
-    await toggleFollow(tester);
-    await emit(tester, 'Warn', [..._records, {'id': 8, 'level': 'Error', 'message': 'later record'}]);
-    (scaffold(tester).keywords! as ValueNotifier<List<ScaffoldKeyword>>).value = [ScaffoldKeyword(key: 'core', label: 'core')];
-    await tester.pumpAndSettle();
-    await expectExport(tester, ['Warn', 'Error', 'Fatal', 'Panic']);
-    (scaffold(tester).keywords! as ValueNotifier<List<ScaffoldKeyword>>).value = const [];
-    await tester.pumpAndSettle();
-    expect(find.text('later record'), findsNothing);
-    await toggleFollow(tester);
-    expect(find.text('later record'), findsOneWidget);
-    await choose(tester, 'Clear');
-    expect(box.logs, isEmpty);
-    expect(box.defaultLogLevel, 'Warn');
-    expect(find.text('No logs'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
-
-  const noiseMessage = 'connection: report handshake success: connection reset by peer';
-
-  testWidgets('benign connection-reset errors fold behind a counting chip on the core tab', (tester) async {
-    await mount(tester);
-    await emit(tester, null, [..._records,
-      {'id': 8, 'level': 'Error', 'message': noiseMessage},
-      {'id': 9, 'level': 'Error', 'message': noiseMessage},
-      {'id': 10, 'level': 'Error', 'message': 'real failure: denied'},
-    ]);
-    // Folded by default: the chip counts the noise, the list keeps only real failures.
-    expect(find.text('Folded 2 connection resets'), findsOneWidget);
-    expect(find.textContaining('report handshake success'), findsNothing);
-    expect(find.text('real failure: denied'), findsOneWidget);
-    // Expanding shows every record and asks nothing.
-    await tester.tap(find.text('Folded 2 connection resets'));
-    await tester.pumpAndSettle();
-    expect(find.text('Hide connection-reset noise'), findsOneWidget);
-    expect(find.textContaining('report handshake success'), findsNWidgets(2));
-    // Collapsing again hides them.
-    await tester.tap(find.text('Hide connection-reset noise'));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('report handshake success'), findsNothing);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('the logcat tab never folds: system noise is the system\'s own', (tester) async {
-    await mount(tester);
-    expect(tester.takeException(), isNull, reason: 'after mount');
-    await emit(tester, null, [..._records, {'id': 8, 'level': 'Error', 'message': noiseMessage}]);
-    expect(tester.takeException(), isNull, reason: 'after core emit');
-    expect(find.text('Folded 1 connection resets'), findsOneWidget);
-    // Switching to Logcat keeps the record and offers no fold chip.
-    await tester.tap(find.text('Logcat'));
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull, reason: 'after tab switch');
-    events.add({'type': 'logcat', 'value': {'entries': [
-      {'id': 1, 'level': 'Error', 'message': noiseMessage},
-    ]}});
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull, reason: 'after logcat emit');
-    expect(find.text('Folded 1 connection resets'), findsNothing);
-    expect(find.textContaining('report handshake success'), findsOneWidget);
-    expect(tester.takeException(), isNull, reason: 'final');
-  });
-
-  testWidgets('crash export combines the records into one redacted file', (tester) async {
-    await mount(tester);
-    crashFiles = [
-      {'name': 'crash-a.log', 'size': 10, 'time': 1700000000000},
-      {'name': 'crash-b.log', 'size': 12, 'time': 1700000001000},
-    ];
-    saveResult = false;
-    scaffold(tester).iconActions.last.onPressed!();
-    await tester.pumpAndSettle();
-    expect(messages, ['Export failed']);
-    final save = calls.lastWhere((call) => call.method == 'document.save');
-    final args = json(save.arguments);
-    expect(args['redact'], true);
-    expect(args['name'] as String, contains('crashes-'));
-    expect(exported, contains('===== crash-a.log ====='));
-    expect(exported, contains('stack line'));
-    // An empty store is a message, not an export attempt.
-    crashFiles = [];
-    saveResult = null;
-    scaffold(tester).iconActions.last.onPressed!();
-    await tester.pumpAndSettle();
-    expect(messages, ['Export failed', 'No crash logs']);
-    // A cancelled picker after a real export stays silent.
-    crashFiles = [{'name': 'crash-a.log', 'size': 10, 'time': 1700000000000}];
-    saveResult = true;
-    scaffold(tester).iconActions.last.onPressed!();
-    await tester.pumpAndSettle();
-    expect(messages, ['Export failed', 'No crash logs', 'Exported']);
     expect(tester.takeException(), isNull);
   });
 }
