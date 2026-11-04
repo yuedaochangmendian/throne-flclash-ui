@@ -96,6 +96,9 @@ void main() {
         {'id': 2, 'level': 'Warn', 'receivedAt': 1793030401000, 'message': 'outbound/shadowsocks[Node A]: connection timed out'},
       ]}});
       await tester.pumpAndSettle();
+      // List events coalesce their notifications over a short window; let it close so the
+      // pages below are opened against data the UI has actually been told about.
+      await tester.pump(BoxController.batchWindow + const Duration(milliseconds: 50));
       for (final (label, page) in <(String, Widget)>[
         ('Connections', const ConnectionsPage()), ('Logs', const LogsPage()),
         ('Appearance', const AppearancePage()), ('Access', const AccessPage()),

@@ -36,6 +36,12 @@ void main() {
         return Text('${aspect.name}:${state.ready}');
       })]),
     )));
+    // List events coalesce their notifications over a short window, so the clock has to
+    // pass it before each one is delivered; the others arrive as they land.
+    Future<void> settle() async {
+      await tester.pumpAndSettle();
+      await tester.pump(BoxController.batchWindow + const Duration(milliseconds: 50));
+    }
     for (final (type, value, aspect) in <(String, Object, BoxAspect)>[
       ('rates', {'upload': 42, 'download': 84}, BoxAspect.traffic),
       ('dashboard', {'status': 'Stopped', 'uploadTotal': '1 MB', 'connections': 20}, BoxAspect.traffic),
@@ -46,7 +52,7 @@ void main() {
       final before = Map.of(builds);
       events.add({'type': type, 'value': value});
       // The broadcast arrives asynchronously and then schedules the model's frame.
-      await tester.pumpAndSettle();
+      await settle();
       for (final candidate in BoxAspect.values) {
         expect(builds[candidate], before[candidate]! + (candidate == aspect ? 1 : 0), reason: '$type -> $candidate');
       }
@@ -78,6 +84,8 @@ void main() {
     ]) {
       events.add({'type': type, 'value': value});
       await tester.pumpAndSettle();
+      // Let the coalesced list events deliver too, so the check is not trivially true.
+      await tester.pump(BoxController.batchWindow + const Duration(milliseconds: 50));
       expect(identical(app, tester.widget<MaterialApp>(find.byType(MaterialApp))), isTrue, reason: type);
     }
     events.add({'type': 'preferences', 'value': {'theme': 'dark'}});
