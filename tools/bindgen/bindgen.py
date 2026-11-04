@@ -375,7 +375,7 @@ class GoIndex:
 
 TYPE_RE = re.compile(r"^type (\w+) (struct|interface)", re.M)
 FIELD_RE = re.compile(r"^\t(\w+)\s+[\w\[\]\*\.]+", re.M)
-METHOD_RE_GO = re.compile(r"^func \([^)]*\*?(\w+)\) (\w+)\(", re.M)
+METHOD_RE_GO = re.compile(r"^func \(\w+ \*?(\w+)\) (\w+)\(", re.M)
 FUNC_RE_GO = re.compile(r"^func ([A-Z]\w+)\(", re.M)
 
 
@@ -416,12 +416,23 @@ def upper_first(s: str) -> str:
     return s[:1].upper() + s[1:] if s else s
 
 
+def _ci_member(names: set[str], key: str) -> str | None:
+    """Case-insensitive lookup for acronym-heavy Go names (URLTestGroup etc.)."""
+    lowered = key.lower()
+    for name in sorted(names):
+        if name.lower() == lowered:
+            return name
+    return None
+
+
 def resolve_member(idx: GoIndex, cls: str, java_name: str) -> tuple[str, str]:
     """Map a Java member name to ("func"|"method"|"field", goName).
 
     gobind names: Go method `Foo` -> Java `foo`; Go field `Foo` -> Java
     `getFoo`/`setFoo`/`isFoo`. Prefer an exact method match on the uncapitalised
-    form, then fall back to the field-accessor shape.
+    form, then fall back to the field-accessor shape, then to a
+    case-insensitive match (gobind folds leading acronyms, so `URLTestGroup`
+    arrives as `urlTestGroup` and must still resolve to the real Go name).
     """
     cand = upper_first(java_name)
     if cand in idx.funcs:
@@ -438,6 +449,24 @@ def resolve_member(idx: GoIndex, cls: str, java_name: str) -> tuple[str, str]:
                     return ("field", rest)
                 if upper_first(rest) in t.methods:
                     return ("method", upper_first(rest))
+    # Only reached when the exact spelling is absent; keep the real Go casing.
+    ci = _ci_member(idx.funcs, cand)
+    if ci:
+        return ("func", ci)
+    if t:
+        ci = _ci_member(t.methods, cand)
+        if ci:
+            return ("method", ci)
+        for pref in ("get", "set", "is"):
+            if java_name.startswith(pref) and len(java_name) > len(pref) \
+                    and java_name[len(pref)].isupper():
+                rest = java_name[len(pref):]
+                ci = _ci_member(t.fields, rest)
+                if ci:
+                    return ("field", ci)
+                ci = _ci_member(t.methods, upper_first(rest))
+                if ci:
+                    return ("method", ci)
     return ("method", cand)
 
 
@@ -652,9 +681,10 @@ def _go_arg(jt: str, name: str, classes: dict[str, Cls]) -> str:
         # PlatformInterface / LogSink: supplied by the bridge runtime, not the caller.
         return {"PlatformInterface": "bridgePlatform", "LogSink": "portLogSink{}"}[jt]
     # Bound object: fetch from the handle table.
+    # Object parameters arrive as C.int64_t; handleGet takes a Go int64.
     if jt in GO_IMPL_INTERFACES or jt in JNI_INTERFACES or jt in PORT_INTERFACES:
-        return f"handleGet({name}).({jt})"
-    return f"handleGet({name}).(*{jt})"
+        return f"handleGet(int64({name})).({jt})"
+    return f"handleGet(int64({name})).(*{jt})"
 
 
 def _marshal(ret: str, expr: str) -> str:
@@ -680,9 +710,9 @@ def go_expr(idx: GoIndex, sig: Signature, classes: dict[str, Cls]) -> list[str]:
     recv = ""
     if not sig.is_static and not sig.is_ctor:
         if is_iface_call:
-            recv = f"handleGet(handle).({cls})"
+            recv = f"handleGet(int64(handle)).({cls})"
         else:
-            recv = f"handleGet(handle).(*{cls})"
+            recv = f"handleGet(int64(handle)).(*{cls})"
 
     # Args follow the ORIGINAL parameter order so dropped parameters still occupy
     # their slot in the Go call (bridgePlatform / portLogSink fill it).

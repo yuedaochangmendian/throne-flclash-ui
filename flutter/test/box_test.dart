@@ -17,7 +17,12 @@ void main() {
   tearDown(() async { box.dispose(); await events.close(); messenger.setMockMethodCallHandler(channel, null); });
 
   test('native startup failure is recoverable', () async {
-    messenger.setMockMethodCallHandler(channel, (_) async => throw PlatformException(code: 'startup', message: 'configuration error'));
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      // KernelService probes the FFI bridge before 'ready'; keep the mocked
+      // native startup failure confined to the startup call itself.
+      if (call.method == 'ffi.mode') return null;
+      throw PlatformException(code: 'startup', message: 'configuration error');
+    });
     await box.initialize();
     expect(box.ready, false);
     expect(box.startupError, 'configuration error');
@@ -111,6 +116,7 @@ void main() {
         return {'version': 'test', 'coreVersion': 'test',
         'dashboard': {'status': 'Started'}, 'settings': {'allowBypass': false}};
       }
+      if (call.method == 'ffi.mode') return null;
       expect(call.method, 'settings.set');
       events.add({'type': 'settings', 'value': {'allowBypass': true}});
       await reply.future;

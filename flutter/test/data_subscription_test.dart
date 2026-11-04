@@ -21,6 +21,8 @@ void main() {
       };
       messenger.setMockMethodCallHandler(channel, (call) async {
         if (call.method == 'ready') return {'version': 'test', 'coreVersion': 'test'};
+        // KernelService probes the FFI bridge before the visibility call.
+        if (call.method == 'ffi.mode') return null;
         expect(call.method, method);
         changes.add(json(call.arguments)['visible'] as bool);
         return null;
