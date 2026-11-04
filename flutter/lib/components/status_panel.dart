@@ -362,10 +362,27 @@ class _RuntimeValue extends StatefulWidget {
   final int? startedAt;
   @override State<_RuntimeValue> createState() => _RuntimeValueState();
 }
-class _RuntimeValueState extends State<_RuntimeValue> {
+class _RuntimeValueState extends State<_RuntimeValue> with WidgetsBindingObserver {
   Timer? _timer;
-  @override void initState() { super.initState(); _timer = Timer.periodic(const Duration(seconds: 1), (_) { if (mounted && widget.startedAt != null) setState(() {}); }); }
-  @override void dispose() { _timer?.cancel(); super.dispose(); }
+  @override void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _schedule();
+  }
+  /// The clock only ticks while the app can show it, so a backgrounded app stops
+  /// waking up every second to format a time nobody is reading.
+  void _schedule() {
+    _timer?.cancel();
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    if (lifecycle == null || lifecycle == AppLifecycleState.resumed) {
+      _timer = Timer.periodic(const Duration(seconds: 1), (_) { if (mounted && widget.startedAt != null) setState(() {}); });
+    }
+  }
+  @override void didChangeAppLifecycleState(AppLifecycleState state) {
+    _schedule();
+    if (state == AppLifecycleState.resumed && mounted) setState(() {});
+  }
+  @override void dispose() { _timer?.cancel(); WidgetsBinding.instance.removeObserver(this); super.dispose(); }
   @override Widget build(BuildContext context) {
     final seconds = widget.startedAt == null ? 0 : math.min(999 * 3600 + 59 * 60 + 59, math.max(0, (DateTime.now().millisecondsSinceEpoch - widget.startedAt!) ~/ 1000));
     final text = widget.startedAt == null ? '—' : [seconds ~/ 3600, seconds ~/ 60 % 60, seconds % 60].map((n) => n.toString().padLeft(2, '0')).join(':');

@@ -73,6 +73,9 @@ void main() {
 
   Future<void> emit(WidgetTester tester, [List<Json>? records]) async {
     events.add({'type': 'logs', 'value': {'entries': records ?? _records}});
+    // List events coalesce their notifications over a short window, so the clock has
+    // to pass it before the list rebuilds.
+    await tester.pump(BoxController.batchWindow + const Duration(milliseconds: 50));
     await tester.pumpAndSettle();
   }
 
@@ -162,6 +165,40 @@ void main() {
     expect(messages, ['Cannot write document']);
     expect(box.logs, hasLength(_records.length));
     expect(exportAction(tester).onPressed, isNotNull);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a burst of log events shares one rebuild', (tester) async {
+    await mount(tester);
+    var notified = 0;
+    box.addListener(() => notified++);
+    Json line(int id) => {'id': id, 'level': 'info', 'message': 'INFO[0001] core: line $id'};
+    events.add({'type': 'logs', 'value': {'reset': false, 'firstId': 1, 'entries': [line(1)]}});
+    events.add({'type': 'logs', 'value': {'reset': false, 'firstId': 1, 'entries': [line(2)]}});
+    await tester.pumpAndSettle();
+    // The state is current as soon as the events land.
+    expect(box.logs.map((entry) => entry['id']), [1, 2]);
+    await tester.pump(BoxController.batchWindow + const Duration(milliseconds: 50));
+    await tester.pumpAndSettle();
+    // Two events, one rebuild: the burst shared a single notification.
+    expect(notified, 1);
+    expect(bodies(tester), unorderedEquals(['line 1', 'line 2']));
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the log tail keeps a fixed window however long it runs', (tester) async {
+    await mount(tester);
+    final many = [
+      for (var id = 1; id <= BoxController.maxLogLength + 88; id++)
+        {'id': id, 'level': 'info', 'message': 'INFO[0000] core: line $id'},
+    ];
+    events.add({'type': 'logs', 'value': {'entries': many}});
+    await tester.pump(BoxController.batchWindow + const Duration(milliseconds: 50));
+    await tester.pumpAndSettle();
+    expect(box.logs, hasLength(BoxController.maxLogLength));
+    // The oldest fell off the front; the newest is still the last line shown.
+    expect(box.logs.first['id'], 89);
+    expect(box.logs.last['id'], many.length);
     expect(tester.takeException(), isNull);
   });
 }

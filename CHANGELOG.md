@@ -1,3 +1,9 @@
+#### 3.2.14
+
+* Borrowing Bettbox's pending-buffer pattern, a burst of log, Logcat or connection events now shares a single rebuild: the state is current as soon as each event lands, but the UI is told once the 300 ms window closes instead of once per event
+* The log tail keeps a fixed window of 512 records (Bettbox's `maxLogLength`) however long the screen stays open, so a long-running service cannot grow the list without bound
+* Polling now stops when nobody can read it: the automatic-selector's 3-second status poll and the status card's 1-second runtime clock are both gated on the app being in the foreground and the page not being covered
+
 #### 3.2.13
 
 * The Log screen is now FlClash's own log view: a single export action, the empty state, a scrollbar that names the record at the thumb, and a list that stops following the newest line as soon as you scroll away from it

@@ -12,7 +12,7 @@ class AutoSelectorPage extends StatefulWidget {
   State<AutoSelectorPage> createState() => _AutoSelectorPageState();
 }
 
-class _AutoSelectorPageState extends State<AutoSelectorPage> {
+class _AutoSelectorPageState extends State<AutoSelectorPage> with WidgetsBindingObserver {
   Json _info = const {};
   Json _status = const {};
   bool _loading = true;
@@ -24,14 +24,30 @@ class _AutoSelectorPageState extends State<AutoSelectorPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
-    // The status is a live read: while the page is open it keeps itself current.
-    _statusTimer = Timer.periodic(const Duration(seconds: 3), (_) => _loadStatus());
+    _scheduleStatus();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) => _scheduleStatus();
+
+  /// The status is a live read, but only while someone can see it: a backgrounded app
+  /// or a route another page covers keeps its poll quiet instead of asking every 3s.
+  void _scheduleStatus() {
+    _statusTimer?.cancel();
+    final lifecycle = WidgetsBinding.instance.lifecycleState;
+    if (lifecycle != null && lifecycle != AppLifecycleState.resumed) return;
+    _statusTimer = Timer.periodic(const Duration(seconds: 3), (_) {
+      if (!mounted || !(ModalRoute.of(context)?.isCurrent ?? true)) return;
+      _loadStatus();
+    });
   }
 
   @override
   void dispose() {
     _statusTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 

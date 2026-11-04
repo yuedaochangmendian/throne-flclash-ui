@@ -118,11 +118,38 @@ class BoxController extends ChangeNotifier {
     onCacheError: (error) => debugPrint('IP quality cache: ${describe(error)}'),
   );
 
+  /// Bettbox's `maxLogLength`: the log tail keeps a fixed window, so a long-running
+  /// service cannot grow the list without bound however long the screen stays open.
+  static const maxLogLength = 512;
+
+  /// The high-frequency list events whose notifications are worth merging: a burst of
+  /// these arriving inside one [batchWindow] rebuilds the UI once instead of once each.
+  static const _batchedTypes = {'logs', 'logcat', 'connections'};
+  static const batchWindow = Duration(milliseconds: 300);
+  final _pendingAspects = <BoxAspect>{};
+  Timer? _batchTimer;
+
   void _notify(Iterable<BoxAspect> aspects) {
     if (_disposed) return;
     for (final aspect in aspects) { _revisions[aspect.index]++; }
     if (aspects.contains(BoxAspect.state)) _stateChanges.notifyListeners();
     super.notifyListeners();
+  }
+
+  /// Applies the state now so reads are never stale, but holds the rebuild until the
+  /// window closes — the Bettbox pending-buffer pattern, taken at the notify step.
+  void _notifyBatched(Iterable<BoxAspect> aspects) {
+    if (_disposed) return;
+    _pendingAspects.addAll(aspects);
+    _batchTimer ??= Timer(batchWindow, _flushBatch);
+  }
+
+  void _flushBatch() {
+    _batchTimer = null;
+    if (_disposed || _pendingAspects.isEmpty) return;
+    final aspects = _pendingAspects.toList();
+    _pendingAspects.clear();
+    _notify(aspects);
   }
 
   // Preserve explicit notifications for callers that mutate several fields.
@@ -374,6 +401,7 @@ class BoxController extends ChangeNotifier {
         } else {
           logs = entries;
         }
+        if (logs.length > maxLogLength) logs = logs.sublist(logs.length - maxLogLength);
         defaultLogLevel = logState['defaultLogLevel'] as String?;
         aspects = const [BoxAspect.logs];
       case 'logcat':
@@ -387,6 +415,7 @@ class BoxController extends ChangeNotifier {
         } else {
           logcat = entries;
         }
+        if (logcat.length > maxLogLength) logcat = logcat.sublist(logcat.length - maxLogLength);
         aspects = const [BoxAspect.logcat];
       case 'testSession': testSession = json(value); aspects = const [BoxAspect.testSession];
       case 'settings': settings = json(value);
@@ -429,12 +458,18 @@ class BoxController extends ChangeNotifier {
         return;
       default: return;
     }
-    _notify(aspects);
+    // A burst of list events shares one rebuild; everything else notifies as it lands.
+    if (_batchedTypes.contains(item['type'])) {
+      _notifyBatched(aspects);
+    } else {
+      _notify(aspects);
+    }
   }
 
   @override
   void dispose() {
     _disposed = true;
+    _batchTimer?.cancel();
     _subscription?.cancel();
     eventBus.close();
     _stateChanges.dispose();
