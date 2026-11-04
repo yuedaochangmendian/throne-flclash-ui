@@ -29,7 +29,6 @@ class KernelService {
 
   ThroneKernel? _kernel;
   ThroneInstance? _instance;
-  int _profileId = 0;
   DateTime? _startedAt;
   bool _starting = false;
   bool _stopping = false;
@@ -87,7 +86,6 @@ class KernelService {
     try {
       final profileId = _selectedProfileId();
       final built = await box.call('config.build', {'id': profileId}) as Map<String, dynamic>;
-      _profileId = profileId;
       final instance = await Isolate.run(() {
         final ffi = ThroneFFI(DynamicLibrary.open('libthrone.so'));
         final options = _startOptions(ffi, built);

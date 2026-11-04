@@ -1813,27 +1813,27 @@ func throne_WireGuardKeyPair_setPublicKey(handle C.int64_t, v *C.char)  {
 
 //export throne_AutoSelectorMember_new
 func throne_AutoSelectorMember_new() C.int64_t {
-	&AutoSelectorMember{}
+	return marshal_handle(&AutoSelectorMember{})
 }
 
 //export throne_AutoSelectorStatus_new
 func throne_AutoSelectorStatus_new() C.int64_t {
-	&AutoSelectorStatus{}
+	return marshal_handle(&AutoSelectorStatus{})
 }
 
 //export throne_ConnectionOwner_new
 func throne_ConnectionOwner_new() C.int64_t {
-	&ConnectionOwner{}
+	return marshal_handle(&ConnectionOwner{})
 }
 
 //export throne_DiagnosticsRequest_new
 func throne_DiagnosticsRequest_new() C.int64_t {
-	&DiagnosticsRequest{}
+	return marshal_handle(&DiagnosticsRequest{})
 }
 
 //export throne_ExchangeContext_new
 func throne_ExchangeContext_new() C.int64_t {
-	&ExchangeContext{}
+	return marshal_handle(&ExchangeContext{})
 }
 
 //export throne_Instance_new
@@ -1846,97 +1846,97 @@ func throne_Instance_new(options C.int64_t) C.int64_t {
 
 //export throne_LocalDNSFailure_new
 func throne_LocalDNSFailure_new() C.int64_t {
-	&LocalDNSFailure{}
+	return marshal_handle(&LocalDNSFailure{})
 }
 
 //export throne_NetworkInterface_new
 func throne_NetworkInterface_new() C.int64_t {
-	&NetworkInterface{}
+	return marshal_handle(&NetworkInterface{})
 }
 
 //export throne_Notification_new
 func throne_Notification_new() C.int64_t {
-	&Notification{}
+	return marshal_handle(&Notification{})
 }
 
 //export throne_OutboundGroup_new
 func throne_OutboundGroup_new() C.int64_t {
-	&OutboundGroup{}
+	return marshal_handle(&OutboundGroup{})
 }
 
 //export throne_OutboundGroupItem_new
 func throne_OutboundGroupItem_new() C.int64_t {
-	&OutboundGroupItem{}
+	return marshal_handle(&OutboundGroupItem{})
 }
 
 //export throne_ResolveRequest_new
 func throne_ResolveRequest_new() C.int64_t {
-	&ResolveRequest{}
+	return marshal_handle(&ResolveRequest{})
 }
 
 //export throne_ResolvedDomain_new
 func throne_ResolvedDomain_new() C.int64_t {
-	&ResolvedDomain{}
+	return marshal_handle(&ResolvedDomain{})
 }
 
 //export throne_RoutePrefix_new
 func throne_RoutePrefix_new() C.int64_t {
-	&RoutePrefix{}
+	return marshal_handle(&RoutePrefix{})
 }
 
 //export throne_RuleSetUpdateResult_new
 func throne_RuleSetUpdateResult_new() C.int64_t {
-	&RuleSetUpdateResult{}
+	return marshal_handle(&RuleSetUpdateResult{})
 }
 
 //export throne_SetupOptions_new
 func throne_SetupOptions_new() C.int64_t {
-	&SetupOptions{}
+	return marshal_handle(&SetupOptions{})
 }
 
 //export throne_SpeedTestResult_new
 func throne_SpeedTestResult_new() C.int64_t {
-	&SpeedTestResult{}
+	return marshal_handle(&SpeedTestResult{})
 }
 
 //export throne_StartOptions_new
 func throne_StartOptions_new() C.int64_t {
-	&StartOptions{}
+	return marshal_handle(&StartOptions{})
 }
 
 //export throne_StatusMessage_new
 func throne_StatusMessage_new() C.int64_t {
-	&StatusMessage{}
+	return marshal_handle(&StatusMessage{})
 }
 
 //export throne_StringBox_new
 func throne_StringBox_new() C.int64_t {
-	&StringBox{}
+	return marshal_handle(&StringBox{})
 }
 
 //export throne_TestRequest_new
 func throne_TestRequest_new() C.int64_t {
-	&TestRequest{}
+	return marshal_handle(&TestRequest{})
 }
 
 //export throne_WIFIState_new
 func throne_WIFIState_new(wifiSSID *C.char, wifiBSSID *C.char) C.int64_t {
-	NewWIFIState(C.GoString(wifiSSID), C.GoString(wifiBSSID))
+	return marshal_handle(NewWIFIState(C.GoString(wifiSSID), C.GoString(wifiBSSID)))
 }
 
 //export throne_WarpIdentity_new
 func throne_WarpIdentity_new() C.int64_t {
-	&WarpIdentity{}
+	return marshal_handle(&WarpIdentity{})
 }
 
 //export throne_WarpRegisterRequest_new
 func throne_WarpRegisterRequest_new() C.int64_t {
-	&WarpRegisterRequest{}
+	return marshal_handle(&WarpRegisterRequest{})
 }
 
 //export throne_WireGuardKeyPair_new
 func throne_WireGuardKeyPair_new() C.int64_t {
-	&WireGuardKeyPair{}
+	return marshal_handle(&WireGuardKeyPair{})
 }
 
 //export throne_AutoSelectorMemberIterator_hasNext

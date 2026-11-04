@@ -36,7 +36,12 @@ JNI shim (regenerated together).
 - Strings return as `char *` allocated by Go; the caller frees with `throne_free`.
 - The 19 `throws` methods report through `throne_last_error()`; the Dart
   wrappers raise on non-empty.
-- `byte[]` crosses as `const uint8_t *` + length.
+- `byte[]` crosses as `uint8_t *` + length. Export prototypes must use mutable
+  pointers (`char *` / `uint8_t *` / `throne_callbacks_t *`): cgo generates the
+  same non-const types from `*C.char`, `*C.uint8_t` and
+  `*C.throne_callbacks_t`, and `const` there makes `_cgo_export.c` fail with
+  conflicting types. The `throne_callbacks_t` function-pointer fields keep
+  their `const` (they are Go→platform callbacks, not `//export`s).
 
 ## Who implements each interface (decides the crossing direction)
 

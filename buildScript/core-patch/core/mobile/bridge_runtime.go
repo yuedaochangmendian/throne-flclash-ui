@@ -200,7 +200,7 @@ func (bridgePlatformImpl) OpenTun(options TunOptions) (int32, error) {
 	}
 	h := handleNew(options)
 	defer handleRelease(h)
-	fd = int32(C.call_open_tun(bridgeTun(), C.int64_t(h)))
+	fd = int32(C.call_open_tun(C.int64_t(h)))
 	if fd < 0 {
 		return 0, errCallback
 	}

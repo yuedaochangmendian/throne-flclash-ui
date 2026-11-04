@@ -292,7 +292,7 @@ JNIEXPORT void JNICALL
 Java_io_throne_bbox_core_Core_exchangeRawSuccess(JNIEnv *env, jobject, const jlong handle, jbyteArray result) {
     const jsize len = result != nullptr ? env->GetArrayLength(result) : 0;
     jbyte *bytes = len > 0 ? env->GetByteArrayElements(result, nullptr) : nullptr;
-    throne_ExchangeContext_rawSuccess(handle, reinterpret_cast<const uint8_t *>(bytes), len);
+    throne_ExchangeContext_rawSuccess(handle, reinterpret_cast<uint8_t *>(bytes), len);
     if (bytes != nullptr) env->ReleaseByteArrayElements(result, bytes, JNI_ABORT);
 }
 
