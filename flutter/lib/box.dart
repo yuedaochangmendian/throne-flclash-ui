@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'capabilities.dart';
 import 'common/ip_quality_cache.dart';
+import 'core/kernel_service.dart';
 import 'core/throne_kernel.dart';
 
 part 'box_api.dart';
@@ -85,7 +86,10 @@ class BoxController extends ChangeNotifier {
   late final Stream<IntentAvailableEvent> intents = _eventsOf<IntentAvailableEvent>();
   StreamSubscription<dynamic>? _subscription;
   StreamSubscription<Json>? _kernelSub;
+  StreamSubscription<Map<String, dynamic>>? _kernelEvents;
   int _kernelLogId = 0;
+  /// The FFI path's core lifecycle (active only when the rebuilt core is present).
+  late final KernelService kernel = KernelService(this);
   final _revisions = List<int>.filled(BoxAspect.values.length, 0);
   final _stateChanges = ChangeNotifier();
   final _dataOwners = <BoxData, Set<Object>>{};
@@ -254,6 +258,11 @@ class BoxController extends ChangeNotifier {
     // the FFI message port (throne_kernel) instead of the channel's 'logs' pushes.
     await _kernelSub?.cancel();
     _kernelSub = ThroneKernel.ensure()?.logs.listen(_onKernelLog, onError: report);
+    // The FFI path drives the core lifecycle itself; its status/events feed _onEvent
+    // in the same wire shapes the channel uses.
+    await kernel.initialize();
+    await _kernelEvents?.cancel();
+    _kernelEvents = kernel.events.listen(_onEvent, onError: report);
     try {
       final result = json(await call('ready'));
       version = result['version'] as String;
@@ -445,6 +454,10 @@ class BoxController extends ChangeNotifier {
         aspects = const [BoxAspect.traffic];
       case 'error': eventBus.emit(BoxMessageEvent(value.toString())); return;
       case 'applyRequired': applyRequired = value.toString();
+      case 'serviceReload':
+        // A widget/tile/notification reload reached the FFI driver (BboxKernel.onReloadWanted).
+        unawaited(kernel.reloadService());
+        return;
       case 'subscriptionReport':
         // Errors and untitled status lines are snackbars; a popup report opens the change window
         // (SubscriptionReportDialog equivalence) — the app shell listens on the stream.
@@ -493,6 +506,8 @@ class BoxController extends ChangeNotifier {
     _batchTimer?.cancel();
     _subscription?.cancel();
     _kernelSub?.cancel();
+    _kernelEvents?.cancel();
+    kernel.dispose();
     eventBus.close();
     _stateChanges.dispose();
     super.dispose();

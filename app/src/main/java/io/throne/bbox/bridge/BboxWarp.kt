@@ -63,4 +63,29 @@ object BboxWarp {
             DataStore.warpReserved = identity.reserved
         }
     }
+
+    /**
+     * The FFI path's landing: the identity Dart read from the kernel and the
+     * amnezia packets it generated are saved here exactly like [register] does.
+     */
+    fun complete(
+        tunnelType: String,
+        identity: WarpClient.Identity,
+        packets: List<String>,
+        packetsError: String?,
+    ): Map<String, Any?> {
+        val masque = tunnelType == WarpClient.TUNNEL_MASQUE
+        if (masque && packets.isNotEmpty()) DataStore.warpAmneziaPackets = packets
+        fill(identity, masque)
+        return mapOf(
+            "tunnelType" to tunnelType,
+            "mode" to DataStore.warpMode,
+            "endpoint" to identity.endpoint,
+            "addresses" to identity.addresses,
+            "reserved" to identity.reserved,
+            "packets" to DataStore.warpAmneziaPackets,
+            "packetsError" to packetsError,
+            "reload" to (DataStore.enableWarp && DataStore.serviceState.canStop),
+        )
+    }
 }

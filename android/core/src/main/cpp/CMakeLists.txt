@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.22.1)
 
 # The JNI shim for the self-owned kernel bridge. Links the Go shared library
-# (libgojni.so, extracted from ThroneCore.aar into ../jniLibs) so the throne_*
+# (libthrone.so, extracted from ThroneCore.aar into ../jniLibs) so the throne_*
 # C ABI and the JNI thunks live in the same process — the bettbox shape.
 
 project("core")
@@ -27,10 +27,18 @@ if (NOT "${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
     add_compile_options(-fvisibility=hidden -fvisibility-inlines-hidden)
 endif ()
 
-set(LIB_GOJNI_PATH "${CMAKE_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/libgojni.so")
+set(LIB_GOJNI_PATH "${CMAKE_SOURCE_DIR}/../jniLibs/${ANDROID_ABI}/libthrone.so")
 
+# The dual-path guard: the unpatched ThroneCore.aar has no throne_* ABI yet. The
+# symbol name lives in the .so's string table, so a string probe distinguishes
+# the patched library from the old one without linking anything.
+set(HAS_THRONE_ABI OFF)
 if (EXISTS ${LIB_GOJNI_PATH})
-    message(STATUS "Found libgojni.so for ABI ${ANDROID_ABI}")
+    file(STRINGS ${LIB_GOJNI_PATH} HAS_THRONE_ABI REGEX "throne_register_callbacks")
+endif ()
+
+if (HAS_THRONE_ABI)
+    message(STATUS "libthrone.so carries the throne_* ABI for ${ANDROID_ABI}")
     add_compile_definitions(LIBCORE)
     include_directories(${CMAKE_SOURCE_DIR}/../jniLibs/${ANDROID_ABI})
     link_directories(${CMAKE_SOURCE_DIR}/../jniLibs/${ANDROID_ABI})
@@ -38,9 +46,9 @@ if (EXISTS ${LIB_GOJNI_PATH})
             jni_helper.cpp
             core.cpp)
     target_link_libraries(${CMAKE_PROJECT_NAME}
-            gojni)
+            throne)
 else ()
-    message(WARNING "Not found libgojni.so for ABI ${ANDROID_ABI}; building without the kernel bridge")
+    message(WARNING "libthrone.so has no throne_* ABI for ${ANDROID_ABI}; building the shim without the kernel bridge")
     add_library(${CMAKE_PROJECT_NAME} SHARED
             jni_helper.cpp
             core.cpp)

@@ -1,6 +1,6 @@
 // The Dart-side runtime for the self-owned kernel bridge.
 //
-// Dart controls the kernel directly: `DynamicLibrary.open('libgojni.so')` exposes
+// Dart controls the kernel directly: `DynamicLibrary.open('libthrone.so')` exposes
 // the throne_* C ABI (bindings generated in `thone_ffi.dart`), and kernel events
 // arrive on a ReceivePort the Go side posts JSON to — the bettbox message-port
 // pattern. The method channel stays for Android duties only (VpnService,
@@ -38,7 +38,7 @@ class ThroneKernel {
   static bool get isAvailable {
     if (_available != null) return _available!;
     try {
-      final lib = DynamicLibrary.open('libgojni.so');
+      final lib = DynamicLibrary.open('libthrone.so');
       lib.lookup('throne_Mobile_setup');
       _available = true;
     } catch (_) {
@@ -51,7 +51,7 @@ class ThroneKernel {
   static ThroneKernel? ensure() {
     if (_instance != null) return _instance;
     if (!isAvailable) return null;
-    final lib = DynamicLibrary.open('libgojni.so');
+    final lib = DynamicLibrary.open('libthrone.so');
     _instance = ThroneKernel._(ThroneFFI(lib), ReceivePort());
     return _instance;
   }

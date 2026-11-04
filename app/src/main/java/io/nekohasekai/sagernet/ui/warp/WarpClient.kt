@@ -111,6 +111,14 @@ object WarpClient {
         return "http://$credentials$host:${DataStore.inboundSocksPort}"
     }
 
+    /** The [register] inputs, for the FFI path building its own WarpRegisterRequest. */
+    fun registerParams(tunnelType: String): Map<String, Any?> = mapOf(
+        "tunnelType" to tunnelType,
+        "proxy" to proxy(),
+        "hosts" to DataStore.warpApiHosts.toList(),
+        "mode" to DataStore.warpMode,
+    )
+
     /** RegisterWarp (warp.cpp:28-54) through ICoreService.warpRegister; failures throw with the core's text. */
     suspend fun register(tunnelType: String): Identity = withContext(Dispatchers.IO) {
         val proxy = proxy()

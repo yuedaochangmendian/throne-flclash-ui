@@ -13,7 +13,8 @@ import moe.matsuri.nb4a.NativeInterface
 import moe.matsuri.nb4a.utils.CoreLog
 import java.io.File
 
-// Loaded only in the :bg process: everything here pulls the ThroneCore AAR (libthrone.so) in.
+// Shares the app process with the Flutter engine (zero cross-process): everything here pulls the
+// ThroneCore AAR (libthrone.so) in — the same Go runtime the Dart FFI path drives.
 object CoreRuntime {
 
     /** The core's working dir under filesDir, which relative paths of its config resolve against. */

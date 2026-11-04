@@ -204,8 +204,8 @@
              (SwitchActivity, which forwards to the Flutter host), the VPN consent hop (VpnRequestActivity), the
              widgets' and the launcher's quick toggles, and the updater's dialog. None of them draws a screen of its
              own any more, but an undeclared launch target is an ActivityNotFoundException at the tap. The attributes
-             are what keeps each hop invisible: no recents entry, a translucent theme for the toggles, and the :bg
-             process for the toggles because that is where the service state lives. -->
+             are what keeps each hop invisible: no recents entry, a translucent theme for the toggles. Everything
+             shares one process now — Flutter engine, Kotlin and the Go core — so the service state is everywhere. -->
         <activity
             android:name="io.nekohasekai.sagernet.ui.SwitchActivity"
             android:configChanges="uiMode"
@@ -222,7 +222,6 @@
             android:exported="true"
             android:label="@string/quick_toggle"
             android:launchMode="singleTask"
-            android:process=":bg"
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar">
             <intent-filter>
@@ -235,7 +234,6 @@
             android:exported="true"
             android:label="@string/quick_enable"
             android:launchMode="singleTask"
-            android:process=":bg"
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
         <activity
@@ -244,7 +242,6 @@
             android:exported="true"
             android:label="@string/quick_disable"
             android:launchMode="singleTask"
-            android:process=":bg"
             android:taskAffinity=""
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
         <activity
@@ -257,7 +254,6 @@
             android:name="io.nekohasekai.sagernet.bg.ProxyService"
             android:exported="false"
             android:foregroundServiceType="systemExempted"
-            android:process=":bg"
             tools:ignore="ForegroundServicePermission" />
 
         <service
@@ -266,7 +262,6 @@
             android:foregroundServiceType="systemExempted"
             android:label="@string/app_name"
             android:permission="android.permission.BIND_VPN_SERVICE"
-            android:process=":bg"
             tools:ignore="ForegroundServicePermission">
 
             <intent-filter>
@@ -278,7 +273,7 @@
             android:name="io.nekohasekai.sagernet.bg.CoreService"
             android:exported="false"
             android:foregroundServiceType="dataSync"
-            android:process=":bg" />
+            />
 
         <service
             android:name="io.nekohasekai.sagernet.bg.TileService"
@@ -287,7 +282,6 @@
             android:icon="@drawable/ic_throne_tile"
             android:label="@string/app_name"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE"
-            android:process=":bg"
             tools:ignore="ForegroundServicePermission"
             tools:targetApi="n">
             <intent-filter>
@@ -317,7 +311,7 @@
             android:name="io.nekohasekai.sagernet.BootReceiver"
             android:enabled="false"
             android:exported="true"
-            android:process=":bg">
+            >
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
@@ -327,7 +321,7 @@
         <receiver
             android:name="io.nekohasekai.sagernet.PackageReplacedReceiver"
             android:exported="false"
-            android:process=":bg">
+            >
             <intent-filter>
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
@@ -337,12 +331,12 @@
             android:name="io.nekohasekai.sagernet.update.UpdateReceiver"
             android:exported="false" />
 
-        <!-- Widgets live in :bg, the only process that knows the service state. -->
+        <!-- Widgets render from the shared service state (single process). -->
         <receiver
             android:name="io.nekohasekai.sagernet.appwidget.ToggleWidgetProvider"
             android:exported="false"
             android:label="@string/widget_toggle_name"
-            android:process=":bg">
+            >
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -354,7 +348,7 @@
             android:name="io.nekohasekai.sagernet.appwidget.StatusWidgetProvider"
             android:exported="false"
             android:label="@string/widget_status_name"
-            android:process=":bg">
+            >
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
             </intent-filter>
@@ -365,18 +359,18 @@
         <receiver
             android:name="io.nekohasekai.sagernet.appwidget.WidgetActionReceiver"
             android:exported="false"
-            android:process=":bg" />
+            />
 
         <service
             android:name="androidx.room.MultiInstanceInvalidationService"
-            android:process=":bg" />
+            />
 
-        <!-- Hosts RemoteCoroutineWorker (e.g. SubscriptionUpdater.UpdateTask) in the :bg process,
+        <!-- Hosts RemoteCoroutineWorker (e.g. SubscriptionUpdater.UpdateTask) in the app process,
              where DataStore.serviceState is maintained by BaseService -->
         <service
             android:name="androidx.work.multiprocess.RemoteWorkerService"
             android:exported="false"
-            android:process=":bg" />
+            />
 
     </application>
 

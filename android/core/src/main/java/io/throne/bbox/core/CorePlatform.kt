@@ -4,6 +4,13 @@
 package io.throne.bbox.core
 
 interface CorePlatform {
+    /**
+     * The kernel needs the VPN while the core starts: build VpnService.Builder
+     * from [optionsHandle] (Core.tunSpecJson), establish, feed the fd back with
+     * Core.startTun(fd, tun) and answer the fd; -1 on failure.
+     */
+    fun openTun(optionsHandle: Long): Int
+
     fun usePlatformAutoDetectInterfaceControl(): Boolean
 
     fun useProcFS(): Boolean

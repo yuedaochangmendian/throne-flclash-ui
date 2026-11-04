@@ -99,12 +99,21 @@ EXTRA_EXPORTS = [
     ("throne_getAndroidVpnOptions", "char *", [("const char *", "coreConfig")],
      "Tun inbound section of the core config as JSON, for VpnService.Builder "
      "(establish() → fd → throne_start_tun)."),
+    ("throne_TunOptions_toJSON", "char *", [("int64_t", "options")],
+     "A TunOptions handle as JSON {mtu,inet4Address[],autoRoute,dnsMode,...} — "
+     "the open_tun callback reads the fields it needs to build "
+     "VpnService.Builder without the gobind TunOptions type."),
 ]
 
 # The Go->platform callback table (filled by the JNI shim). All object graphs cross as
 # JSON so the table stays primitive/string-shaped like bettbox's.
 CALLBACKS = [
     # (c name, c return, [(c type, name)], doc)
+    ("open_tun", "int32_t", [("int64_t", "options")],
+     "Establish the VPN for these tun options (a TunOptions handle; read fields "
+     "via throne_TunOptions_toJSON) and return the fd, or -1 on failure. The "
+     "shim feeds the fd to the kernel through throne_start_tun with its "
+     "TunInterface, so a pre-fed fd makes this call unnecessary."),
     ("protect", "void", [("void *", "tun"), ("int32_t", "fd")],
      "TunInterface.protect — VpnService.protect(fd)."),
     ("resolver_process", "const char *",
@@ -888,7 +897,7 @@ def emit_go_runtime() -> str:
         guard = f"g_has && g_callbacks.{name}"
         if ret == "void":
             fallback = ""
-        elif ret == "int8_t":
+        elif ret in ("int8_t", "int32_t", "int64_t"):
             fallback = " return 0;"
         else:
             fallback = " return NULL;"
@@ -1076,15 +1085,27 @@ type bridgePlatformImpl struct{{}}
 
 var bridgePlatform PlatformInterface = bridgePlatformImpl{{}}
 
-// OpenTun returns the fd fed through throne_start_tun: the platform established
-// the VPN before the core started (the bettbox flow).
+// OpenTun feeds the core the tun fd. When throne_start_tun already pushed one
+// (VpnService established before the start) it is returned as is; otherwise the
+// open_tun callback establishes the VPN now — the shim builds VpnService.Builder
+// from the TunOptions handle and feeds the fd back through throne_start_tun.
 func (bridgePlatformImpl) OpenTun(options TunOptions) (int32, error) {{
 \tbridgeMu.Lock()
-\tdefer bridgeMu.Unlock()
-\tif bridgeFd <= 0 {{
-\t\treturn 0, errNoTunFd
+\tfd := bridgeFd
+\tbridgeMu.Unlock()
+\tif fd > 0 {{
+\t\treturn fd, nil
 \t}}
-\treturn bridgeFd, nil
+\th := handleNew(options)
+\tdefer handleRelease(h)
+\tfd = int32(C.call_open_tun(bridgeTun(), C.int64_t(h)))
+\tif fd < 0 {{
+\t\treturn 0, errCallback
+\t}}
+\tbridgeMu.Lock()
+\tbridgeFd = fd
+\tbridgeMu.Unlock()
+\treturn fd, nil
 }}
 
 func (bridgePlatformImpl) LocalDNSTransport() LocalDNSTransport        {{ return bridgeDNS{{}} }}
@@ -1152,20 +1173,24 @@ type bridgeDNS struct{{}}
 func (bridgeDNS) Raw() bool {{ return C.call_local_dns_raw(bridgeTun()) != 0 }}
 
 func (bridgeDNS) Lookup(ctx *ExchangeContext, network string, domain string) error {{
+\th := handleNew(ctx)
+\tdefer handleRelease(h)
 \tn := C.CString(network)
 \tdefer C.free(unsafe.Pointer(n))
 \td := C.CString(domain)
 \tdefer C.free(unsafe.Pointer(d))
-\treturn strErr(goStr(C.call_local_dns_lookup(bridgeTun(), C.int64_t(handleNew(ctx)), n, d)))
+\treturn strErr(goStr(C.call_local_dns_lookup(bridgeTun(), C.int64_t(h), n, d)))
 }}
 
 func (bridgeDNS) Exchange(ctx *ExchangeContext, message []byte) error {{
+\th := handleNew(ctx)
+\tdefer handleRelease(h)
 \tvar msg unsafe.Pointer
 \tif len(message) > 0 {{
 \t\tmsg = C.CBytes(message)
 \t\tdefer C.free(msg)
 \t}}
-\treturn strErr(goStr(C.call_local_dns_exchange(bridgeTun(), C.int64_t(handleNew(ctx)), (*C.uint8_t)(msg), C.int32_t(len(message)))))
+\treturn strErr(goStr(C.call_local_dns_exchange(bridgeTun(), C.int64_t(h), (*C.uint8_t)(msg), C.int32_t(len(message)))))
 }}
 
 // --- small adapters ---------------------------------------------------------
@@ -1287,6 +1312,62 @@ func throne_getAndroidVpnOptions(coreConfig *C.char) *C.char {{
 \t\t}}
 \t}}
 \treturn C.CString("{{}}")
+}}
+
+// handleRelease drops a temp handle created for a callback crossing.
+func handleRelease(h int64) {{
+\thandlesMu.Lock()
+\tdefer handlesMu.Unlock()
+\tdelete(handles, h)
+}}
+
+//export throne_TunOptions_toJSON
+func throne_TunOptions_toJSON(handle C.int64_t) *C.char {{
+\to, _ := handleGet(int64(handle)).(TunOptions)
+\tif o == nil {{
+\t\treturn C.CString("")
+\t}}
+\tprefixes := func(it RoutePrefixIterator) []map[string]interface{{}} {{
+\t\tout := make([]map[string]interface{{}}, 0, 4)
+\t\tfor it != nil && it.HasNext() {{
+\t\t\tp := it.Next()
+\t\t\tout = append(out, map[string]interface{{}}{{"address": p.Address(), "prefix": p.Prefix()}})
+\t\t}}
+\t\treturn out
+\t}}
+\tstringsOf := func(it StringIterator) []string {{
+\t\tout := make([]string, 0, 4)
+\t\tfor it != nil && it.HasNext() {{
+\t\t\tout = append(out, it.Next())
+\t\t}}
+\t\treturn out
+\t}}
+\tdto := map[string]interface{{}}{{}}
+\tdto["mtu"] = o.GetMTU()
+\tdto["autoRoute"] = o.GetAutoRoute()
+\tdto["strictRoute"] = o.GetStrictRoute()
+\tdto["inet4Address"] = prefixes(o.GetInet4Address())
+\tdto["inet6Address"] = prefixes(o.GetInet6Address())
+\tdto["inet4RouteAddress"] = prefixes(o.GetInet4RouteAddress())
+\tdto["inet6RouteAddress"] = prefixes(o.GetInet6RouteAddress())
+\tdto["inet4RouteExcludeAddress"] = prefixes(o.GetInet4RouteExcludeAddress())
+\tdto["inet6RouteExcludeAddress"] = prefixes(o.GetInet6RouteExcludeAddress())
+\tdto["inet4RouteRange"] = prefixes(o.GetInet4RouteRange())
+\tdto["inet6RouteRange"] = prefixes(o.GetInet6RouteRange())
+\tdto["includePackage"] = stringsOf(o.GetIncludePackage())
+\tdto["excludePackage"] = stringsOf(o.GetExcludePackage())
+\tdto["httpProxyEnabled"] = o.IsHTTPProxyEnabled()
+\tdto["httpProxyServer"] = o.GetHTTPProxyServer()
+\tdto["httpProxyServerPort"] = o.GetHTTPProxyServerPort()
+\tdto["httpProxyBypassDomain"] = stringsOf(o.GetHTTPProxyBypassDomain())
+\tif mode := o.GetDNSMode(); mode != nil {{
+\t\tdto["dnsMode"] = mode.Value
+\t}}
+\tif dns, err := o.GetDNSServerAddress(); err == nil {{
+\t\tdto["dnsServerAddress"] = stringsOf(dns)
+\t}}
+\tb, _ := json.Marshal(dto)
+\treturn C.CString(string(b))
 }}
 
 var _ = unsafe.Pointer(nil)

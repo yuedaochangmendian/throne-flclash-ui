@@ -176,7 +176,7 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
     if (_busy || box.transitioning) return;
     if (!box.running && box.selectedProfile == null) { await openForm(context, const AddProfilePage()); return; }
     setState(() => _busy = true);
-    await box.act(box.running ? 'service.stop' : 'service.start');
+    await (box.running ? box.serviceStop() : box.serviceStart());
     if (mounted) setState(() => _busy = false);
   }
   @override Widget build(BuildContext context) {

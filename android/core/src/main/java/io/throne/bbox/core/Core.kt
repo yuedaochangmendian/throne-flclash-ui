@@ -17,6 +17,13 @@ object Core {
 
     external fun stopTun()
 
+    /**
+     * A TunOptions handle as JSON (mtu, addresses, routes, dns, packages, http
+     * proxy) — the fields VpnService.Builder needs when the kernel asks for the
+     * VPN mid-start through CorePlatform.openTun.
+     */
+    external fun tunSpecJson(handle: Long): String
+
     /** 0 = resume, 1 = suspend, 2 = doze-suspend. */
     external fun suspend(suspended: Int)
 
@@ -33,4 +40,15 @@ object Core {
     )
 
     external fun updateNetworkPath(listener: Long, path: String)
+
+    /** ExchangeContext completions (the local-DNS transport's answers, called while the call blocks). */
+    external fun exchangeSuccess(handle: Long, result: String)
+
+    external fun exchangeRawSuccess(handle: Long, result: ByteArray)
+
+    external fun exchangeErrorCode(handle: Long, code: Int)
+
+    external fun exchangeErrnoCode(handle: Long, code: Int)
+
+    external fun exchangeOnCancel(handle: Long, callback: Any?)
 }

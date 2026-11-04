@@ -4,6 +4,20 @@ part of 'box.dart';
 /// invocations — a bare name string plus an argument map — into typed, discoverable methods,
 /// so the name is checked at compile time and the parameter shape lives in one place.
 /// Grouped by domain as `extension`s on [BoxController].
+///
+/// The kernel operations (service lifecycle, mode, selection, WARP) take the FFI
+/// path first — Dart drives the core directly when the rebuilt core is present —
+/// and fall back to the method channel otherwise.
+
+Future<bool> _kernelOp(BoxController box, Future<void> Function() body) async {
+  try {
+    await body();
+    return true;
+  } catch (error) {
+    box.report(error);
+    return false;
+  }
+}
 extension ProfilesApi on BoxController {
   Future<dynamic> profileDecodeIntent(String uri) => call('profiles.decodeIntent', {'uri': uri});
   Future<dynamic> profileAutoSelectorInfo(dynamic id) => call('profiles.autoSelectorInfo', {'id': id});
@@ -24,8 +38,23 @@ extension ProfilesApi on BoxController {
   Future<bool> profileClearTestResults(dynamic id) => act('profiles.clearTestResults', {'id': id});
   Future<bool> profileClearTraffic(dynamic id) => act('profiles.clearTraffic', {'id': id});
   Future<bool> profileDelete(dynamic id) => act('profiles.delete', {'id': id});
-  Future<bool> profileSwitchRelative(int step) => act('profiles.switchRelative', {'step': step});
-  Future<bool> profileSelect(dynamic id) => act('profiles.select', {'id': id});
+  Future<bool> profileSwitchRelative(int step) async {
+    if (ThroneKernel.isAvailable) {
+      final done = await act('profiles.switchRelative', {'step': step});
+      if (done) await kernel.onSelectionChanged();
+      return done;
+    }
+    return act('profiles.switchRelative', {'step': step});
+  }
+
+  Future<bool> profileSelect(dynamic id) async {
+    if (ThroneKernel.isAvailable) {
+      final done = await act('profiles.select', {'id': id});
+      if (done) await kernel.onSelectionChanged();
+      return done;
+    }
+    return act('profiles.select', {'id': id});
+  }
   Future<dynamic> profileImportFile() => call('profiles.importFile');
   Future<dynamic> profileCreateNode(dynamic groupId, dynamic type) => call('profiles.createNode', {'groupId': groupId, 'type': type});
   Future<dynamic> profileSave(Json value) => call('profiles.save', value);
@@ -72,7 +101,14 @@ extension ReportsApi on BoxController {
 
 extension GroupsApi on BoxController {
   Future<bool> groupTest(dynamic tag) => act('groups.test', {'tag': tag});
-  Future<bool> groupSelect(dynamic group, dynamic tag) => act('groups.select', {'group': group, 'tag': tag});
+  Future<bool> groupSelect(dynamic group, dynamic tag) async {
+    if (ThroneKernel.isAvailable) {
+      final done = await act('groups.select', {'group': group, 'tag': tag});
+      if (done) await kernel.onSelectionChanged();
+      return done;
+    }
+    return act('groups.select', {'group': group, 'tag': tag});
+  }
   Future<dynamic> groupTestSessionStart(Json args) => call('groups.testSession.start', args);
   Future<bool> groupTestSessionStartChecked(Json args) => act('groups.testSession.start', args);
   Future<bool> groupTestSessionStop() => act('groups.testSession.stop');
@@ -145,8 +181,20 @@ extension ShareApi on BoxController {
 }
 
 extension ServiceApi on BoxController {
-  Future<bool> serviceReload({bool restart = false}) => act('service.reload', restart ? {'restart': true} : null);
-  Future<bool> serviceStart() => act('service.start');
+  Future<bool> serviceReload({bool restart = false}) async {
+    if (ThroneKernel.isAvailable) return _kernelOp(this, kernel.reloadService);
+    return act('service.reload', restart ? {'restart': true} : null);
+  }
+
+  Future<bool> serviceStart() async {
+    if (ThroneKernel.isAvailable) return _kernelOp(this, kernel.startService);
+    return act('service.start');
+  }
+
+  Future<bool> serviceStop() async {
+    if (ThroneKernel.isAvailable) return _kernelOp(this, kernel.stopService);
+    return act('service.stop');
+  }
 }
 
 extension CaptureApi on BoxController {
@@ -191,10 +239,15 @@ extension MiscApi on BoxController {
   Future<dynamic> updatesCheck() => call('updates.check');
   Future<bool> wifiPermissionsEnsure() => act('wifiPermissions.ensure');
   Future<bool> systemProxySet(bool enabled) => act('systemProxy.set', {'enabled': enabled});
-  Future<bool> modeSet(dynamic mode) => act('mode.set', {'mode': mode});
+  Future<bool> modeSet(dynamic mode) async {
+    if (ThroneKernel.isAvailable) return _kernelOp(this, () => kernel.setMode(mode.toString()));
+    return act('mode.set', {'mode': mode});
+  }
   Future<dynamic> filesOpen(String uri) => call('files.open', {'uri': uri});
   Future<dynamic> dnsSuggestions() => call('dns.suggestions');
   Future<bool> batteryOpen() => act('battery.open');
   Future<dynamic> configCheck(String content) => call('config.check', {'content': content});
-  Future<dynamic> warpRegister(String tunnelType) => call('warp.register', {'tunnelType': tunnelType});
+  Future<dynamic> warpRegister(String tunnelType) => kernel.ffiMode
+      ? kernel.warpRegister(tunnelType)
+      : call('warp.register', {'tunnelType': tunnelType});
 }

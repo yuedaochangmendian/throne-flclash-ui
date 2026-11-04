@@ -11,6 +11,7 @@ package mobile
 #include <stdlib.h>
 #include <string.h>
 
+static int32_t call_open_tun(int64_t options) { if (g_has && g_callbacks.open_tun) return g_callbacks.open_tun(options); return 0; }
 static void call_protect(void * tun, int32_t fd) { if (g_has && g_callbacks.protect) return g_callbacks.protect(tun, fd); }
 static const char * call_resolver_process(void * tun, int32_t protocol, const char * source, const char * target, int32_t uid) { if (g_has && g_callbacks.resolver_process) return g_callbacks.resolver_process(tun, protocol, source, target, uid); return NULL; }
 static void call_release_object(void * obj) { if (g_has && g_callbacks.release_object) return g_callbacks.release_object(obj); }
@@ -186,15 +187,27 @@ type bridgePlatformImpl struct{}
 
 var bridgePlatform PlatformInterface = bridgePlatformImpl{}
 
-// OpenTun returns the fd fed through throne_start_tun: the platform established
-// the VPN before the core started (the bettbox flow).
+// OpenTun feeds the core the tun fd. When throne_start_tun already pushed one
+// (VpnService established before the start) it is returned as is; otherwise the
+// open_tun callback establishes the VPN now — the shim builds VpnService.Builder
+// from the TunOptions handle and feeds the fd back through throne_start_tun.
 func (bridgePlatformImpl) OpenTun(options TunOptions) (int32, error) {
 	bridgeMu.Lock()
-	defer bridgeMu.Unlock()
-	if bridgeFd <= 0 {
-		return 0, errNoTunFd
+	fd := bridgeFd
+	bridgeMu.Unlock()
+	if fd > 0 {
+		return fd, nil
 	}
-	return bridgeFd, nil
+	h := handleNew(options)
+	defer handleRelease(h)
+	fd = int32(C.call_open_tun(bridgeTun(), C.int64_t(h)))
+	if fd < 0 {
+		return 0, errCallback
+	}
+	bridgeMu.Lock()
+	bridgeFd = fd
+	bridgeMu.Unlock()
+	return fd, nil
 }
 
 func (bridgePlatformImpl) LocalDNSTransport() LocalDNSTransport        { return bridgeDNS{} }
@@ -262,20 +275,24 @@ type bridgeDNS struct{}
 func (bridgeDNS) Raw() bool { return C.call_local_dns_raw(bridgeTun()) != 0 }
 
 func (bridgeDNS) Lookup(ctx *ExchangeContext, network string, domain string) error {
+	h := handleNew(ctx)
+	defer handleRelease(h)
 	n := C.CString(network)
 	defer C.free(unsafe.Pointer(n))
 	d := C.CString(domain)
 	defer C.free(unsafe.Pointer(d))
-	return strErr(goStr(C.call_local_dns_lookup(bridgeTun(), C.int64_t(handleNew(ctx)), n, d)))
+	return strErr(goStr(C.call_local_dns_lookup(bridgeTun(), C.int64_t(h), n, d)))
 }
 
 func (bridgeDNS) Exchange(ctx *ExchangeContext, message []byte) error {
+	h := handleNew(ctx)
+	defer handleRelease(h)
 	var msg unsafe.Pointer
 	if len(message) > 0 {
 		msg = C.CBytes(message)
 		defer C.free(msg)
 	}
-	return strErr(goStr(C.call_local_dns_exchange(bridgeTun(), C.int64_t(handleNew(ctx)), (*C.uint8_t)(msg), C.int32_t(len(message)))))
+	return strErr(goStr(C.call_local_dns_exchange(bridgeTun(), C.int64_t(h), (*C.uint8_t)(msg), C.int32_t(len(message)))))
 }
 
 // --- small adapters ---------------------------------------------------------
@@ -397,6 +414,62 @@ func throne_getAndroidVpnOptions(coreConfig *C.char) *C.char {
 		}
 	}
 	return C.CString("{}")
+}
+
+// handleRelease drops a temp handle created for a callback crossing.
+func handleRelease(h int64) {
+	handlesMu.Lock()
+	defer handlesMu.Unlock()
+	delete(handles, h)
+}
+
+//export throne_TunOptions_toJSON
+func throne_TunOptions_toJSON(handle C.int64_t) *C.char {
+	o, _ := handleGet(int64(handle)).(TunOptions)
+	if o == nil {
+		return C.CString("")
+	}
+	prefixes := func(it RoutePrefixIterator) []map[string]interface{} {
+		out := make([]map[string]interface{}, 0, 4)
+		for it != nil && it.HasNext() {
+			p := it.Next()
+			out = append(out, map[string]interface{}{"address": p.Address(), "prefix": p.Prefix()})
+		}
+		return out
+	}
+	stringsOf := func(it StringIterator) []string {
+		out := make([]string, 0, 4)
+		for it != nil && it.HasNext() {
+			out = append(out, it.Next())
+		}
+		return out
+	}
+	dto := map[string]interface{}{}
+	dto["mtu"] = o.GetMTU()
+	dto["autoRoute"] = o.GetAutoRoute()
+	dto["strictRoute"] = o.GetStrictRoute()
+	dto["inet4Address"] = prefixes(o.GetInet4Address())
+	dto["inet6Address"] = prefixes(o.GetInet6Address())
+	dto["inet4RouteAddress"] = prefixes(o.GetInet4RouteAddress())
+	dto["inet6RouteAddress"] = prefixes(o.GetInet6RouteAddress())
+	dto["inet4RouteExcludeAddress"] = prefixes(o.GetInet4RouteExcludeAddress())
+	dto["inet6RouteExcludeAddress"] = prefixes(o.GetInet6RouteExcludeAddress())
+	dto["inet4RouteRange"] = prefixes(o.GetInet4RouteRange())
+	dto["inet6RouteRange"] = prefixes(o.GetInet6RouteRange())
+	dto["includePackage"] = stringsOf(o.GetIncludePackage())
+	dto["excludePackage"] = stringsOf(o.GetExcludePackage())
+	dto["httpProxyEnabled"] = o.IsHTTPProxyEnabled()
+	dto["httpProxyServer"] = o.GetHTTPProxyServer()
+	dto["httpProxyServerPort"] = o.GetHTTPProxyServerPort()
+	dto["httpProxyBypassDomain"] = stringsOf(o.GetHTTPProxyBypassDomain())
+	if mode := o.GetDNSMode(); mode != nil {
+		dto["dnsMode"] = mode.Value
+	}
+	if dns, err := o.GetDNSServerAddress(); err == nil {
+		dto["dnsServerAddress"] = stringsOf(dns)
+	}
+	b, _ := json.Marshal(dto)
+	return C.CString(string(b))
 }
 
 var _ = unsafe.Pointer(nil)

@@ -58,17 +58,29 @@ arrays, `Func` becomes a JNI object pointer.
 | Java → Go crossings | 340 |
 | Constructors | 25 |
 | Go-implemented interface calls | 45 |
-| JNI-callback interface methods | 18 (minus `openTun`, replaced by the fd push; `protect`/`resolverProcess` join as TunInterface) |
+| JNI-callback interface methods | 19 (the `open_tun` establish callback + `protect`/`resolverProcess` as TunInterface + the platform duties) |
 | Port events | 8 |
 | Classes in the bound API | 44 |
 
-## Not yet migrated
+The fd path supports both shapes (bridgePlatform.OpenTun): a pre-fed fd from
+`throne_start_tun` (VpnService established first) is returned as is; otherwise
+the `open_tun` callback establishes the VPN mid-start — Kotlin builds
+`VpnService.Builder` from `throne_TunOptions_toJSON`, establishes, and feeds the
+fd back with `Core.startTun(fd, TunInterface)`.
 
-`box_api`'s 130 facade methods still dispatch over the method channel; the
-kernel-side ones switch to the typed wrappers in `thone_ffi.dart` incrementally
-(dual path: `ThroneKernel.isAvailable` gates the FFI side until the AAR is
-rebuilt with `buildScript/core-patch`, whose compile is the Go-side proof —
-`gomobile` cannot run locally).
+## Migration state
+
+Done (kernel operation surface, dual path with channel fallback): service
+lifecycle (`service.start/stop/reload` → `Mobile.newInstance` + `Instance.*`),
+outbound mode, profile/group selection, WARP registration (`Mobile.warpRegister`
++ `genQuicSignature`), and the status/traffic stream (`Instance.status` polling
+→ `rates`/`dashboard` events). The `:bg` process is gone — Flutter engine,
+Kotlin and the Go core share one process.
+
+Still on the channel (next batches): the test sessions and auto-selectors
+(their orchestration owns DB persistence — they move with the storage
+migration's end state), the connections screen (the core's HTTP control API via
+OkHttp), and the app-data surface (profiles/routes/settings CRUD).
 
 ## What is here today
 

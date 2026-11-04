@@ -37,6 +37,7 @@ import io.throne.bbox.bridge.BboxBackup
 import io.throne.bbox.bridge.BboxBridge
 import io.throne.bbox.bridge.BboxCommands
 import io.throne.bbox.bridge.BboxEgress
+import io.throne.bbox.bridge.BboxKernel
 import io.throne.bbox.bridge.BboxLogcat
 import io.throne.bbox.bridge.BboxLogs
 import io.throne.bbox.bridge.BboxProbeSession
@@ -50,6 +51,7 @@ import io.throne.bbox.bridge.Apply
 import io.throne.bbox.bridge.Settings as ThroneSettings
 import io.throne.bbox.model.BboxUiState
 import io.throne.bbox.model.ProxyGroup
+import io.nekohasekai.sagernet.ui.warp.WarpClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -749,6 +751,52 @@ class ThroneBoxBridge(
                 }
                 "config.check" -> result.respond { checkConfig(call.argument<String>("content").orEmpty()) }
                 "config.format" -> result.respond { formatConfig(call.argument<String>("content").orEmpty()) }
+
+                // --- the FFI path's slim surface (BboxKernel): Dart drives the kernel
+                // directly over dart:ffi and only DB/build work crosses here. ---
+                "ffi.mode" -> {
+                    BboxKernel.ffiMode = call.argument<Boolean>("enabled") == true
+                    // Non-Dart reloads (widget/tile/notification) reach the FFI driver as events.
+                    BboxKernel.onReloadWanted = if (BboxKernel.ffiMode) {
+                        { emit("serviceReload", true) }
+                    } else {
+                        null
+                    }
+                    result.success(null)
+                }
+                "config.build" -> result.respond {
+                    BboxKernel.buildStartOptions(
+                        call.argument<Int>("id")?.toLong() ?: DataStore.selectedProxy,
+                    )
+                }
+                "config.warpParams" -> result.success(
+                    WarpClient.registerParams(call.argument<String>("tunnelType").orEmpty()),
+                )
+                "state.setMode" -> {
+                    BboxKernel.setMode(call.argument<String>("mode") ?: error("Missing mode"))
+                    result.success(null)
+                }
+                "state.saveWarpKeys" -> result.respond {
+                    val identity = call.argument<Map<String, Any?>>("identity").orEmpty()
+                    fun field(key: String) = identity[key]?.toString().orEmpty()
+                    val reserved = (identity["reserved"] as? List<*>)?.map { it.toString() }.orEmpty()
+                    BboxKernel.completeWarp(
+                        call.argument<String>("tunnelType").orEmpty(),
+                        WarpClient.Identity(
+                            deviceId = field("deviceId"),
+                            token = field("token"),
+                            license = field("license"),
+                            ipv4 = field("ipv4"),
+                            ipv6 = field("ipv6"),
+                            privateKey = field("privateKey"),
+                            peerPublicKey = field("peerPublicKey"),
+                            endpoint = field("endpoint"),
+                            reserved = reserved,
+                        ),
+                        packets = (call.argument<List<Any?>>("packets").orEmpty()).map { it.toString() },
+                        packetsError = call.argument<String>("packetsError"),
+                    )
+                }
                 "updates.check" -> result.respond { updatesWire() }
                 "battery.open" -> {
                     openBatterySettings()

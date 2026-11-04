@@ -24,3 +24,7 @@ __pycache__/
 
 # local release bundles (release_assets.py output)
 /dist*/
+
+# :core native build artifacts (extracted from ThroneCore.aar + CMake output)
+android/core/.cxx/
+android/core/src/main/jniLibs/

@@ -275,6 +275,12 @@ class BaseService {
             if (intent.action == Action.SERVICE) data.binder else null
 
         fun reload() {
+            if (io.throne.bbox.bridge.BboxKernel.ffiMode) {
+                // The core is Dart's; a widget/tile/notification reload asks it to rebuild
+                // instead of bouncing the foreground service.
+                io.throne.bbox.bridge.BboxKernel.onReloadWanted?.invoke()
+                return
+            }
             if (DataStore.selectedProxy == 0L) {
                 stopRunner(false, (this as Context).getString(R.string.profile_empty))
                 return
@@ -295,6 +301,12 @@ class BaseService {
             if (s.canStop && data.proxy?.profile?.id == id) return
             runOnDefaultDispatcher {
                 data.binder.broadcast { it.cbSelectorUpdate(id) }
+            }
+            // FFI mode: Dart reloads the core on the selection change; a service restart here
+            // would only bounce the notification.
+            if (io.throne.bbox.bridge.BboxKernel.ffiMode) {
+                Widgets.push(this as Context)
+                return
             }
             // While stopping, a restart in flight starts whatever is selected once the old core is gone.
             if (s.canStop) AutoSelectorRuntime.restart(this) { stopRunner(true) } else Widgets.push(this as Context)
@@ -661,6 +673,14 @@ class BaseService {
             }
             data.connectingJob = CoroutineScope(Dispatchers.Main).launch {
                 try {
+                    // The FFI path drives the core from Dart (zero AIDL): this service only
+                    // keeps the foreground notification and the Android duties alive.
+                    if (io.throne.bbox.bridge.BboxKernel.ffiMode) {
+                        DataStore.currentProfile = profile.id
+                        data.changeState(State.Connected)
+                        lateInit()
+                        return@launch
+                    }
                     preInit()
                     withContext(coreDispatcher) { proxy.init() }
                     DataStore.currentProfile = profile.id

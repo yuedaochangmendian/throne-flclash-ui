@@ -63,20 +63,19 @@ class SagerNet : Application(),
             SettingsMapper.installOutboundHooks()
             // The B-box bridge lives in the UI process: one service connection and one state snapshot for every screen.
             if (isMainProcess) BboxRuntime.install(this)
-            if (isBgProcess) {
-                // The tile, shortcuts, widgets and the boot receiver start the foreground service from here.
+            // Zero cross-process: the core, the widgets and the tile all live beside the UI now
+            // (the manifest no longer pins anything to :bg), so the old :bg-only setup runs here.
+            if (isMainProcess || isBgProcess) {
                 updateNotificationChannels()
-                // A new :bg process means no service runs: heal widgets left "Connected" by a killed one.
+                // Heal widgets left "Connected" by a killed service.
                 Widgets.push(this)
-                // The core (and its JNI library) is loaded in the :bg process only.
+                // The core (and its JNI library) shares the process with the Flutter engine.
                 CoreRuntime.setup(this)
                 AutoSelectorRuntime.install()
-                // Warm the default-network cache so a box's interface monitor gets its interface synchronously.
-                runOnDefaultDispatcher {
-                    DefaultNetworkListener.start(this@SagerNet) {
-                        underlyingNetwork = it
-                    }
-                }
+                // The FFI path's platform duties (callbacks from the Go runtime).
+                runCatching {
+                    io.throne.bbox.core.Core.setPlatform(io.throne.bbox.bridge.BboxCorePlatform)
+                }.onFailure { Logs.w("bridge: core shim unavailable: ${it.message}") }
             }
 
             // fix multi process issue in Android 9+

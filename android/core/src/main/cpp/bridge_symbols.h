@@ -12,6 +12,8 @@ extern "C" {
  * throne_register_callbacks. The `tun` token is the TunInterface global ref
  * handed to throne_start_tun. Strings returned here are freed by the Go caller. */
 typedef struct {
+    /* Establish the VPN for these tun options (a TunOptions handle; read fields via throne_TunOptions_toJSON) and return the fd, or -1 on failure. The shim feeds the fd to the kernel through throne_start_tun with its TunInterface, so a pre-fed fd makes this call unnecessary. */
+    int32_t (*open_tun)(int64_t options);
     /* TunInterface.protect — VpnService.protect(fd). */
     void (*protect)(void * tun, int32_t fd);
     /* TunInterface.resolverProcess — package name owning a connection; caller frees. */
@@ -494,6 +496,9 @@ void throne_register_callbacks(const throne_callbacks_t * table);
 
 /* Tun inbound section of the core config as JSON, for VpnService.Builder (establish() → fd → throne_start_tun). */
 char * throne_getAndroidVpnOptions(const char * coreConfig);
+
+/* A TunOptions handle as JSON {mtu,inet4Address[],autoRoute,dnsMode,...} — the open_tun callback reads the fields it needs to build VpnService.Builder without the gobind TunOptions type. */
+char * throne_TunOptions_toJSON(int64_t options);
 
 #ifdef __cplusplus
 }

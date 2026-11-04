@@ -116,56 +116,152 @@ class VpnService : BaseVpnService(),
     }
 
     // The generated tun inbound is the only source of truth for the interface layout.
-    fun openTun(options: TunOptions): Int {
+
+    /** The Builder fields one tun layout needs, fed either by gobind TunOptions or the FFI JSON. */
+    interface TunSpec {
+        val mtu: Int
+        val inet4Address: List<TunPrefix>
+        val inet6Address: List<TunPrefix>
+        val autoRoute: Boolean
+        val dnsMode: String
+        val dnsServerAddress: List<String>
+        val inet4RouteAddress: List<TunPrefix>
+        val inet6RouteAddress: List<TunPrefix>
+        val inet4RouteExcludeAddress: List<TunPrefix>
+        val inet6RouteExcludeAddress: List<TunPrefix>
+        val inet4RouteRange: List<TunPrefix>
+        val inet6RouteRange: List<TunPrefix>
+        val includePackage: List<String>
+        val excludePackage: List<String>
+        val httpProxyEnabled: Boolean
+        val httpProxyServer: String
+        val httpProxyServerPort: Int
+        val httpProxyBypassDomain: List<String>
+    }
+
+    class TunPrefix(val address: String, val prefix: Int)
+
+    /** The fallback path: the gobind TunOptions the core hands its PlatformInterface. */
+    private class GobindTunSpec(private val o: TunOptions) : TunSpec {
+        override val mtu: Int get() = o.getMTU()
+        override val inet4Address get() = o.getInet4Address().toList().map { TunPrefix(it.address(), it.prefix()) }
+        override val inet6Address get() = o.getInet6Address().toList().map { TunPrefix(it.address(), it.prefix()) }
+        override val autoRoute: Boolean get() = o.getAutoRoute()
+        override val dnsMode: String get() = o.getDNSMode().value
+        override val dnsServerAddress get() = o.getDNSServerAddress().toList()
+        override val inet4RouteAddress get() = o.getInet4RouteAddress().toList().map { TunPrefix(it.address(), it.prefix()) }
+        override val inet6RouteAddress get() = o.getInet6RouteAddress().toList().map { TunPrefix(it.address(), it.prefix()) }
+        override val inet4RouteExcludeAddress get() = o.getInet4RouteExcludeAddress().toList().map { TunPrefix(it.address(), it.prefix()) }
+        override val inet6RouteExcludeAddress get() = o.getInet6RouteExcludeAddress().toList().map { TunPrefix(it.address(), it.prefix()) }
+        override val inet4RouteRange get() = o.getInet4RouteRange().toList().map { TunPrefix(it.address(), it.prefix()) }
+        override val inet6RouteRange get() = o.getInet6RouteRange().toList().map { TunPrefix(it.address(), it.prefix()) }
+        override val includePackage get() = o.getIncludePackage().toList()
+        override val excludePackage get() = o.getExcludePackage().toList()
+        override val httpProxyEnabled: Boolean get() = o.isHTTPProxyEnabled()
+        override val httpProxyServer: String get() = o.getHTTPProxyServer()
+        override val httpProxyServerPort: Int get() = o.getHTTPProxyServerPort()
+        override val httpProxyBypassDomain get() = o.getHTTPProxyBypassDomain().toList().filter { it.isNotBlank() }
+    }
+
+    /** The FFI path: the TunOptions handle crossed as JSON (Core.tunSpecJson). */
+    private class JsonTunSpec(json: String) : TunSpec {
+        private val o = org.json.JSONObject(json)
+        private fun prefixes(key: String): List<TunPrefix> = runCatching {
+            val arr = o.optJSONArray(key) ?: return@runCatching emptyList<TunPrefix>()
+            (0 until arr.length()).map {
+                val p = arr.getJSONObject(it)
+                TunPrefix(p.optString("address"), p.optInt("prefix"))
+            }
+        }.getOrDefault(emptyList())
+
+        private fun strings(key: String): List<String> = runCatching {
+            val arr = o.optJSONArray(key) ?: return@runCatching emptyList<String>()
+            (0 until arr.length()).map { arr.optString(it) }
+        }.getOrDefault(emptyList())
+
+        override val mtu: Int get() = o.optInt("mtu")
+        override val inet4Address get() = prefixes("inet4Address")
+        override val inet6Address get() = prefixes("inet6Address")
+        override val autoRoute: Boolean get() = o.optBoolean("autoRoute")
+        override val dnsMode: String get() = o.optString("dnsMode")
+        override val dnsServerAddress get() = strings("dnsServerAddress")
+        override val inet4RouteAddress get() = prefixes("inet4RouteAddress")
+        override val inet6RouteAddress get() = prefixes("inet6RouteAddress")
+        override val inet4RouteExcludeAddress get() = prefixes("inet4RouteExcludeAddress")
+        override val inet6RouteExcludeAddress get() = prefixes("inet6RouteExcludeAddress")
+        override val inet4RouteRange get() = prefixes("inet4RouteRange")
+        override val inet6RouteRange get() = prefixes("inet6RouteRange")
+        override val includePackage get() = strings("includePackage")
+        override val excludePackage get() = strings("excludePackage")
+        override val httpProxyEnabled: Boolean get() = o.optBoolean("httpProxyEnabled")
+        override val httpProxyServer: String get() = o.optString("httpProxyServer")
+        override val httpProxyServerPort: Int get() = o.optInt("httpProxyServerPort")
+        override val httpProxyBypassDomain get() = strings("httpProxyBypassDomain").filter { it.isNotBlank() }
+    }
+
+    /** The gobind route (NativeInterface.openTun): the core asks for the tun mid-start. */
+    fun openTun(options: TunOptions): Int = buildAndEstablish(GobindTunSpec(options))
+
+    /**
+     * The FFI route: the kernel asks for the tun through the C callback table. The fd
+     * is fed back through Core.startTun with its TunInterface, so protect /
+     * resolverProcess reach the kernel without any bridge.
+     */
+    fun openTunJson(specJson: String, tun: io.throne.bbox.core.TunInterface): Int {
+        val fd = buildAndEstablish(JsonTunSpec(specJson))
+        runCatching { io.throne.bbox.core.Core.startTun(fd, tun) }
+            .onFailure { Logs.w("bridge: startTun failed: ${it.message}") }
+        return fd
+    }
+
+    private fun buildAndEstablish(options: TunSpec): Int {
         if (prepare(this) != null) error("android: missing VPN permission")
         val builder = Builder()
             .setConfigureIntent(SagerNet.configureIntent(this))
             .setSession(getString(R.string.app_name))
-            .setMtu(options.getMTU())
+            .setMtu(options.mtu)
 
-        options.getInet4Address().forEach { builder.addAddress(it.address(), it.prefix()) }
-        options.getInet6Address().forEach { builder.addAddress(it.address(), it.prefix()) }
+        options.inet4Address.forEach { builder.addAddress(it.address, it.prefix) }
+        options.inet6Address.forEach { builder.addAddress(it.address, it.prefix) }
 
-        if (options.getAutoRoute()) {
-            if (options.getDNSMode().value != Mobile.DNSModeDisabled) {
-                options.getDNSServerAddress().toList().forEach { builder.addDnsServer(it) }
+        if (options.autoRoute) {
+            if (options.dnsMode != Mobile.DNSModeDisabled) {
+                options.dnsServerAddress.forEach { builder.addDnsServer(it) }
             }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 // A family gets its default route only when the tun has an address of it: without any address or
                 // route of a family (and no allowFamily call) Android blocks that family, so IPv6 fails fast
                 // instead of vanishing into a tun that has no IPv6 address (the core does the same below API 33).
-                val inet4RouteAddress = options.getInet4RouteAddress()
-                if (inet4RouteAddress.hasNext()) {
-                    inet4RouteAddress.forEach { builder.addRoute(it.address(), it.prefix()) }
-                } else if (options.getInet4Address().hasNext()) {
+                if (options.inet4RouteAddress.isNotEmpty()) {
+                    options.inet4RouteAddress.forEach { builder.addRoute(it.address, it.prefix) }
+                } else if (options.inet4Address.isNotEmpty()) {
                     builder.addRoute("0.0.0.0", 0)
                 }
-                val inet6RouteAddress = options.getInet6RouteAddress()
-                if (inet6RouteAddress.hasNext()) {
-                    inet6RouteAddress.forEach { builder.addRoute(it.address(), it.prefix()) }
-                } else if (options.getInet6Address().hasNext()) {
+                if (options.inet6RouteAddress.isNotEmpty()) {
+                    options.inet6RouteAddress.forEach { builder.addRoute(it.address, it.prefix) }
+                } else if (options.inet6Address.isNotEmpty()) {
                     builder.addRoute("::", 0)
                 }
                 // Builder.check rejects a loopback prefix ("Bad address"), and loopback never enters the tun anyway.
-                options.getInet4RouteExcludeAddress().forEach {
-                    val address = InetAddress.getByName(it.address())
-                    if (!address.isLoopbackAddress) builder.excludeRoute(IpPrefix(address, it.prefix()))
+                options.inet4RouteExcludeAddress.forEach {
+                    val address = InetAddress.getByName(it.address)
+                    if (!address.isLoopbackAddress) builder.excludeRoute(IpPrefix(address, it.prefix))
                 }
-                options.getInet6RouteExcludeAddress().forEach {
-                    val address = InetAddress.getByName(it.address())
-                    if (!address.isLoopbackAddress) builder.excludeRoute(IpPrefix(address, it.prefix()))
+                options.inet6RouteExcludeAddress.forEach {
+                    val address = InetAddress.getByName(it.address)
+                    if (!address.isLoopbackAddress) builder.excludeRoute(IpPrefix(address, it.prefix))
                 }
             } else {
                 // Builder.excludeRoute only exists from API 33; below that the core pre-splits
                 // "everything minus the excludes" into plain ranges that replace the default routes.
-                options.getInet4RouteRange().forEach { builder.addRoute(it.address(), it.prefix()) }
-                options.getInet6RouteRange().forEach { builder.addRoute(it.address(), it.prefix()) }
+                options.inet4RouteRange.forEach { builder.addRoute(it.address, it.prefix) }
+                options.inet6RouteRange.forEach { builder.addRoute(it.address, it.prefix) }
             }
         }
 
-        val includePackage = options.getIncludePackage()
-        if (includePackage.hasNext()) {
-            val added = includePackage.toList().count {
+        val includePackage = options.includePackage
+        if (includePackage.isNotEmpty()) {
+            val added = includePackage.count {
                 try {
                     builder.addAllowedApplication(it)
                     true
@@ -176,22 +272,19 @@ class VpnService : BaseVpnService(),
             // None of the chosen apps is installed: an empty allow list would capture every app instead of none.
             if (added == 0) builder.addAllowedApplication(packageName)
         }
-        val excludePackage = options.getExcludePackage()
-        if (excludePackage.hasNext()) {
-            excludePackage.toList().forEach {
-                try {
-                    builder.addDisallowedApplication(it)
-                } catch (_: PackageManager.NameNotFoundException) {
-                }
+        options.excludePackage.forEach {
+            try {
+                builder.addDisallowedApplication(it)
+            } catch (_: PackageManager.NameNotFoundException) {
             }
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && options.isHTTPProxyEnabled()) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && options.httpProxyEnabled) {
             builder.setHttpProxy(
                 ProxyInfo.buildDirectProxy(
-                    options.getHTTPProxyServer(),
-                    options.getHTTPProxyServerPort(),
-                    options.getHTTPProxyBypassDomain().toList().filter { it.isNotBlank() },
+                    options.httpProxyServer,
+                    options.httpProxyServerPort,
+                    options.httpProxyBypassDomain,
                 )
             )
         }
@@ -227,6 +320,12 @@ class VpnService : BaseVpnService(),
 
 private inline fun RoutePrefixIterator.forEach(block: (RoutePrefix) -> Unit) {
     while (hasNext()) block(next())
+}
+
+private fun RoutePrefixIterator.toList(): List<RoutePrefix> {
+    val values = ArrayList<RoutePrefix>()
+    while (hasNext()) values.add(next())
+    return values
 }
 
 private fun StringIterator.toList(): List<String> {

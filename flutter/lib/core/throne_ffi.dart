@@ -2114,6 +2114,11 @@ class ThroneFFI {
   Pointer<Utf8> throne_getAndroidVpnOptions(Pointer<Utf8> coreConfig) =>
       _throne_getAndroidVpnOptions(coreConfig);
 
+  late final _throne_TunOptions_toJSON =
+      _lookup<NativeFunction<Pointer<Utf8> Function(Int64)>>('throne_TunOptions_toJSON').asFunction<Pointer<Utf8> Function(int options)>();
+  Pointer<Utf8> throne_TunOptions_toJSON(int options) =>
+      _throne_TunOptions_toJSON(options);
+
 }
 
 String _cstr(Pointer<Utf8> p, ThroneFFI ffi) {
