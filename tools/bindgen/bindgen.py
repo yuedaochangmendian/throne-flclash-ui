@@ -1515,8 +1515,11 @@ def emit_dart(surface: dict) -> str:
                     fp.append(f"Uint8List {n}")
                     fa.append(f"{n}.mallocUint8()")
                     fa.append(f"{n}.length")
-                elif jt in PORT_PARAMS or jt in JNI_PTR_PARAMS:
+                elif jt in PORT_PARAMS:
                     fp.append(f"int {n}")
+                    fa.append(n)
+                elif jt in JNI_PTR_PARAMS:
+                    fp.append(f"Pointer<Void> {n}")
                     fa.append(n)
                 else:
                     fp.append(f"int {n}")
@@ -1574,8 +1577,11 @@ def emit_dart(surface: dict) -> str:
                     post.append(f"malloc.free(_a_{n});")
                     fa.append(f"_a_{n}")
                     fa.append(f"{n}.length")
-                elif jt in PORT_PARAMS or jt in JNI_PTR_PARAMS:
+                elif jt in PORT_PARAMS:
                     fp.append(f"int {n}")
+                    fa.append(n)
+                elif jt in JNI_PTR_PARAMS:
+                    fp.append(f"Pointer<Void> {n}")
                     fa.append(n)
                 else:
                     fp.append(f"int {n}")
@@ -1605,8 +1611,10 @@ def emit_dart(surface: dict) -> str:
                 L.append(f"{ind}return r;")
             elif sig.ret == "void":
                 pass
-            elif sig.ret in ("int", "long", "boolean"):
+            elif sig.ret in ("int", "long"):
                 L.append(f"{ind}return r;")
+            elif sig.ret == "boolean":
+                L.append(f"{ind}return r != 0;")
             else:
                 L.append(f"{ind}return r == 0 ? null : Throne{sig.ret}(_ffi, r);")
             if wrap_try:

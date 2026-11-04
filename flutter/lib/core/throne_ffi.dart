@@ -2193,7 +2193,7 @@ class ThroneAutoSelectorMember {
 
   bool getSelected() {
     final r = _ffi.throne_AutoSelectorMember_getSelected(handle);
-    return r;
+    return r != 0;
   }
 
   void setSelected(bool v) {
@@ -2202,7 +2202,7 @@ class ThroneAutoSelectorMember {
 
   bool getSelectedUDP() {
     final r = _ffi.throne_AutoSelectorMember_getSelectedUDP(handle);
-    return r;
+    return r != 0;
   }
 
   void setSelectedUDP(bool v) {
@@ -2211,7 +2211,7 @@ class ThroneAutoSelectorMember {
 
   bool getQualified() {
     final r = _ffi.throne_AutoSelectorMember_getQualified(handle);
-    return r;
+    return r != 0;
   }
 
   void setQualified(bool v) {
@@ -2220,7 +2220,7 @@ class ThroneAutoSelectorMember {
 
   bool getActive() {
     final r = _ffi.throne_AutoSelectorMember_getActive(handle);
-    return r;
+    return r != 0;
   }
 
   void setActive(bool v) {
@@ -2358,7 +2358,7 @@ class ThroneAutoSelectorMemberIterator {
 
   bool hasNext() {
     final r = _ffi.throne_AutoSelectorMemberIterator_hasNext(handle);
-    return r;
+    return r != 0;
   }
 
   int len() {
@@ -2455,7 +2455,7 @@ class ThroneAutoSelectorStatus {
 
   bool getBalance() {
     final r = _ffi.throne_AutoSelectorStatus_getBalance(handle);
-    return r;
+    return r != 0;
   }
 
   void setBalance(bool v) {
@@ -2478,7 +2478,7 @@ class ThroneAutoSelectorStatus {
 
   bool getSuspended() {
     final r = _ffi.throne_AutoSelectorStatus_getSuspended(handle);
-    return r;
+    return r != 0;
   }
 
   void setSuspended(bool v) {
@@ -2612,7 +2612,7 @@ class ThroneAutoSelectorStatusIterator {
 
   bool hasNext() {
     final r = _ffi.throne_AutoSelectorStatusIterator_hasNext(handle);
-    return r;
+    return r != 0;
   }
 
   int len() {
@@ -2711,7 +2711,7 @@ class ThroneDiagnosticsRequest {
 
   bool getContention() {
     final r = _ffi.throne_DiagnosticsRequest_getContention(handle);
-    return r;
+    return r != 0;
   }
 
   void setContention(bool v) {
@@ -2720,7 +2720,7 @@ class ThroneDiagnosticsRequest {
 
   bool getTrace() {
     final r = _ffi.throne_DiagnosticsRequest_getTrace(handle);
-    return r;
+    return r != 0;
   }
 
   void setTrace(bool v) {
@@ -2758,7 +2758,7 @@ class ThroneExchangeContext {
     _ffi.throne_ExchangeContext_errorCode(handle, code);
   }
 
-  void onCancel(int callback) {
+  void onCancel(Pointer<Void> callback) {
     _ffi.throne_ExchangeContext_onCancel(handle, callback);
   }
 
@@ -2833,7 +2833,7 @@ class ThroneInstance {
 
   bool needWIFIState() {
     final r = _ffi.throne_Instance_needWIFIState(handle);
-    return r;
+    return r != 0;
   }
 
   void pause() {
@@ -2926,7 +2926,7 @@ class ThroneInt32Iterator {
 
   bool hasNext() {
     final r = _ffi.throne_Int32Iterator_hasNext(handle);
-    return r;
+    return r != 0;
   }
 
   int len() {
@@ -3232,7 +3232,7 @@ class ThroneNetworkInterface {
 
   bool getMetered() {
     final r = _ffi.throne_NetworkInterface_getMetered(handle);
-    return r;
+    return r != 0;
   }
 
   void setMetered(bool v) {
@@ -3248,7 +3248,7 @@ class ThroneNetworkInterfaceIterator {
 
   bool hasNext() {
     final r = _ffi.throne_NetworkInterfaceIterator_hasNext(handle);
-    return r;
+    return r != 0;
   }
 
   ThroneNetworkInterface? next() {
@@ -3403,7 +3403,7 @@ class ThroneOutboundGroup {
 
   bool getSelectable() {
     final r = _ffi.throne_OutboundGroup_getSelectable(handle);
-    return r;
+    return r != 0;
   }
 
   void setSelectable(bool v) {
@@ -3426,7 +3426,7 @@ class ThroneOutboundGroup {
 
   bool getIsExpand() {
     final r = _ffi.throne_OutboundGroup_getIsExpand(handle);
-    return r;
+    return r != 0;
   }
 
   void setIsExpand(bool v) {
@@ -3505,7 +3505,7 @@ class ThroneOutboundGroupItemIterator {
 
   bool hasNext() {
     final r = _ffi.throne_OutboundGroupItemIterator_hasNext(handle);
-    return r;
+    return r != 0;
   }
 
   ThroneOutboundGroupItem? next() {
@@ -3522,7 +3522,7 @@ class ThroneOutboundGroupIterator {
 
   bool hasNext() {
     final r = _ffi.throne_OutboundGroupIterator_hasNext(handle);
-    return r;
+    return r != 0;
   }
 
   ThroneOutboundGroup? next() {
@@ -3619,7 +3619,7 @@ class ThroneResolvedDomainIterator {
 
   bool hasNext() {
     final r = _ffi.throne_ResolvedDomainIterator_hasNext(handle);
-    return r;
+    return r != 0;
   }
 
   int len() {
@@ -3673,7 +3673,7 @@ class ThroneRoutePrefixIterator {
 
   bool hasNext() {
     final r = _ffi.throne_RoutePrefixIterator_hasNext(handle);
-    return r;
+    return r != 0;
   }
 
   ThroneRoutePrefix? next() {
@@ -3781,7 +3781,7 @@ class ThroneSetupOptions {
 
   bool getDebug() {
     final r = _ffi.throne_SetupOptions_getDebug(handle);
-    return r;
+    return r != 0;
   }
 
   void setDebug(bool v) {
@@ -3895,7 +3895,7 @@ class ThroneSpeedTestResult {
 
   bool getCancelled() {
     final r = _ffi.throne_SpeedTestResult_getCancelled(handle);
-    return r;
+    return r != 0;
   }
 
   void setCancelled(bool v) {
@@ -3922,7 +3922,7 @@ class ThroneSpeedTestResult {
 
   bool getRunning() {
     final r = _ffi.throne_SpeedTestResult_getRunning(handle);
-    return r;
+    return r != 0;
   }
 
   void setRunning(bool v) {
@@ -3957,7 +3957,7 @@ class ThroneStartOptions {
 
   bool getNeedXray() {
     final r = _ffi.throne_StartOptions_getNeedXray(handle);
-    return r;
+    return r != 0;
   }
 
   void setNeedXray(bool v) {
@@ -3994,7 +3994,7 @@ class ThroneStartOptions {
 
   bool getXrayLazyStart() {
     final r = _ffi.throne_StartOptions_getXrayLazyStart(handle);
-    return r;
+    return r != 0;
   }
 
   void setXrayLazyStart(bool v) {
@@ -4078,7 +4078,7 @@ class ThroneStatusMessage {
 
   bool getTrafficAvailable() {
     final r = _ffi.throne_StatusMessage_getTrafficAvailable(handle);
-    return r;
+    return r != 0;
   }
 
   void setTrafficAvailable(bool v) {
@@ -4156,7 +4156,7 @@ class ThroneStringIterator {
 
   bool hasNext() {
     final r = _ffi.throne_StringIterator_hasNext(handle);
-    return r;
+    return r != 0;
   }
 
   int len() {
@@ -4211,7 +4211,7 @@ class ThroneTestRequest {
 
   bool getNeedXray() {
     final r = _ffi.throne_TestRequest_getNeedXray(handle);
-    return r;
+    return r != 0;
   }
 
   void setNeedXray(bool v) {
@@ -4266,7 +4266,7 @@ class ThroneTestRequest {
 
   bool getUseDefaultOutbound() {
     final r = _ffi.throne_TestRequest_getUseDefaultOutbound(handle);
-    return r;
+    return r != 0;
   }
 
   void setUseDefaultOutbound(bool v) {
@@ -4275,7 +4275,7 @@ class ThroneTestRequest {
 
   bool getTestCurrent() {
     final r = _ffi.throne_TestRequest_getTestCurrent(handle);
-    return r;
+    return r != 0;
   }
 
   void setTestCurrent(bool v) {
@@ -4284,7 +4284,7 @@ class ThroneTestRequest {
 
   bool getTestDownload() {
     final r = _ffi.throne_TestRequest_getTestDownload(handle);
-    return r;
+    return r != 0;
   }
 
   void setTestDownload(bool v) {
@@ -4293,7 +4293,7 @@ class ThroneTestRequest {
 
   bool getTestUpload() {
     final r = _ffi.throne_TestRequest_getTestUpload(handle);
-    return r;
+    return r != 0;
   }
 
   void setTestUpload(bool v) {
@@ -4302,7 +4302,7 @@ class ThroneTestRequest {
 
   bool getSimpleDownload() {
     final r = _ffi.throne_TestRequest_getSimpleDownload(handle);
-    return r;
+    return r != 0;
   }
 
   void setSimpleDownload(bool v) {
@@ -4325,7 +4325,7 @@ class ThroneTestRequest {
 
   bool getOnlyCountry() {
     final r = _ffi.throne_TestRequest_getOnlyCountry(handle);
-    return r;
+    return r != 0;
   }
 
   void setOnlyCountry(bool v) {
@@ -4377,7 +4377,7 @@ class ThroneTunOptions {
 
   bool getAutoRoute() {
     final r = _ffi.throne_TunOptions_getAutoRoute(handle);
-    return r;
+    return r != 0;
   }
 
   ThroneStringBox? getDNSMode() {
@@ -4468,12 +4468,12 @@ class ThroneTunOptions {
 
   bool getStrictRoute() {
     final r = _ffi.throne_TunOptions_getStrictRoute(handle);
-    return r;
+    return r != 0;
   }
 
   bool isHTTPProxyEnabled() {
     final r = _ffi.throne_TunOptions_isHTTPProxyEnabled(handle);
-    return r;
+    return r != 0;
   }
 
 }
