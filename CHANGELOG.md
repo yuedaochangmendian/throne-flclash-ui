@@ -8,6 +8,18 @@
 * The outbound mode switch now sticks: `BboxKernel.setMode` refreshes the bridge state and `dashboardWire` reads the stored mode instead of its cached copy, so the chips no longer snap back to the previous choice after the per-second state push
 * `openTun` failures are logged with their reason instead of returning a silent `-1`, and `tunSpecJson` reports `throne_last_error()` when the spec comes back empty
 * Adds five regression tests (15 total) covering the service-start ordering, the disabled-proxy spec, the mode refresh and the tun descriptor release
+* The Log screen no longer throws on a kernel line: the FFI path stamped `receivedAt` as an ISO string while the channel path pushes milliseconds, so the timeline formatter failed on every pushed record; both paths now share one unit, and kernel ids start at their own offset instead of colliding with the channel ids
+* A failed start no longer orphans a native instance: `_startCore` releases the handle `createInstance` already created when `start` throws, `KernelWorker.dispose()` closes the instance it still holds before closing the port, and a new instance replaces (and releases) the previous one
+* `reloadService` only restarts a core that is actually running, so reloading from the Stopped state no longer boots the kernel behind the user's back, and concurrent `initialize()` / start calls are serialised
+* `KernelService` stops emitting into a closed `StreamController` after `dispose()`, and the dashboard clears `startedAt` when the status is Stopped instead of keeping a stale uptime
+* The channel/FFI routing predicate is `kernel.ffiMode` rather than `ThroneKernel.isAvailable`: the latter is true as soon as the library loads, so a failed `initialize()` used to leave the whole control plane calling into a kernel service that was never created
+* `ProxyInstance` builds its `TrafficLooper` under a lock and stops it before the box closes, so a start/stop burst can no longer leave an orphan looper writing to a closed engine, and the last traffic sample still reaches the UI
+* `VpnService.conn` is `@Volatile` and the previous descriptor is closed when the tunnel is re-established; the old fd stayed open on every reconnect
+* `BaseService` keeps its callback ids in a `ConcurrentHashMap` (binder callbacks arrive on several threads), and `SagerConnection` decodes the state with a bounds check instead of indexing `State.values()`
+* `SubscriptionRefresh.startWhenStopped` re-checks the user's intent before starting the successor, so a manual stop during a subscription reload is no longer overridden a second later
+* `BboxBridge.scheduleRefresh` records a pending request instead of dropping it when one is already running (the tail of a burst used to be lost), `requestEgress(force)` upgrades a running probe to a forced one, and `BboxEgress.invalidate()` clears the cached answer rather than only its timestamp
+* `BboxCommands.watchTestSession` cancels its collector when a session ends without any proxy tested, and the profile / proxy selection calls are awaitable, so `profiles.select` and `groups.select` reply once the selection has landed instead of before it starts
+* `SagerDatabase` runs its queries on a bounded pool instead of `GlobalScope.launch`, and `ThroneBoxBridge.setConnectionsVisible` drops its cached frame when the screen is hidden
 
 #### 3.2.18
 
