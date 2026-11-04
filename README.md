@@ -34,9 +34,9 @@ line — is owned here.
 - Cloudflare WARP: registration (WireGuard or MASQUE identity) and a built-in WARP mode for routing
 - URL, IP / country and speed tests, with a bulk-test panel (live progress, latency histogram, fastest servers, sort / remove unavailable / connect to fastest)
 - The sing-box dashboard built in (live traffic, connections, logs)
-- The home status card shows the exit's region as a vector flag cropped to its animated clover; tapping the badge re-checks the exit IP, and with the service stopped it reports the address the phone itself uses
-- Core logs and Logcat support level filters, search, pause, clear and redacted export; cancelling the save dialog leaves the logs untouched; known-benign connection-reset errors fold behind a counter, and uncaught app-layer exceptions keep their own seven-day record exportable as one file
-- JSON editor with sing-box schema checking, completion and formatting
+- The home status card shows the exit's region as a regional-indicator emoji badge, with its location and carrier beside the address and run time / location / operator along the bottom; tapping the badge re-checks the exit IP, and with the service stopped it reports the address the phone itself uses
+- The Log screen is FlClash's own log view: one export action, an empty state, a scrollbar that names the record at the thumb, and a list that stops following the newest line once you scroll away; each record is split into what it says and where it came from, and tapping the level chip filters by it
+- JSON editor with sing-box-aware formatting
 - Home-screen widgets, a quick settings tile, and server switching from the notification
 - Android TV: launcher banner, D-pad navigation, previous / next server
 

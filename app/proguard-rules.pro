@@ -5,19 +5,6 @@
 # (Class.forName("io.nekohasekai.sagernet.outbound.types." + className)).
 -keep class io.nekohasekai.sagernet.outbound.types.** { *; }
 
-# Preference screens in res/xml inflate these by tag name only — no Kotlin
-# reference exists anywhere in the app, so R8 would otherwise strip them.
--keep class moe.matsuri.nb4a.ui.ColorPickerPreference { *; }
--keep class moe.matsuri.nb4a.ui.EditConfigPreference { *; }
--keep class moe.matsuri.nb4a.ui.LongClickListPreference { *; }
--keep class moe.matsuri.nb4a.ui.MTUPreference { *; }
--keep class moe.matsuri.nb4a.ui.SimpleMenuPreference { *; }
--keep class moe.matsuri.nb4a.ui.UrlTestPreference { *; }
--keep class io.nekohasekai.sagernet.ui.settings.DnsServerPreference { *; }
--keep class io.nekohasekai.sagernet.ui.settings.StringListPreference { *; }
--keep class io.nekohasekai.sagernet.ui.settings.WarpEntryPreference { *; }
--keep class io.nekohasekai.sagernet.widget.StringLinesPreference { *; }
-
 # Clean Kotlin
 -assumenosideeffects class kotlin.jvm.internal.Intrinsics {
     static void checkParameterIsNotNull(java.lang.Object, java.lang.String);

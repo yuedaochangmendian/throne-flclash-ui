@@ -119,6 +119,7 @@
 | **v3.0.12** | ✅ W1 日志轮收尾（2026-11-03 发，commit `41636a9`） | — | 已发，latest 已指向 |
 | **v3.1.0** | ✅ 批次 M + N 合并发版（含 analyze 清零、README/docs、通道审计、噪音折叠、崩溃存储、设备清单、更新拒绝测试；双 agent 评审 18 项） | — | 已发，latest 已指向 |
 | **v3.2.4** | ✅ 体积与运行时过一遍：R8 精确 keep + full mode、Twemoji 删除/字体子集/图标 WebP、`useLegacyPackaging=false`、GC debug-only、Jetifier 关闭 | — | 见 `openspec/changes/2026-11-03-size-pass/` |
+| **v3.2.15** | ✅ 冗余代码清理批 R1+R2.1+R4（旧偏好 UI 层 16 xml/6 类/3 支撑类 + proguard keep 收窄、12 个死 Kotlin 整文件、2 个 Dart 孤儿 + `flutter_localizations` 降为传递依赖）；R2.2/R4.3 经复核为误判未执行，R3 资源瘦身待 lint UnusedResources 前置复核 | 计划复核 | 单独 patch 发版 |
 | ~~v3.2.0~~ | 并入 v3.1.0（N 批次随 M 同轮落地） | — | — |
 | **v3.3.0** | 批次 O（quality 或 dnsObject，二选一） | 可行性侦察结论 | 同上 |
 | **v3.4.0** | 工具链解钉（`docs/toolchain-upgrade.md` U1→U2，U3 可随附） | U1/U2 前置链 | 单独评审轮 + N3 设备清单 |

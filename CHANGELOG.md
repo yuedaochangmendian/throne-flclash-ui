@@ -1,3 +1,10 @@
+#### 3.2.15
+
+* Removes the retired preference UI layer: 16 `res/xml` preference screens, the 6 preference classes that only those screens inflated, the 3 support classes that existed to drive them, and the matching ProGuard keep rules — Flutter has been the only settings surface since 3.0.0
+* Removes 12 dead Kotlin files (the old traffic chart, connection FAB, QR share dialog, undo snackbar, always-on / OEM-background / app-shortcut helpers, save-document contract, RecyclerView layout managers, and the JSON schema completion / validation engine) and trims three files that were only partly dead, keeping the live parts: `SchemaStore`'s two schema roots, `WindowInsetsListeners`' app-bar inset chain, and `JsonRelaxations` minus its validator hookup
+* Drops two unused Dart libraries (`input_limits`, `iterable`) and demotes `flutter_localizations` from a direct dependency — `material_ui` ships its own `GlobalMaterialLocalizations`, so the SDK package is only a transitive one now
+* The README now describes the status card as it actually renders (emoji badge with location / carrier) and the Log screen as FlClash's rebuilt log view; the JSON editor entry no longer claims schema checking or completion, which left with the engine
+
 #### 3.2.14
 
 * Borrowing Bettbox's pending-buffer pattern, a burst of log, Logcat or connection events now shares a single rebuild: the state is current as soon as each event lands, but the UI is told once the 300 ms window closes instead of once per event

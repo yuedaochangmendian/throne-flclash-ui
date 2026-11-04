@@ -2,7 +2,6 @@ package io.nekohasekai.sagernet.ui.json
 
 import android.os.Parcelable
 import io.nekohasekai.sagernet.ui.json.engine.JsonType
-import io.nekohasekai.sagernet.ui.json.engine.SchemaValidator
 import kotlinx.parcelize.Parcelize
 
 /** Per-editor schema relaxations (the desktop's AllowExtraType plus what Throne's own stored forms need). */
@@ -22,11 +21,4 @@ data class JsonRelaxations(
 
     @Parcelize
     data class ExtraType(val key: String, val type: JsonType) : Parcelable
-
-    fun applyTo(validator: SchemaValidator) {
-        for (extra in extraKeys) validator.allowExtraKey(extra.pointer, extra.key)
-        for (extra in extraTypes) validator.allowExtraType(extra.key, extra.type)
-        for ((type, schemaType) in typeAliases) validator.aliasType(type, schemaType)
-        validator.unknownKeysAsWarnings = unknownKeysAsWarnings
-    }
 }
