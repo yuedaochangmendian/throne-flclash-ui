@@ -1,3 +1,11 @@
+#### 3.2.16
+
+* Dart now drives the kernel directly: a generated `dart:ffi` binding layer (`tools/bindgen`, Bettbox's shape) replaces the method channel for kernel control, with events flowing back over `Dart_PostCObject` ports and the Android duties (VPN fd, `protect` / `resolverProcess`) crossing a tiny JNI shim (`android/core/`)
+* The core shares the app's process — the `:bg` process split is gone, so the Flutter engine, Kotlin and the Go kernel run together with no AIDL or cross-process hops
+* The VPN fd reaches the kernel the way the architecture describes: `VpnService` establishes the tunnel from the kernel's own computed `TunOptions`, then feeds the fd back with `Core.startTun(fd, TunInterface)`; a pre-fed fd from `throne_start_tun` is honoured first
+* The kernel operation surface (service start / stop / reload, clash mode, outbound selection, WARP registration, status and traffic) runs over the FFI path when the rebuilt core is present, with the channel kept as fallback; profiles, routes and settings stay on the channel until their storage moves
+* The Go binding patch is purely additive (`buildScript/core-patch`), so CI builds the patched core from any Throne checkout without upstream write access; the unpatched AAR still builds, the shim probing for the bridge symbols before linking
+
 #### 3.2.15
 
 * Removes the retired preference UI layer: 16 `res/xml` preference screens, the 6 preference classes that only those screens inflated, the 3 support classes that existed to drive them, and the matching ProGuard keep rules — Flutter has been the only settings surface since 3.0.0
