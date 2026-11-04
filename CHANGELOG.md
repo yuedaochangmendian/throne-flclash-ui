@@ -1,3 +1,10 @@
+#### 3.2.17
+
+* Fixes the FFI startup failure `profile 0 is gone`: `config.build` no longer receives a guessed profile id from the Flutter preference store (which holds UI settings only), and the native bridge resolves the selected node from `DataStore.selectedProxy` instead of looking up id 0
+* The profile lookup now tolerates stale ids and B-box's group-shaped profile card ids, falls back to the first stored node when a fresh install has none selected, and reports a clear "no profile selected" message instead of a platform exception
+* The FFI dashboard events take their `selectedProfileId` from the channel wire, so the selected profile name stays correct across starts and reloads
+* Adds a regression test that fails if a non-positive id is sent to `config.build` again
+
 #### 3.2.16
 
 * Dart now drives the kernel directly: a generated `dart:ffi` binding layer (`tools/bindgen`, Bettbox's shape) replaces the method channel for kernel control, with events flowing back over `Dart_PostCObject` ports and the Android duties (VPN fd, `protect` / `resolverProcess`) crossing a tiny JNI shim (`android/core/`)

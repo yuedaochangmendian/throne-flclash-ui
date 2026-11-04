@@ -30,14 +30,15 @@ object BboxKernel {
     var onReloadWanted: (() -> Unit)? = null
 
     /**
-     * Builds the StartOptions payload for [profileId] exactly as the service start
-     * path does (BoxInstance.init) — including the Xray asset fetch and dashboard
-     * install — but without creating a gobind Instance: the caller starts the core
-     * itself through the FFI bindings.
+     * Builds the StartOptions payload for the selected profile exactly as the
+     * service start path does (BoxInstance.init) — including the Xray asset fetch
+     * and dashboard install — but without creating a gobind Instance: the caller
+     * starts the core itself through the FFI bindings. [profileId] is only a
+     * hint; [resolveProfile] owns the lookup.
      */
     suspend fun buildStartOptions(profileId: Long): Map<String, Any?> = withContext(Dispatchers.IO) {
-        val profile = SagerDatabase.proxyDao.getById(profileId)
-            ?: error("profile $profileId is gone")
+        val profile = resolveProfile(profileId)
+            ?: error("No profile selected: add or import a profile before starting the core")
         val capture = StartOptionsCapture(profile)
         capture.init()
         try {
@@ -62,6 +63,23 @@ object BboxKernel {
         packets: List<String>,
         packetsError: String?,
     ): Map<String, Any?> = BboxWarp.complete(tunnelType, identity, packets, packetsError)
+
+    /**
+     * Resolves the ProxyEntity to start. B-box's profile cards carry *group* ids
+     * and the Flutter preference store carries UI settings only, so a 0, a stale
+     * id or a group id is never a valid proxy id: the native selection
+     * (DataStore.selectedProxy) is the single source of truth. A fresh install
+     * whose nodes were imported but never selected falls back to the first one.
+     */
+    private fun resolveProfile(profileId: Long): ProxyEntity? {
+        val dao = SagerDatabase.proxyDao
+        if (profileId > 0L) dao.getById(profileId)?.let { return it }
+        val selected = DataStore.selectedProxy
+        if (selected > 0L) dao.getById(selected)?.let { return it }
+        val first = dao.getAll().firstOrNull() ?: return null
+        DataStore.selectedProxy = first.id
+        return first
+    }
 
     /** BoxInstance.init minus loadConfig: the build half the FFI caller needs. */
     private class StartOptionsCapture(profile: ProxyEntity) : BoxInstance(profile) {

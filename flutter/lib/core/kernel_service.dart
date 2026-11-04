@@ -84,8 +84,10 @@ class KernelService {
     _starting = true;
     _emitDashboard('Starting');
     try {
-      final profileId = _selectedProfileId();
-      final built = await box.call('config.build', {'id': profileId}) as Map<String, dynamic>;
+      // The native DB owns the selection (DataStore.selectedProxy). The Flutter
+      // preference store holds UI settings only, so mining it for an id used to
+      // send 0 here and fail every start with "profile 0 is gone".
+      final built = await box.call('config.build', configBuildArgs()) as Map<String, dynamic>;
       final instance = await Isolate.run(() {
         final ffi = ThroneFFI(DynamicLibrary.open('libthrone.so'));
         final options = _startOptions(ffi, built);
@@ -277,11 +279,10 @@ class KernelService {
     });
   }
 
-  int _selectedProfileId() {
-    final preferences = box.preferences;
-    final raw = preferences['selectedProxy'] ?? preferences['profileId'] ?? 0;
-    return (raw as num?)?.toInt() ?? 0;
-  }
+  /// Display-only: B-box's dashboard id is the selected *group* id, matching the
+  /// ids in `box.profiles`. It is not a proxy entity id and must never be sent to
+  /// `config.build` — the native side resolves that from DataStore.selectedProxy.
+  int _selectedProfileId() => dashboardSelectedId(box.dashboard);
 
   void report(Object error) {
     _events.add({'type': 'error', 'value': error.toString()});
@@ -295,6 +296,17 @@ class KernelService {
     _instance = null;
   }
 }
+
+/// The `config.build` payload: deliberately no `id`. The native bridge resolves
+/// the selected ProxyEntity from DataStore.selectedProxy; neither the Flutter
+/// UI preferences (appearance settings only) nor the dashboard's group id is a
+/// proxy entity id. Sending a guessed 0 used to fail with "profile 0 is gone".
+Json configBuildArgs() => <String, dynamic>{};
+
+/// The dashboard's selected id is a *group* id (B-box's profile card), used only
+/// for display and for looking the name up in `box.profiles`.
+int dashboardSelectedId(Json dashboard) =>
+    (dashboard['selectedProfileId'] as num?)?.toInt() ?? -1;
 
 /// The handle-side StartOptions assembly (shared by the worker isolates).
 ThroneStartOptions _startOptions(ThroneFFI ffi, Map<String, dynamic> built) {
