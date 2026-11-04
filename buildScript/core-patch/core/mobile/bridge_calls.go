@@ -12,6 +12,8 @@ package mobile
 import "C"
 
 import (
+	"encoding/json"
+	"fmt"
 	"reflect"
 	"sync"
 	"unsafe"
@@ -19,10 +21,14 @@ import (
 
 // --- handle table (replaces go.Seq refnums) ---
 
+const handleWarnThreshold = 4096
+
 var (
 	handlesMu sync.Mutex
 	nextHandle int64 = 1
 	handles   = map[int64]interface{}{}
+	handleCreated, handleReleased int64
+	handleWarned bool
 )
 
 func handleNew(v interface{}) int64 {
@@ -31,6 +37,12 @@ func handleNew(v interface{}) int64 {
 	h := nextHandle
 	nextHandle++
 	handles[h] = v
+	handleCreated++
+	if !handleWarned && int64(len(handles)) > handleWarnThreshold {
+		handleWarned = true
+		fmt.Printf("bridge: %d live handles (created %d, released %d) — a caller is leaking handles\n",
+			len(handles), handleCreated, handleReleased)
+	}
 	return h
 }
 
@@ -42,13 +54,30 @@ func handleGet(h int64) interface{} {
 
 //export throne_handle_release
 func throne_handle_release(h C.int64_t) {
+	defer guardExport("throne_handle_release")
 	handlesMu.Lock()
 	defer handlesMu.Unlock()
-	delete(handles, int64(h))
+	if _, ok := handles[int64(h)]; ok {
+		delete(handles, int64(h))
+		handleReleased++
+	}
+}
+
+//export throne_handle_stats
+func throne_handle_stats() *C.char {
+	defer guardExport("throne_handle_stats")
+	handlesMu.Lock()
+	live, created, released := int64(len(handles)), handleCreated, handleReleased
+	handlesMu.Unlock()
+	b, _ := json.Marshal(map[string]int64{"live": live, "created": created, "released": released})
+	return C.CString(string(b))
 }
 
 //export throne_free
-func throne_free(p *C.char) { C.free(unsafe.Pointer(p)) }
+func throne_free(p *C.char) {
+	defer guardExport("throne_free")
+	C.free(unsafe.Pointer(p))
+}
 
 // --- error channel (the Java `throws` surface) ---
 
@@ -63,8 +92,19 @@ func setErr(err error) {
 	errMu.Unlock()
 }
 
+// guardExport keeps a panic inside one C ABI crossing. A Go panic is not
+// allowed to cross cgo: without this the whole process aborts and Dart can
+// neither catch it nor show an error. Result parameters keep their zero
+// value after recover, so callers see a benign empty/0 result plus an error.
+func guardExport(name string) {
+	if r := recover(); r != nil {
+		setErr(fmt.Errorf("%s: panic: %v", name, r))
+	}
+}
+
 //export throne_last_error
 func throne_last_error() *C.char {
+	defer guardExport("throne_last_error")
 	errMu.Lock()
 	defer errMu.Unlock()
 	return C.CString(lastError)
@@ -100,591 +140,710 @@ func parseStringSlice(s string) []string {
 
 //export throne_AutoSelectorMember_getTag
 func throne_AutoSelectorMember_getTag(handle C.int64_t) *C.char {
+	defer guardExport("throne_AutoSelectorMember_getTag")
 	return C.CString(handleGet(int64(handle)).(*AutoSelectorMember).Tag)
 }
 
 //export throne_AutoSelectorMember_setTag
 func throne_AutoSelectorMember_setTag(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_AutoSelectorMember_setTag")
 	handleGet(int64(handle)).(*AutoSelectorMember).Tag = C.GoString(v)
 }
 
 //export throne_AutoSelectorMember_getRank
 func throne_AutoSelectorMember_getRank(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_AutoSelectorMember_getRank")
 	return C.int32_t(handleGet(int64(handle)).(*AutoSelectorMember).Rank)
 }
 
 //export throne_AutoSelectorMember_setRank
 func throne_AutoSelectorMember_setRank(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_AutoSelectorMember_setRank")
 	handleGet(int64(handle)).(*AutoSelectorMember).Rank = int32(v)
 }
 
 //export throne_AutoSelectorMember_getState
 func throne_AutoSelectorMember_getState(handle C.int64_t) *C.char {
+	defer guardExport("throne_AutoSelectorMember_getState")
 	return C.CString(handleGet(int64(handle)).(*AutoSelectorMember).State)
 }
 
 //export throne_AutoSelectorMember_setState
 func throne_AutoSelectorMember_setState(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_AutoSelectorMember_setState")
 	handleGet(int64(handle)).(*AutoSelectorMember).State = C.GoString(v)
 }
 
 //export throne_AutoSelectorMember_getSelected
 func throne_AutoSelectorMember_getSelected(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_AutoSelectorMember_getSelected")
 	return cbool(handleGet(int64(handle)).(*AutoSelectorMember).Selected)
 }
 
 //export throne_AutoSelectorMember_setSelected
 func throne_AutoSelectorMember_setSelected(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_AutoSelectorMember_setSelected")
 	handleGet(int64(handle)).(*AutoSelectorMember).Selected = v != 0
 }
 
 //export throne_AutoSelectorMember_getSelectedUDP
 func throne_AutoSelectorMember_getSelectedUDP(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_AutoSelectorMember_getSelectedUDP")
 	return cbool(handleGet(int64(handle)).(*AutoSelectorMember).SelectedUDP)
 }
 
 //export throne_AutoSelectorMember_setSelectedUDP
 func throne_AutoSelectorMember_setSelectedUDP(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_AutoSelectorMember_setSelectedUDP")
 	handleGet(int64(handle)).(*AutoSelectorMember).SelectedUDP = v != 0
 }
 
 //export throne_AutoSelectorMember_getQualified
 func throne_AutoSelectorMember_getQualified(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_AutoSelectorMember_getQualified")
 	return cbool(handleGet(int64(handle)).(*AutoSelectorMember).Qualified)
 }
 
 //export throne_AutoSelectorMember_setQualified
 func throne_AutoSelectorMember_setQualified(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_AutoSelectorMember_setQualified")
 	handleGet(int64(handle)).(*AutoSelectorMember).Qualified = v != 0
 }
 
 //export throne_AutoSelectorMember_getActive
 func throne_AutoSelectorMember_getActive(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_AutoSelectorMember_getActive")
 	return cbool(handleGet(int64(handle)).(*AutoSelectorMember).Active)
 }
 
 //export throne_AutoSelectorMember_setActive
 func throne_AutoSelectorMember_setActive(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_AutoSelectorMember_setActive")
 	handleGet(int64(handle)).(*AutoSelectorMember).Active = v != 0
 }
 
 //export throne_AutoSelectorMember_getAverageMs
 func throne_AutoSelectorMember_getAverageMs(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_AutoSelectorMember_getAverageMs")
 	return C.int32_t(handleGet(int64(handle)).(*AutoSelectorMember).AverageMs)
 }
 
 //export throne_AutoSelectorMember_setAverageMs
 func throne_AutoSelectorMember_setAverageMs(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_AutoSelectorMember_setAverageMs")
 	handleGet(int64(handle)).(*AutoSelectorMember).AverageMs = int32(v)
 }
 
 //export throne_AutoSelectorMember_getDeviationMs
 func throne_AutoSelectorMember_getDeviationMs(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_AutoSelectorMember_getDeviationMs")
 	return C.int32_t(handleGet(int64(handle)).(*AutoSelectorMember).DeviationMs)
 }
 
 //export throne_AutoSelectorMember_setDeviationMs
 func throne_AutoSelectorMember_setDeviationMs(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_AutoSelectorMember_setDeviationMs")
 	handleGet(int64(handle)).(*AutoSelectorMember).DeviationMs = int32(v)
 }
 
 //export throne_AutoSelectorMember_getMinMs
 func throne_AutoSelectorMember_getMinMs(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_AutoSelectorMember_getMinMs")
 	return C.int32_t(handleGet(int64(handle)).(*AutoSelectorMember).MinMs)
 }
 
 //export throne_AutoSelectorMember_setMinMs
 func throne_AutoSelectorMember_setMinMs(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_AutoSelectorMember_setMinMs")
 	handleGet(int64(handle)).(*AutoSelectorMember).MinMs = int32(v)
 }
 
 //export throne_AutoSelectorMember_getMaxMs
 func throne_AutoSelectorMember_getMaxMs(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_AutoSelectorMember_getMaxMs")
 	return C.int32_t(handleGet(int64(handle)).(*AutoSelectorMember).MaxMs)
 }
 
 //export throne_AutoSelectorMember_setMaxMs
 func throne_AutoSelectorMember_setMaxMs(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_AutoSelectorMember_setMaxMs")
 	handleGet(int64(handle)).(*AutoSelectorMember).MaxMs = int32(v)
 }
 
 //export throne_AutoSelectorMember_getSamples
 func throne_AutoSelectorMember_getSamples(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_AutoSelectorMember_getSamples")
 	return C.int32_t(handleGet(int64(handle)).(*AutoSelectorMember).Samples)
 }
 
 //export throne_AutoSelectorMember_setSamples
 func throne_AutoSelectorMember_setSamples(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_AutoSelectorMember_setSamples")
 	handleGet(int64(handle)).(*AutoSelectorMember).Samples = int32(v)
 }
 
 //export throne_AutoSelectorMember_getFailures
 func throne_AutoSelectorMember_getFailures(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_AutoSelectorMember_getFailures")
 	return C.int32_t(handleGet(int64(handle)).(*AutoSelectorMember).Failures)
 }
 
 //export throne_AutoSelectorMember_setFailures
 func throne_AutoSelectorMember_setFailures(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_AutoSelectorMember_setFailures")
 	handleGet(int64(handle)).(*AutoSelectorMember).Failures = int32(v)
 }
 
 //export throne_AutoSelectorMember_getProbes
 func throne_AutoSelectorMember_getProbes(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_AutoSelectorMember_getProbes")
 	return C.int32_t(handleGet(int64(handle)).(*AutoSelectorMember).Probes)
 }
 
 //export throne_AutoSelectorMember_setProbes
 func throne_AutoSelectorMember_setProbes(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_AutoSelectorMember_setProbes")
 	handleGet(int64(handle)).(*AutoSelectorMember).Probes = int32(v)
 }
 
 //export throne_AutoSelectorMember_getDialTotal
 func throne_AutoSelectorMember_getDialTotal(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_AutoSelectorMember_getDialTotal")
 	return C.int32_t(handleGet(int64(handle)).(*AutoSelectorMember).DialTotal)
 }
 
 //export throne_AutoSelectorMember_setDialTotal
 func throne_AutoSelectorMember_setDialTotal(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_AutoSelectorMember_setDialTotal")
 	handleGet(int64(handle)).(*AutoSelectorMember).DialTotal = int32(v)
 }
 
 //export throne_AutoSelectorMember_getDialFail
 func throne_AutoSelectorMember_getDialFail(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_AutoSelectorMember_getDialFail")
 	return C.int32_t(handleGet(int64(handle)).(*AutoSelectorMember).DialFail)
 }
 
 //export throne_AutoSelectorMember_setDialFail
 func throne_AutoSelectorMember_setDialFail(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_AutoSelectorMember_setDialFail")
 	handleGet(int64(handle)).(*AutoSelectorMember).DialFail = int32(v)
 }
 
 //export throne_AutoSelectorMember_getLastOkMs
 func throne_AutoSelectorMember_getLastOkMs(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_AutoSelectorMember_getLastOkMs")
 	return C.int64_t(handleGet(int64(handle)).(*AutoSelectorMember).LastOkMs)
 }
 
 //export throne_AutoSelectorMember_setLastOkMs
 func throne_AutoSelectorMember_setLastOkMs(handle C.int64_t, v C.int64_t)  {
+	defer guardExport("throne_AutoSelectorMember_setLastOkMs")
 	handleGet(int64(handle)).(*AutoSelectorMember).LastOkMs = int64(v)
 }
 
 //export throne_AutoSelectorMember_getLastProbeMs
 func throne_AutoSelectorMember_getLastProbeMs(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_AutoSelectorMember_getLastProbeMs")
 	return C.int64_t(handleGet(int64(handle)).(*AutoSelectorMember).LastProbeMs)
 }
 
 //export throne_AutoSelectorMember_setLastProbeMs
 func throne_AutoSelectorMember_setLastProbeMs(handle C.int64_t, v C.int64_t)  {
+	defer guardExport("throne_AutoSelectorMember_setLastProbeMs")
 	handleGet(int64(handle)).(*AutoSelectorMember).LastProbeMs = int64(v)
 }
 
 //export throne_AutoSelectorMember_getCooldownUntilMs
 func throne_AutoSelectorMember_getCooldownUntilMs(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_AutoSelectorMember_getCooldownUntilMs")
 	return C.int64_t(handleGet(int64(handle)).(*AutoSelectorMember).CooldownUntilMs)
 }
 
 //export throne_AutoSelectorMember_setCooldownUntilMs
 func throne_AutoSelectorMember_setCooldownUntilMs(handle C.int64_t, v C.int64_t)  {
+	defer guardExport("throne_AutoSelectorMember_setCooldownUntilMs")
 	handleGet(int64(handle)).(*AutoSelectorMember).CooldownUntilMs = int64(v)
 }
 
 //export throne_AutoSelectorMember_getLastError
 func throne_AutoSelectorMember_getLastError(handle C.int64_t) *C.char {
+	defer guardExport("throne_AutoSelectorMember_getLastError")
 	return C.CString(handleGet(int64(handle)).(*AutoSelectorMember).LastError)
 }
 
 //export throne_AutoSelectorMember_setLastError
 func throne_AutoSelectorMember_setLastError(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_AutoSelectorMember_setLastError")
 	handleGet(int64(handle)).(*AutoSelectorMember).LastError = C.GoString(v)
 }
 
 //export throne_AutoSelectorStatus_getTag
 func throne_AutoSelectorStatus_getTag(handle C.int64_t) *C.char {
+	defer guardExport("throne_AutoSelectorStatus_getTag")
 	return C.CString(handleGet(int64(handle)).(*AutoSelectorStatus).Tag)
 }
 
 //export throne_AutoSelectorStatus_setTag
 func throne_AutoSelectorStatus_setTag(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_AutoSelectorStatus_setTag")
 	handleGet(int64(handle)).(*AutoSelectorStatus).Tag = C.GoString(v)
 }
 
 //export throne_AutoSelectorStatus_getPhase
 func throne_AutoSelectorStatus_getPhase(handle C.int64_t) *C.char {
+	defer guardExport("throne_AutoSelectorStatus_getPhase")
 	return C.CString(handleGet(int64(handle)).(*AutoSelectorStatus).Phase)
 }
 
 //export throne_AutoSelectorStatus_setPhase
 func throne_AutoSelectorStatus_setPhase(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_AutoSelectorStatus_setPhase")
 	handleGet(int64(handle)).(*AutoSelectorStatus).Phase = C.GoString(v)
 }
 
 //export throne_AutoSelectorStatus_getSelected
 func throne_AutoSelectorStatus_getSelected(handle C.int64_t) *C.char {
+	defer guardExport("throne_AutoSelectorStatus_getSelected")
 	return C.CString(handleGet(int64(handle)).(*AutoSelectorStatus).Selected)
 }
 
 //export throne_AutoSelectorStatus_setSelected
 func throne_AutoSelectorStatus_setSelected(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_AutoSelectorStatus_setSelected")
 	handleGet(int64(handle)).(*AutoSelectorStatus).Selected = C.GoString(v)
 }
 
 //export throne_AutoSelectorStatus_getSelectedUDP
 func throne_AutoSelectorStatus_getSelectedUDP(handle C.int64_t) *C.char {
+	defer guardExport("throne_AutoSelectorStatus_getSelectedUDP")
 	return C.CString(handleGet(int64(handle)).(*AutoSelectorStatus).SelectedUDP)
 }
 
 //export throne_AutoSelectorStatus_setSelectedUDP
 func throne_AutoSelectorStatus_setSelectedUDP(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_AutoSelectorStatus_setSelectedUDP")
 	handleGet(int64(handle)).(*AutoSelectorStatus).SelectedUDP = C.GoString(v)
 }
 
 //export throne_AutoSelectorStatus_getPinned
 func throne_AutoSelectorStatus_getPinned(handle C.int64_t) *C.char {
+	defer guardExport("throne_AutoSelectorStatus_getPinned")
 	return C.CString(handleGet(int64(handle)).(*AutoSelectorStatus).Pinned)
 }
 
 //export throne_AutoSelectorStatus_setPinned
 func throne_AutoSelectorStatus_setPinned(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_AutoSelectorStatus_setPinned")
 	handleGet(int64(handle)).(*AutoSelectorStatus).Pinned = C.GoString(v)
 }
 
 //export throne_AutoSelectorStatus_getBalance
 func throne_AutoSelectorStatus_getBalance(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_AutoSelectorStatus_getBalance")
 	return cbool(handleGet(int64(handle)).(*AutoSelectorStatus).Balance)
 }
 
 //export throne_AutoSelectorStatus_setBalance
 func throne_AutoSelectorStatus_setBalance(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_AutoSelectorStatus_setBalance")
 	handleGet(int64(handle)).(*AutoSelectorStatus).Balance = v != 0
 }
 
 //export throne_AutoSelectorStatus_getBalanceMode
 func throne_AutoSelectorStatus_getBalanceMode(handle C.int64_t) *C.char {
+	defer guardExport("throne_AutoSelectorStatus_getBalanceMode")
 	return C.CString(handleGet(int64(handle)).(*AutoSelectorStatus).BalanceMode)
 }
 
 //export throne_AutoSelectorStatus_setBalanceMode
 func throne_AutoSelectorStatus_setBalanceMode(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_AutoSelectorStatus_setBalanceMode")
 	handleGet(int64(handle)).(*AutoSelectorStatus).BalanceMode = C.GoString(v)
 }
 
 //export throne_AutoSelectorStatus_getSuspended
 func throne_AutoSelectorStatus_getSuspended(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_AutoSelectorStatus_getSuspended")
 	return cbool(handleGet(int64(handle)).(*AutoSelectorStatus).Suspended)
 }
 
 //export throne_AutoSelectorStatus_setSuspended
 func throne_AutoSelectorStatus_setSuspended(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_AutoSelectorStatus_setSuspended")
 	handleGet(int64(handle)).(*AutoSelectorStatus).Suspended = v != 0
 }
 
 //export throne_AutoSelectorStatus_getSuspendedSinceMs
 func throne_AutoSelectorStatus_getSuspendedSinceMs(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_AutoSelectorStatus_getSuspendedSinceMs")
 	return C.int64_t(handleGet(int64(handle)).(*AutoSelectorStatus).SuspendedSinceMs)
 }
 
 //export throne_AutoSelectorStatus_setSuspendedSinceMs
 func throne_AutoSelectorStatus_setSuspendedSinceMs(handle C.int64_t, v C.int64_t)  {
+	defer guardExport("throne_AutoSelectorStatus_setSuspendedSinceMs")
 	handleGet(int64(handle)).(*AutoSelectorStatus).SuspendedSinceMs = int64(v)
 }
 
 //export throne_AutoSelectorStatus_getMembersTotal
 func throne_AutoSelectorStatus_getMembersTotal(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_AutoSelectorStatus_getMembersTotal")
 	return C.int32_t(handleGet(int64(handle)).(*AutoSelectorStatus).MembersTotal)
 }
 
 //export throne_AutoSelectorStatus_setMembersTotal
 func throne_AutoSelectorStatus_setMembersTotal(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_AutoSelectorStatus_setMembersTotal")
 	handleGet(int64(handle)).(*AutoSelectorStatus).MembersTotal = int32(v)
 }
 
 //export throne_AutoSelectorStatus_getMembersProbed
 func throne_AutoSelectorStatus_getMembersProbed(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_AutoSelectorStatus_getMembersProbed")
 	return C.int32_t(handleGet(int64(handle)).(*AutoSelectorStatus).MembersProbed)
 }
 
 //export throne_AutoSelectorStatus_setMembersProbed
 func throne_AutoSelectorStatus_setMembersProbed(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_AutoSelectorStatus_setMembersProbed")
 	handleGet(int64(handle)).(*AutoSelectorStatus).MembersProbed = int32(v)
 }
 
 //export throne_AutoSelectorStatus_getMembersAlive
 func throne_AutoSelectorStatus_getMembersAlive(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_AutoSelectorStatus_getMembersAlive")
 	return C.int32_t(handleGet(int64(handle)).(*AutoSelectorStatus).MembersAlive)
 }
 
 //export throne_AutoSelectorStatus_setMembersAlive
 func throne_AutoSelectorStatus_setMembersAlive(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_AutoSelectorStatus_setMembersAlive")
 	handleGet(int64(handle)).(*AutoSelectorStatus).MembersAlive = int32(v)
 }
 
 //export throne_AutoSelectorStatus_getMembersQualified
 func throne_AutoSelectorStatus_getMembersQualified(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_AutoSelectorStatus_getMembersQualified")
 	return C.int32_t(handleGet(int64(handle)).(*AutoSelectorStatus).MembersQualified)
 }
 
 //export throne_AutoSelectorStatus_setMembersQualified
 func throne_AutoSelectorStatus_setMembersQualified(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_AutoSelectorStatus_setMembersQualified")
 	handleGet(int64(handle)).(*AutoSelectorStatus).MembersQualified = int32(v)
 }
 
 //export throne_AutoSelectorStatus_getMembersCooldown
 func throne_AutoSelectorStatus_getMembersCooldown(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_AutoSelectorStatus_getMembersCooldown")
 	return C.int32_t(handleGet(int64(handle)).(*AutoSelectorStatus).MembersCooldown)
 }
 
 //export throne_AutoSelectorStatus_setMembersCooldown
 func throne_AutoSelectorStatus_setMembersCooldown(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_AutoSelectorStatus_setMembersCooldown")
 	handleGet(int64(handle)).(*AutoSelectorStatus).MembersCooldown = int32(v)
 }
 
 //export throne_AutoSelectorStatus_getProbesInFlight
 func throne_AutoSelectorStatus_getProbesInFlight(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_AutoSelectorStatus_getProbesInFlight")
 	return C.int32_t(handleGet(int64(handle)).(*AutoSelectorStatus).ProbesInFlight)
 }
 
 //export throne_AutoSelectorStatus_setProbesInFlight
 func throne_AutoSelectorStatus_setProbesInFlight(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_AutoSelectorStatus_setProbesInFlight")
 	handleGet(int64(handle)).(*AutoSelectorStatus).ProbesInFlight = int32(v)
 }
 
 //export throne_AutoSelectorStatus_getRoundsCompleted
 func throne_AutoSelectorStatus_getRoundsCompleted(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_AutoSelectorStatus_getRoundsCompleted")
 	return C.int32_t(handleGet(int64(handle)).(*AutoSelectorStatus).RoundsCompleted)
 }
 
 //export throne_AutoSelectorStatus_setRoundsCompleted
 func throne_AutoSelectorStatus_setRoundsCompleted(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_AutoSelectorStatus_setRoundsCompleted")
 	handleGet(int64(handle)).(*AutoSelectorStatus).RoundsCompleted = int32(v)
 }
 
 //export throne_AutoSelectorStatus_getLastRoundMs
 func throne_AutoSelectorStatus_getLastRoundMs(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_AutoSelectorStatus_getLastRoundMs")
 	return C.int64_t(handleGet(int64(handle)).(*AutoSelectorStatus).LastRoundMs)
 }
 
 //export throne_AutoSelectorStatus_setLastRoundMs
 func throne_AutoSelectorStatus_setLastRoundMs(handle C.int64_t, v C.int64_t)  {
+	defer guardExport("throne_AutoSelectorStatus_setLastRoundMs")
 	handleGet(int64(handle)).(*AutoSelectorStatus).LastRoundMs = int64(v)
 }
 
 //export throne_AutoSelectorStatus_getNextRoundMs
 func throne_AutoSelectorStatus_getNextRoundMs(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_AutoSelectorStatus_getNextRoundMs")
 	return C.int64_t(handleGet(int64(handle)).(*AutoSelectorStatus).NextRoundMs)
 }
 
 //export throne_AutoSelectorStatus_setNextRoundMs
 func throne_AutoSelectorStatus_setNextRoundMs(handle C.int64_t, v C.int64_t)  {
+	defer guardExport("throne_AutoSelectorStatus_setNextRoundMs")
 	handleGet(int64(handle)).(*AutoSelectorStatus).NextRoundMs = int64(v)
 }
 
 //export throne_AutoSelectorStatus_getLastSwitchMs
 func throne_AutoSelectorStatus_getLastSwitchMs(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_AutoSelectorStatus_getLastSwitchMs")
 	return C.int64_t(handleGet(int64(handle)).(*AutoSelectorStatus).LastSwitchMs)
 }
 
 //export throne_AutoSelectorStatus_setLastSwitchMs
 func throne_AutoSelectorStatus_setLastSwitchMs(handle C.int64_t, v C.int64_t)  {
+	defer guardExport("throne_AutoSelectorStatus_setLastSwitchMs")
 	handleGet(int64(handle)).(*AutoSelectorStatus).LastSwitchMs = int64(v)
 }
 
 //export throne_AutoSelectorStatus_getLastSwitchReason
 func throne_AutoSelectorStatus_getLastSwitchReason(handle C.int64_t) *C.char {
+	defer guardExport("throne_AutoSelectorStatus_getLastSwitchReason")
 	return C.CString(handleGet(int64(handle)).(*AutoSelectorStatus).LastSwitchReason)
 }
 
 //export throne_AutoSelectorStatus_setLastSwitchReason
 func throne_AutoSelectorStatus_setLastSwitchReason(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_AutoSelectorStatus_setLastSwitchReason")
 	handleGet(int64(handle)).(*AutoSelectorStatus).LastSwitchReason = C.GoString(v)
 }
 
 //export throne_AutoSelectorStatus_members
 func throne_AutoSelectorStatus_members(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_AutoSelectorStatus_members")
 	return marshal_handle(handleGet(int64(handle)).(*AutoSelectorStatus).Members())
 }
 
 //export throne_ConnectionOwner_getUserId
 func throne_ConnectionOwner_getUserId(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_ConnectionOwner_getUserId")
 	return C.int32_t(handleGet(int64(handle)).(*ConnectionOwner).UserId)
 }
 
 //export throne_ConnectionOwner_setUserId
 func throne_ConnectionOwner_setUserId(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_ConnectionOwner_setUserId")
 	handleGet(int64(handle)).(*ConnectionOwner).UserId = int32(v)
 }
 
 //export throne_ConnectionOwner_getUserName
 func throne_ConnectionOwner_getUserName(handle C.int64_t) *C.char {
+	defer guardExport("throne_ConnectionOwner_getUserName")
 	return C.CString(handleGet(int64(handle)).(*ConnectionOwner).UserName)
 }
 
 //export throne_ConnectionOwner_setUserName
 func throne_ConnectionOwner_setUserName(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_ConnectionOwner_setUserName")
 	handleGet(int64(handle)).(*ConnectionOwner).UserName = C.GoString(v)
 }
 
 //export throne_ConnectionOwner_getProcessPath
 func throne_ConnectionOwner_getProcessPath(handle C.int64_t) *C.char {
+	defer guardExport("throne_ConnectionOwner_getProcessPath")
 	return C.CString(handleGet(int64(handle)).(*ConnectionOwner).ProcessPath)
 }
 
 //export throne_ConnectionOwner_setProcessPath
 func throne_ConnectionOwner_setProcessPath(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_ConnectionOwner_setProcessPath")
 	handleGet(int64(handle)).(*ConnectionOwner).ProcessPath = C.GoString(v)
 }
 
 //export throne_ConnectionOwner_androidPackageNames
 func throne_ConnectionOwner_androidPackageNames(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_ConnectionOwner_androidPackageNames")
 	return marshal_handle(handleGet(int64(handle)).(*ConnectionOwner).AndroidPackageNames())
 }
 
 //export throne_ConnectionOwner_setAndroidPackageNames
 func throne_ConnectionOwner_setAndroidPackageNames(handle C.int64_t, names *C.char)  {
+	defer guardExport("throne_ConnectionOwner_setAndroidPackageNames")
 	handleGet(int64(handle)).(*ConnectionOwner).SetAndroidPackageNames(newIterator(parseStringSlice(C.GoString(names))))
 }
 
 //export throne_DiagnosticsRequest_getDurationMs
 func throne_DiagnosticsRequest_getDurationMs(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_DiagnosticsRequest_getDurationMs")
 	return C.int32_t(handleGet(int64(handle)).(*DiagnosticsRequest).DurationMs)
 }
 
 //export throne_DiagnosticsRequest_setDurationMs
 func throne_DiagnosticsRequest_setDurationMs(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_DiagnosticsRequest_setDurationMs")
 	handleGet(int64(handle)).(*DiagnosticsRequest).DurationMs = int32(v)
 }
 
 //export throne_DiagnosticsRequest_getContention
 func throne_DiagnosticsRequest_getContention(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_DiagnosticsRequest_getContention")
 	return cbool(handleGet(int64(handle)).(*DiagnosticsRequest).Contention)
 }
 
 //export throne_DiagnosticsRequest_setContention
 func throne_DiagnosticsRequest_setContention(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_DiagnosticsRequest_setContention")
 	handleGet(int64(handle)).(*DiagnosticsRequest).Contention = v != 0
 }
 
 //export throne_DiagnosticsRequest_getTrace
 func throne_DiagnosticsRequest_getTrace(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_DiagnosticsRequest_getTrace")
 	return cbool(handleGet(int64(handle)).(*DiagnosticsRequest).Trace)
 }
 
 //export throne_DiagnosticsRequest_setTrace
 func throne_DiagnosticsRequest_setTrace(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_DiagnosticsRequest_setTrace")
 	handleGet(int64(handle)).(*DiagnosticsRequest).Trace = v != 0
 }
 
 //export throne_DiagnosticsRequest_addAttachment
 func throne_DiagnosticsRequest_addAttachment(handle C.int64_t, name *C.char, data *C.uint8_t, data_len C.int32_t)  {
+	defer guardExport("throne_DiagnosticsRequest_addAttachment")
 	handleGet(int64(handle)).(*DiagnosticsRequest).AddAttachment(C.GoString(name), C.GoBytes(unsafe.Pointer(data), C.int(data_len)))
 }
 
 //export throne_ExchangeContext_errnoCode
 func throne_ExchangeContext_errnoCode(handle C.int64_t, code C.int32_t)  {
+	defer guardExport("throne_ExchangeContext_errnoCode")
 	handleGet(int64(handle)).(*ExchangeContext).ErrnoCode(int32(code))
 }
 
 //export throne_ExchangeContext_errorCode
 func throne_ExchangeContext_errorCode(handle C.int64_t, code C.int32_t)  {
+	defer guardExport("throne_ExchangeContext_errorCode")
 	handleGet(int64(handle)).(*ExchangeContext).ErrorCode(int32(code))
 }
 
 //export throne_ExchangeContext_onCancel
 func throne_ExchangeContext_onCancel(handle C.int64_t, callback unsafe.Pointer)  {
+	defer guardExport("throne_ExchangeContext_onCancel")
 	handleGet(int64(handle)).(*ExchangeContext).OnCancel(jniFunc{obj: callback})
 }
 
 //export throne_ExchangeContext_rawSuccess
 func throne_ExchangeContext_rawSuccess(handle C.int64_t, result *C.uint8_t, result_len C.int32_t)  {
+	defer guardExport("throne_ExchangeContext_rawSuccess")
 	handleGet(int64(handle)).(*ExchangeContext).RawSuccess(C.GoBytes(unsafe.Pointer(result), C.int(result_len)))
 }
 
 //export throne_ExchangeContext_success
 func throne_ExchangeContext_success(handle C.int64_t, result *C.char)  {
+	defer guardExport("throne_ExchangeContext_success")
 	handleGet(int64(handle)).(*ExchangeContext).Success(C.GoString(result))
 }
 
 //export throne_Instance_autoSelectorAction
 func throne_Instance_autoSelectorAction(handle C.int64_t, tag *C.char, action *C.char, member *C.char)  {
+	defer guardExport("throne_Instance_autoSelectorAction")
 	if err := handleGet(int64(handle)).(*Instance).AutoSelectorAction(C.GoString(tag), C.GoString(action), C.GoString(member)); err != nil { setErr(err) }
 }
 
 //export throne_Instance_clashMode
 func throne_Instance_clashMode(handle C.int64_t) *C.char {
+	defer guardExport("throne_Instance_clashMode")
 	return C.CString(handleGet(int64(handle)).(*Instance).ClashMode())
 }
 
 //export throne_Instance_clashModeList
 func throne_Instance_clashModeList(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_Instance_clashModeList")
 	return marshal_handle(handleGet(int64(handle)).(*Instance).ClashModeList())
 }
 
 //export throne_Instance_close
 func throne_Instance_close(handle C.int64_t)  {
+	defer guardExport("throne_Instance_close")
 	if err := handleGet(int64(handle)).(*Instance).Close(); err != nil { setErr(err) }
+	throne_handle_release(handle)
 }
 
 //export throne_Instance_groups
 func throne_Instance_groups(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_Instance_groups")
 	return marshal_handle(handleGet(int64(handle)).(*Instance).Groups())
 }
 
 //export throne_Instance_localDNSFailure
 func throne_Instance_localDNSFailure(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_Instance_localDNSFailure")
 	return marshal_handle(handleGet(int64(handle)).(*Instance).LocalDNSFailure())
 }
 
 //export throne_Instance_needWIFIState
 func throne_Instance_needWIFIState(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_Instance_needWIFIState")
 	return cbool(handleGet(int64(handle)).(*Instance).NeedWIFIState())
 }
 
 //export throne_Instance_pause
 func throne_Instance_pause(handle C.int64_t)  {
+	defer guardExport("throne_Instance_pause")
 	handleGet(int64(handle)).(*Instance).Pause()
 }
 
 //export throne_Instance_queryAutoSelectors
 func throne_Instance_queryAutoSelectors(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_Instance_queryAutoSelectors")
 	return marshal_handle(handleGet(int64(handle)).(*Instance).QueryAutoSelectors())
 }
 
 //export throne_Instance_queryOutboundStats
 func throne_Instance_queryOutboundStats(handle C.int64_t, tag *C.char, direction *C.char) C.int64_t {
+	defer guardExport("throne_Instance_queryOutboundStats")
 	return C.int64_t(handleGet(int64(handle)).(*Instance).QueryOutboundStats(C.GoString(tag), C.GoString(direction)))
 }
 
 //export throne_Instance_resetNetwork
 func throne_Instance_resetNetwork(handle C.int64_t)  {
+	defer guardExport("throne_Instance_resetNetwork")
 	handleGet(int64(handle)).(*Instance).ResetNetwork()
 }
 
 //export throne_Instance_selectOutbound
 func throne_Instance_selectOutbound(handle C.int64_t, groupTag *C.char, outboundTag *C.char)  {
+	defer guardExport("throne_Instance_selectOutbound")
 	if err := handleGet(int64(handle)).(*Instance).SelectOutbound(C.GoString(groupTag), C.GoString(outboundTag)); err != nil { setErr(err) }
 }
 
 //export throne_Instance_setClashMode
 func throne_Instance_setClashMode(handle C.int64_t, mode *C.char)  {
+	defer guardExport("throne_Instance_setClashMode")
 	if err := handleGet(int64(handle)).(*Instance).SetClashMode(C.GoString(mode)); err != nil { setErr(err) }
 }
 
 //export throne_Instance_start
 func throne_Instance_start(handle C.int64_t)  {
+	defer guardExport("throne_Instance_start")
 	if err := handleGet(int64(handle)).(*Instance).Start(); err != nil { setErr(err) }
 }
 
 //export throne_Instance_status
 func throne_Instance_status(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_Instance_status")
 	return marshal_handle(handleGet(int64(handle)).(*Instance).Status())
 }
 
 //export throne_Instance_urlTestGroup
 func throne_Instance_urlTestGroup(handle C.int64_t, groupTag *C.char)  {
+	defer guardExport("throne_Instance_urlTestGroup")
 	if err := handleGet(int64(handle)).(*Instance).URLTestGroup(C.GoString(groupTag)); err != nil { setErr(err) }
 }
 
 //export throne_Instance_updateRuleSets
 func throne_Instance_updateRuleSets(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_Instance_updateRuleSets")
 	v, err := handleGet(int64(handle)).(*Instance).UpdateRuleSets()
 	if err != nil { setErr(err); return 0 }
 	return marshal_handle(v)
@@ -692,41 +851,49 @@ func throne_Instance_updateRuleSets(handle C.int64_t) C.int64_t {
 
 //export throne_Instance_updateWIFIState
 func throne_Instance_updateWIFIState(handle C.int64_t)  {
+	defer guardExport("throne_Instance_updateWIFIState")
 	handleGet(int64(handle)).(*Instance).UpdateWIFIState()
 }
 
 //export throne_Instance_wake
 func throne_Instance_wake(handle C.int64_t)  {
+	defer guardExport("throne_Instance_wake")
 	handleGet(int64(handle)).(*Instance).Wake()
 }
 
 //export throne_LocalDNSFailure_getServers
 func throne_LocalDNSFailure_getServers(handle C.int64_t) *C.char {
+	defer guardExport("throne_LocalDNSFailure_getServers")
 	return C.CString(handleGet(int64(handle)).(*LocalDNSFailure).Servers)
 }
 
 //export throne_LocalDNSFailure_setServers
 func throne_LocalDNSFailure_setServers(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_LocalDNSFailure_setServers")
 	handleGet(int64(handle)).(*LocalDNSFailure).Servers = C.GoString(v)
 }
 
 //export throne_Mobile_captureDiagnostics
 func throne_Mobile_captureDiagnostics(request C.int64_t, outputPath *C.char)  {
+	defer guardExport("throne_Mobile_captureDiagnostics")
 	if err := CaptureDiagnostics(handleGet(int64(request)).(*DiagnosticsRequest), C.GoString(outputPath)); err != nil { setErr(err) }
 }
 
 //export throne_Mobile_checkConfig
 func throne_Mobile_checkConfig(coreConfig *C.char)  {
+	defer guardExport("throne_Mobile_checkConfig")
 	if err := CheckConfig(C.GoString(coreConfig)); err != nil { setErr(err) }
 }
 
 //export throne_Mobile_checkXrayConfig
 func throne_Mobile_checkXrayConfig(xrayConfig *C.char)  {
+	defer guardExport("throne_Mobile_checkXrayConfig")
 	if err := CheckXrayConfig(C.GoString(xrayConfig)); err != nil { setErr(err) }
 }
 
 //export throne_Mobile_genQuicSignature
 func throne_Mobile_genQuicSignature(domain *C.char) C.int64_t {
+	defer guardExport("throne_Mobile_genQuicSignature")
 	v, err := GenQuicSignature(C.GoString(domain))
 	if err != nil { setErr(err); return 0 }
 	return marshal_handle(v)
@@ -734,6 +901,7 @@ func throne_Mobile_genQuicSignature(domain *C.char) C.int64_t {
 
 //export throne_Mobile_generateWireGuardKeyPair
 func throne_Mobile_generateWireGuardKeyPair() C.int64_t {
+	defer guardExport("throne_Mobile_generateWireGuardKeyPair")
 	v, err := GenerateWireGuardKeyPair()
 	if err != nil { setErr(err); return 0 }
 	return marshal_handle(v)
@@ -741,11 +909,13 @@ func throne_Mobile_generateWireGuardKeyPair() C.int64_t {
 
 //export throne_Mobile_goVersion
 func throne_Mobile_goVersion() *C.char {
+	defer guardExport("throne_Mobile_goVersion")
 	return C.CString(GoVersion())
 }
 
 //export throne_Mobile_newInstance
 func throne_Mobile_newInstance(options C.int64_t) C.int64_t {
+	defer guardExport("throne_Mobile_newInstance")
 	v, err := NewInstance(bridgePlatform, handleGet(int64(options)).(*StartOptions))
 	if err != nil { setErr(err); return 0 }
 	registerInstance(v)
@@ -754,16 +924,19 @@ func throne_Mobile_newInstance(options C.int64_t) C.int64_t {
 
 //export throne_Mobile_newWIFIState
 func throne_Mobile_newWIFIState(wifiSSID *C.char, wifiBSSID *C.char) C.int64_t {
+	defer guardExport("throne_Mobile_newWIFIState")
 	return marshal_handle(NewWIFIState(C.GoString(wifiSSID), C.GoString(wifiBSSID)))
 }
 
 //export throne_Mobile_querySpeedTest
 func throne_Mobile_querySpeedTest() C.int64_t {
+	defer guardExport("throne_Mobile_querySpeedTest")
 	return marshal_handle(QuerySpeedTest())
 }
 
 //export throne_Mobile_resolveDomains
 func throne_Mobile_resolveDomains(current C.int64_t, request C.int64_t) C.int64_t {
+	defer guardExport("throne_Mobile_resolveDomains")
 	v, err := ResolveDomains(handleGet(int64(current)).(*Instance), bridgePlatform, handleGet(int64(request)).(*ResolveRequest))
 	if err != nil { setErr(err); return 0 }
 	return marshal_handle(v)
@@ -771,46 +944,55 @@ func throne_Mobile_resolveDomains(current C.int64_t, request C.int64_t) C.int64_
 
 //export throne_Mobile_setLogSink
 func throne_Mobile_setLogSink()  {
+	defer guardExport("throne_Mobile_setLogSink")
 	SetLogSink(portLogSink{})
 }
 
 //export throne_Mobile_setup
 func throne_Mobile_setup(options C.int64_t)  {
+	defer guardExport("throne_Mobile_setup")
 	if err := Setup(handleGet(int64(options)).(*SetupOptions)); err != nil { setErr(err) }
 }
 
 //export throne_Mobile_startIPTest
 func throne_Mobile_startIPTest(request C.int64_t, handler C.int64_t)  {
+	defer guardExport("throne_Mobile_startIPTest")
 	if err := StartIPTest(bridgePlatform, handleGet(int64(request)).(*TestRequest), portIPTest{port: int64(handler)}); err != nil { setErr(err) }
 }
 
 //export throne_Mobile_startSpeedTest
 func throne_Mobile_startSpeedTest(current C.int64_t, request C.int64_t, handler C.int64_t)  {
+	defer guardExport("throne_Mobile_startSpeedTest")
 	if err := StartSpeedTest(handleGet(int64(current)).(*Instance), bridgePlatform, handleGet(int64(request)).(*TestRequest), portSpeedTest{port: int64(handler)}); err != nil { setErr(err) }
 }
 
 //export throne_Mobile_startURLTest
 func throne_Mobile_startURLTest(current C.int64_t, request C.int64_t, handler C.int64_t)  {
+	defer guardExport("throne_Mobile_startURLTest")
 	if err := StartURLTest(handleGet(int64(current)).(*Instance), bridgePlatform, handleGet(int64(request)).(*TestRequest), portURLTest{port: int64(handler)}); err != nil { setErr(err) }
 }
 
 //export throne_Mobile_stopDiagnostics
 func throne_Mobile_stopDiagnostics()  {
+	defer guardExport("throne_Mobile_stopDiagnostics")
 	StopDiagnostics()
 }
 
 //export throne_Mobile_stopTests
 func throne_Mobile_stopTests()  {
+	defer guardExport("throne_Mobile_stopTests")
 	StopTests()
 }
 
 //export throne_Mobile_version
 func throne_Mobile_version() *C.char {
+	defer guardExport("throne_Mobile_version")
 	return C.CString(Version())
 }
 
 //export throne_Mobile_warpRegister
 func throne_Mobile_warpRegister(request C.int64_t) C.int64_t {
+	defer guardExport("throne_Mobile_warpRegister")
 	v, err := WarpRegister(handleGet(int64(request)).(*WarpRegisterRequest))
 	if err != nil { setErr(err); return 0 }
 	return marshal_handle(v)
@@ -818,1026 +1000,1231 @@ func throne_Mobile_warpRegister(request C.int64_t) C.int64_t {
 
 //export throne_Mobile_xrayVersion
 func throne_Mobile_xrayVersion() *C.char {
+	defer guardExport("throne_Mobile_xrayVersion")
 	return C.CString(XrayVersion())
 }
 
 //export throne_NetworkInterface_getIndex
 func throne_NetworkInterface_getIndex(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_NetworkInterface_getIndex")
 	return C.int32_t(handleGet(int64(handle)).(*NetworkInterface).Index)
 }
 
 //export throne_NetworkInterface_setIndex
 func throne_NetworkInterface_setIndex(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_NetworkInterface_setIndex")
 	handleGet(int64(handle)).(*NetworkInterface).Index = int32(v)
 }
 
 //export throne_NetworkInterface_getMTU
 func throne_NetworkInterface_getMTU(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_NetworkInterface_getMTU")
 	return C.int32_t(handleGet(int64(handle)).(*NetworkInterface).MTU)
 }
 
 //export throne_NetworkInterface_setMTU
 func throne_NetworkInterface_setMTU(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_NetworkInterface_setMTU")
 	handleGet(int64(handle)).(*NetworkInterface).MTU = int32(v)
 }
 
 //export throne_NetworkInterface_getName
 func throne_NetworkInterface_getName(handle C.int64_t) *C.char {
+	defer guardExport("throne_NetworkInterface_getName")
 	return C.CString(handleGet(int64(handle)).(*NetworkInterface).Name)
 }
 
 //export throne_NetworkInterface_setName
 func throne_NetworkInterface_setName(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_NetworkInterface_setName")
 	handleGet(int64(handle)).(*NetworkInterface).Name = C.GoString(v)
 }
 
 //export throne_NetworkInterface_getAddresses
 func throne_NetworkInterface_getAddresses(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_NetworkInterface_getAddresses")
 	return marshal_handle(handleGet(int64(handle)).(*NetworkInterface).Addresses)
 }
 
 //export throne_NetworkInterface_setAddresses
 func throne_NetworkInterface_setAddresses(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_NetworkInterface_setAddresses")
 	handleGet(int64(handle)).(*NetworkInterface).Addresses = newIterator(parseStringSlice(C.GoString(v)))
 }
 
 //export throne_NetworkInterface_getFlags
 func throne_NetworkInterface_getFlags(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_NetworkInterface_getFlags")
 	return C.int32_t(handleGet(int64(handle)).(*NetworkInterface).Flags)
 }
 
 //export throne_NetworkInterface_setFlags
 func throne_NetworkInterface_setFlags(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_NetworkInterface_setFlags")
 	handleGet(int64(handle)).(*NetworkInterface).Flags = int32(v)
 }
 
 //export throne_NetworkInterface_getType
 func throne_NetworkInterface_getType(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_NetworkInterface_getType")
 	return C.int32_t(handleGet(int64(handle)).(*NetworkInterface).Type)
 }
 
 //export throne_NetworkInterface_setType
 func throne_NetworkInterface_setType(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_NetworkInterface_setType")
 	handleGet(int64(handle)).(*NetworkInterface).Type = int32(v)
 }
 
 //export throne_NetworkInterface_getDNSServer
 func throne_NetworkInterface_getDNSServer(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_NetworkInterface_getDNSServer")
 	return marshal_handle(handleGet(int64(handle)).(*NetworkInterface).DNSServer)
 }
 
 //export throne_NetworkInterface_setDNSServer
 func throne_NetworkInterface_setDNSServer(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_NetworkInterface_setDNSServer")
 	handleGet(int64(handle)).(*NetworkInterface).DNSServer = newIterator(parseStringSlice(C.GoString(v)))
 }
 
 //export throne_NetworkInterface_getGateway
 func throne_NetworkInterface_getGateway(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_NetworkInterface_getGateway")
 	return marshal_handle(handleGet(int64(handle)).(*NetworkInterface).Gateway)
 }
 
 //export throne_NetworkInterface_setGateway
 func throne_NetworkInterface_setGateway(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_NetworkInterface_setGateway")
 	handleGet(int64(handle)).(*NetworkInterface).Gateway = newIterator(parseStringSlice(C.GoString(v)))
 }
 
 //export throne_NetworkInterface_getMetered
 func throne_NetworkInterface_getMetered(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_NetworkInterface_getMetered")
 	return cbool(handleGet(int64(handle)).(*NetworkInterface).Metered)
 }
 
 //export throne_NetworkInterface_setMetered
 func throne_NetworkInterface_setMetered(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_NetworkInterface_setMetered")
 	handleGet(int64(handle)).(*NetworkInterface).Metered = v != 0
 }
 
 //export throne_Notification_getIdentifier
 func throne_Notification_getIdentifier(handle C.int64_t) *C.char {
+	defer guardExport("throne_Notification_getIdentifier")
 	return C.CString(handleGet(int64(handle)).(*Notification).Identifier)
 }
 
 //export throne_Notification_setIdentifier
 func throne_Notification_setIdentifier(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_Notification_setIdentifier")
 	handleGet(int64(handle)).(*Notification).Identifier = C.GoString(v)
 }
 
 //export throne_Notification_getTypeName
 func throne_Notification_getTypeName(handle C.int64_t) *C.char {
+	defer guardExport("throne_Notification_getTypeName")
 	return C.CString(handleGet(int64(handle)).(*Notification).TypeName)
 }
 
 //export throne_Notification_setTypeName
 func throne_Notification_setTypeName(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_Notification_setTypeName")
 	handleGet(int64(handle)).(*Notification).TypeName = C.GoString(v)
 }
 
 //export throne_Notification_getTypeID
 func throne_Notification_getTypeID(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_Notification_getTypeID")
 	return C.int32_t(handleGet(int64(handle)).(*Notification).TypeID)
 }
 
 //export throne_Notification_setTypeID
 func throne_Notification_setTypeID(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_Notification_setTypeID")
 	handleGet(int64(handle)).(*Notification).TypeID = int32(v)
 }
 
 //export throne_Notification_getTitle
 func throne_Notification_getTitle(handle C.int64_t) *C.char {
+	defer guardExport("throne_Notification_getTitle")
 	return C.CString(handleGet(int64(handle)).(*Notification).Title)
 }
 
 //export throne_Notification_setTitle
 func throne_Notification_setTitle(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_Notification_setTitle")
 	handleGet(int64(handle)).(*Notification).Title = C.GoString(v)
 }
 
 //export throne_Notification_getSubtitle
 func throne_Notification_getSubtitle(handle C.int64_t) *C.char {
+	defer guardExport("throne_Notification_getSubtitle")
 	return C.CString(handleGet(int64(handle)).(*Notification).Subtitle)
 }
 
 //export throne_Notification_setSubtitle
 func throne_Notification_setSubtitle(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_Notification_setSubtitle")
 	handleGet(int64(handle)).(*Notification).Subtitle = C.GoString(v)
 }
 
 //export throne_Notification_getBody
 func throne_Notification_getBody(handle C.int64_t) *C.char {
+	defer guardExport("throne_Notification_getBody")
 	return C.CString(handleGet(int64(handle)).(*Notification).Body)
 }
 
 //export throne_Notification_setBody
 func throne_Notification_setBody(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_Notification_setBody")
 	handleGet(int64(handle)).(*Notification).Body = C.GoString(v)
 }
 
 //export throne_Notification_getOpenURL
 func throne_Notification_getOpenURL(handle C.int64_t) *C.char {
+	defer guardExport("throne_Notification_getOpenURL")
 	return C.CString(handleGet(int64(handle)).(*Notification).OpenURL)
 }
 
 //export throne_Notification_setOpenURL
 func throne_Notification_setOpenURL(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_Notification_setOpenURL")
 	handleGet(int64(handle)).(*Notification).OpenURL = C.GoString(v)
 }
 
 //export throne_OutboundGroup_getTag
 func throne_OutboundGroup_getTag(handle C.int64_t) *C.char {
+	defer guardExport("throne_OutboundGroup_getTag")
 	return C.CString(handleGet(int64(handle)).(*OutboundGroup).Tag)
 }
 
 //export throne_OutboundGroup_setTag
 func throne_OutboundGroup_setTag(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_OutboundGroup_setTag")
 	handleGet(int64(handle)).(*OutboundGroup).Tag = C.GoString(v)
 }
 
 //export throne_OutboundGroup_getType
 func throne_OutboundGroup_getType(handle C.int64_t) *C.char {
+	defer guardExport("throne_OutboundGroup_getType")
 	return C.CString(handleGet(int64(handle)).(*OutboundGroup).Type)
 }
 
 //export throne_OutboundGroup_setType
 func throne_OutboundGroup_setType(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_OutboundGroup_setType")
 	handleGet(int64(handle)).(*OutboundGroup).Type = C.GoString(v)
 }
 
 //export throne_OutboundGroup_getSelectable
 func throne_OutboundGroup_getSelectable(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_OutboundGroup_getSelectable")
 	return cbool(handleGet(int64(handle)).(*OutboundGroup).Selectable)
 }
 
 //export throne_OutboundGroup_setSelectable
 func throne_OutboundGroup_setSelectable(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_OutboundGroup_setSelectable")
 	handleGet(int64(handle)).(*OutboundGroup).Selectable = v != 0
 }
 
 //export throne_OutboundGroup_getSelected
 func throne_OutboundGroup_getSelected(handle C.int64_t) *C.char {
+	defer guardExport("throne_OutboundGroup_getSelected")
 	return C.CString(handleGet(int64(handle)).(*OutboundGroup).Selected)
 }
 
 //export throne_OutboundGroup_setSelected
 func throne_OutboundGroup_setSelected(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_OutboundGroup_setSelected")
 	handleGet(int64(handle)).(*OutboundGroup).Selected = C.GoString(v)
 }
 
 //export throne_OutboundGroup_getIsExpand
 func throne_OutboundGroup_getIsExpand(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_OutboundGroup_getIsExpand")
 	return cbool(handleGet(int64(handle)).(*OutboundGroup).IsExpand)
 }
 
 //export throne_OutboundGroup_setIsExpand
 func throne_OutboundGroup_setIsExpand(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_OutboundGroup_setIsExpand")
 	handleGet(int64(handle)).(*OutboundGroup).IsExpand = v != 0
 }
 
 //export throne_OutboundGroup_getItems
 func throne_OutboundGroup_getItems(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_OutboundGroup_getItems")
 	return marshal_handle(handleGet(int64(handle)).(*OutboundGroup).GetItems())
 }
 
 //export throne_OutboundGroupItem_getTag
 func throne_OutboundGroupItem_getTag(handle C.int64_t) *C.char {
+	defer guardExport("throne_OutboundGroupItem_getTag")
 	return C.CString(handleGet(int64(handle)).(*OutboundGroupItem).Tag)
 }
 
 //export throne_OutboundGroupItem_setTag
 func throne_OutboundGroupItem_setTag(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_OutboundGroupItem_setTag")
 	handleGet(int64(handle)).(*OutboundGroupItem).Tag = C.GoString(v)
 }
 
 //export throne_OutboundGroupItem_getType
 func throne_OutboundGroupItem_getType(handle C.int64_t) *C.char {
+	defer guardExport("throne_OutboundGroupItem_getType")
 	return C.CString(handleGet(int64(handle)).(*OutboundGroupItem).Type)
 }
 
 //export throne_OutboundGroupItem_setType
 func throne_OutboundGroupItem_setType(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_OutboundGroupItem_setType")
 	handleGet(int64(handle)).(*OutboundGroupItem).Type = C.GoString(v)
 }
 
 //export throne_OutboundGroupItem_getURLTestTime
 func throne_OutboundGroupItem_getURLTestTime(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_OutboundGroupItem_getURLTestTime")
 	return C.int64_t(handleGet(int64(handle)).(*OutboundGroupItem).URLTestTime)
 }
 
 //export throne_OutboundGroupItem_setURLTestTime
 func throne_OutboundGroupItem_setURLTestTime(handle C.int64_t, v C.int64_t)  {
+	defer guardExport("throne_OutboundGroupItem_setURLTestTime")
 	handleGet(int64(handle)).(*OutboundGroupItem).URLTestTime = int64(v)
 }
 
 //export throne_OutboundGroupItem_getURLTestDelay
 func throne_OutboundGroupItem_getURLTestDelay(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_OutboundGroupItem_getURLTestDelay")
 	return C.int32_t(handleGet(int64(handle)).(*OutboundGroupItem).URLTestDelay)
 }
 
 //export throne_OutboundGroupItem_setURLTestDelay
 func throne_OutboundGroupItem_setURLTestDelay(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_OutboundGroupItem_setURLTestDelay")
 	handleGet(int64(handle)).(*OutboundGroupItem).URLTestDelay = int32(v)
 }
 
 //export throne_ResolveRequest_getCoreConfig
 func throne_ResolveRequest_getCoreConfig(handle C.int64_t) *C.char {
+	defer guardExport("throne_ResolveRequest_getCoreConfig")
 	return C.CString(handleGet(int64(handle)).(*ResolveRequest).CoreConfig)
 }
 
 //export throne_ResolveRequest_setCoreConfig
 func throne_ResolveRequest_setCoreConfig(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_ResolveRequest_setCoreConfig")
 	handleGet(int64(handle)).(*ResolveRequest).CoreConfig = C.GoString(v)
 }
 
 //export throne_ResolveRequest_addDomain
 func throne_ResolveRequest_addDomain(handle C.int64_t, domain *C.char)  {
+	defer guardExport("throne_ResolveRequest_addDomain")
 	handleGet(int64(handle)).(*ResolveRequest).AddDomain(C.GoString(domain))
 }
 
 //export throne_ResolvedDomain_getDomain
 func throne_ResolvedDomain_getDomain(handle C.int64_t) *C.char {
+	defer guardExport("throne_ResolvedDomain_getDomain")
 	return C.CString(handleGet(int64(handle)).(*ResolvedDomain).Domain)
 }
 
 //export throne_ResolvedDomain_setDomain
 func throne_ResolvedDomain_setDomain(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_ResolvedDomain_setDomain")
 	handleGet(int64(handle)).(*ResolvedDomain).Domain = C.GoString(v)
 }
 
 //export throne_ResolvedDomain_getError
 func throne_ResolvedDomain_getError(handle C.int64_t) *C.char {
+	defer guardExport("throne_ResolvedDomain_getError")
 	return C.CString(handleGet(int64(handle)).(*ResolvedDomain).Error)
 }
 
 //export throne_ResolvedDomain_setError
 func throne_ResolvedDomain_setError(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_ResolvedDomain_setError")
 	handleGet(int64(handle)).(*ResolvedDomain).Error = C.GoString(v)
 }
 
 //export throne_ResolvedDomain_addresses
 func throne_ResolvedDomain_addresses(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_ResolvedDomain_addresses")
 	return marshal_handle(handleGet(int64(handle)).(*ResolvedDomain).Addresses())
 }
 
 //export throne_RoutePrefix_address
 func throne_RoutePrefix_address(handle C.int64_t) *C.char {
+	defer guardExport("throne_RoutePrefix_address")
 	return C.CString(handleGet(int64(handle)).(*RoutePrefix).Address())
 }
 
 //export throne_RoutePrefix_mask
 func throne_RoutePrefix_mask(handle C.int64_t) *C.char {
+	defer guardExport("throne_RoutePrefix_mask")
 	return C.CString(handleGet(int64(handle)).(*RoutePrefix).Mask())
 }
 
 //export throne_RoutePrefix_prefix
 func throne_RoutePrefix_prefix(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_RoutePrefix_prefix")
 	return C.int32_t(handleGet(int64(handle)).(*RoutePrefix).Prefix())
 }
 
 //export throne_RoutePrefix_string
 func throne_RoutePrefix_string(handle C.int64_t) *C.char {
+	defer guardExport("throne_RoutePrefix_string")
 	return C.CString(handleGet(int64(handle)).(*RoutePrefix).String())
 }
 
 //export throne_RuleSetUpdateResult_getUpdated
 func throne_RuleSetUpdateResult_getUpdated(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_RuleSetUpdateResult_getUpdated")
 	return C.int32_t(handleGet(int64(handle)).(*RuleSetUpdateResult).Updated)
 }
 
 //export throne_RuleSetUpdateResult_setUpdated
 func throne_RuleSetUpdateResult_setUpdated(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_RuleSetUpdateResult_setUpdated")
 	handleGet(int64(handle)).(*RuleSetUpdateResult).Updated = int32(v)
 }
 
 //export throne_RuleSetUpdateResult_getError
 func throne_RuleSetUpdateResult_getError(handle C.int64_t) *C.char {
+	defer guardExport("throne_RuleSetUpdateResult_getError")
 	return C.CString(handleGet(int64(handle)).(*RuleSetUpdateResult).Error)
 }
 
 //export throne_RuleSetUpdateResult_setError
 func throne_RuleSetUpdateResult_setError(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_RuleSetUpdateResult_setError")
 	handleGet(int64(handle)).(*RuleSetUpdateResult).Error = C.GoString(v)
 }
 
 //export throne_SetupOptions_getBasePath
 func throne_SetupOptions_getBasePath(handle C.int64_t) *C.char {
+	defer guardExport("throne_SetupOptions_getBasePath")
 	return C.CString(handleGet(int64(handle)).(*SetupOptions).BasePath)
 }
 
 //export throne_SetupOptions_setBasePath
 func throne_SetupOptions_setBasePath(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_SetupOptions_setBasePath")
 	handleGet(int64(handle)).(*SetupOptions).BasePath = C.GoString(v)
 }
 
 //export throne_SetupOptions_getWorkingPath
 func throne_SetupOptions_getWorkingPath(handle C.int64_t) *C.char {
+	defer guardExport("throne_SetupOptions_getWorkingPath")
 	return C.CString(handleGet(int64(handle)).(*SetupOptions).WorkingPath)
 }
 
 //export throne_SetupOptions_setWorkingPath
 func throne_SetupOptions_setWorkingPath(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_SetupOptions_setWorkingPath")
 	handleGet(int64(handle)).(*SetupOptions).WorkingPath = C.GoString(v)
 }
 
 //export throne_SetupOptions_getTempPath
 func throne_SetupOptions_getTempPath(handle C.int64_t) *C.char {
+	defer guardExport("throne_SetupOptions_getTempPath")
 	return C.CString(handleGet(int64(handle)).(*SetupOptions).TempPath)
 }
 
 //export throne_SetupOptions_setTempPath
 func throne_SetupOptions_setTempPath(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_SetupOptions_setTempPath")
 	handleGet(int64(handle)).(*SetupOptions).TempPath = C.GoString(v)
 }
 
 //export throne_SetupOptions_getLogMaxLines
 func throne_SetupOptions_getLogMaxLines(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_SetupOptions_getLogMaxLines")
 	return C.int32_t(handleGet(int64(handle)).(*SetupOptions).LogMaxLines)
 }
 
 //export throne_SetupOptions_setLogMaxLines
 func throne_SetupOptions_setLogMaxLines(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_SetupOptions_setLogMaxLines")
 	handleGet(int64(handle)).(*SetupOptions).LogMaxLines = int32(v)
 }
 
 //export throne_SetupOptions_getDebug
 func throne_SetupOptions_getDebug(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_SetupOptions_getDebug")
 	return cbool(handleGet(int64(handle)).(*SetupOptions).Debug)
 }
 
 //export throne_SetupOptions_setDebug
 func throne_SetupOptions_setDebug(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_SetupOptions_setDebug")
 	handleGet(int64(handle)).(*SetupOptions).Debug = v != 0
 }
 
 //export throne_SpeedTestResult_getTag
 func throne_SpeedTestResult_getTag(handle C.int64_t) *C.char {
+	defer guardExport("throne_SpeedTestResult_getTag")
 	return C.CString(handleGet(int64(handle)).(*SpeedTestResult).Tag)
 }
 
 //export throne_SpeedTestResult_setTag
 func throne_SpeedTestResult_setTag(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_SpeedTestResult_setTag")
 	handleGet(int64(handle)).(*SpeedTestResult).Tag = C.GoString(v)
 }
 
 //export throne_SpeedTestResult_getDlSpeed
 func throne_SpeedTestResult_getDlSpeed(handle C.int64_t) *C.char {
+	defer guardExport("throne_SpeedTestResult_getDlSpeed")
 	return C.CString(handleGet(int64(handle)).(*SpeedTestResult).DlSpeed)
 }
 
 //export throne_SpeedTestResult_setDlSpeed
 func throne_SpeedTestResult_setDlSpeed(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_SpeedTestResult_setDlSpeed")
 	handleGet(int64(handle)).(*SpeedTestResult).DlSpeed = C.GoString(v)
 }
 
 //export throne_SpeedTestResult_getUlSpeed
 func throne_SpeedTestResult_getUlSpeed(handle C.int64_t) *C.char {
+	defer guardExport("throne_SpeedTestResult_getUlSpeed")
 	return C.CString(handleGet(int64(handle)).(*SpeedTestResult).UlSpeed)
 }
 
 //export throne_SpeedTestResult_setUlSpeed
 func throne_SpeedTestResult_setUlSpeed(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_SpeedTestResult_setUlSpeed")
 	handleGet(int64(handle)).(*SpeedTestResult).UlSpeed = C.GoString(v)
 }
 
 //export throne_SpeedTestResult_getLatency
 func throne_SpeedTestResult_getLatency(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_SpeedTestResult_getLatency")
 	return C.int32_t(handleGet(int64(handle)).(*SpeedTestResult).Latency)
 }
 
 //export throne_SpeedTestResult_setLatency
 func throne_SpeedTestResult_setLatency(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_SpeedTestResult_setLatency")
 	handleGet(int64(handle)).(*SpeedTestResult).Latency = int32(v)
 }
 
 //export throne_SpeedTestResult_getServerName
 func throne_SpeedTestResult_getServerName(handle C.int64_t) *C.char {
+	defer guardExport("throne_SpeedTestResult_getServerName")
 	return C.CString(handleGet(int64(handle)).(*SpeedTestResult).ServerName)
 }
 
 //export throne_SpeedTestResult_setServerName
 func throne_SpeedTestResult_setServerName(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_SpeedTestResult_setServerName")
 	handleGet(int64(handle)).(*SpeedTestResult).ServerName = C.GoString(v)
 }
 
 //export throne_SpeedTestResult_getServerCountry
 func throne_SpeedTestResult_getServerCountry(handle C.int64_t) *C.char {
+	defer guardExport("throne_SpeedTestResult_getServerCountry")
 	return C.CString(handleGet(int64(handle)).(*SpeedTestResult).ServerCountry)
 }
 
 //export throne_SpeedTestResult_setServerCountry
 func throne_SpeedTestResult_setServerCountry(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_SpeedTestResult_setServerCountry")
 	handleGet(int64(handle)).(*SpeedTestResult).ServerCountry = C.GoString(v)
 }
 
 //export throne_SpeedTestResult_getError
 func throne_SpeedTestResult_getError(handle C.int64_t) *C.char {
+	defer guardExport("throne_SpeedTestResult_getError")
 	return C.CString(handleGet(int64(handle)).(*SpeedTestResult).Error)
 }
 
 //export throne_SpeedTestResult_setError
 func throne_SpeedTestResult_setError(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_SpeedTestResult_setError")
 	handleGet(int64(handle)).(*SpeedTestResult).Error = C.GoString(v)
 }
 
 //export throne_SpeedTestResult_getCancelled
 func throne_SpeedTestResult_getCancelled(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_SpeedTestResult_getCancelled")
 	return cbool(handleGet(int64(handle)).(*SpeedTestResult).Cancelled)
 }
 
 //export throne_SpeedTestResult_setCancelled
 func throne_SpeedTestResult_setCancelled(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_SpeedTestResult_setCancelled")
 	handleGet(int64(handle)).(*SpeedTestResult).Cancelled = v != 0
 }
 
 //export throne_SpeedTestResult_getDlBytes
 func throne_SpeedTestResult_getDlBytes(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_SpeedTestResult_getDlBytes")
 	return C.int64_t(handleGet(int64(handle)).(*SpeedTestResult).DlBytes)
 }
 
 //export throne_SpeedTestResult_setDlBytes
 func throne_SpeedTestResult_setDlBytes(handle C.int64_t, v C.int64_t)  {
+	defer guardExport("throne_SpeedTestResult_setDlBytes")
 	handleGet(int64(handle)).(*SpeedTestResult).DlBytes = int64(v)
 }
 
 //export throne_SpeedTestResult_getUlBytes
 func throne_SpeedTestResult_getUlBytes(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_SpeedTestResult_getUlBytes")
 	return C.int64_t(handleGet(int64(handle)).(*SpeedTestResult).UlBytes)
 }
 
 //export throne_SpeedTestResult_setUlBytes
 func throne_SpeedTestResult_setUlBytes(handle C.int64_t, v C.int64_t)  {
+	defer guardExport("throne_SpeedTestResult_setUlBytes")
 	handleGet(int64(handle)).(*SpeedTestResult).UlBytes = int64(v)
 }
 
 //export throne_SpeedTestResult_getRunning
 func throne_SpeedTestResult_getRunning(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_SpeedTestResult_getRunning")
 	return cbool(handleGet(int64(handle)).(*SpeedTestResult).Running)
 }
 
 //export throne_SpeedTestResult_setRunning
 func throne_SpeedTestResult_setRunning(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_SpeedTestResult_setRunning")
 	handleGet(int64(handle)).(*SpeedTestResult).Running = v != 0
 }
 
 //export throne_StartOptions_getCoreConfig
 func throne_StartOptions_getCoreConfig(handle C.int64_t) *C.char {
+	defer guardExport("throne_StartOptions_getCoreConfig")
 	return C.CString(handleGet(int64(handle)).(*StartOptions).CoreConfig)
 }
 
 //export throne_StartOptions_setCoreConfig
 func throne_StartOptions_setCoreConfig(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_StartOptions_setCoreConfig")
 	handleGet(int64(handle)).(*StartOptions).CoreConfig = C.GoString(v)
 }
 
 //export throne_StartOptions_getNeedXray
 func throne_StartOptions_getNeedXray(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_StartOptions_getNeedXray")
 	return cbool(handleGet(int64(handle)).(*StartOptions).NeedXray)
 }
 
 //export throne_StartOptions_setNeedXray
 func throne_StartOptions_setNeedXray(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_StartOptions_setNeedXray")
 	handleGet(int64(handle)).(*StartOptions).NeedXray = v != 0
 }
 
 //export throne_StartOptions_getXrayConfig
 func throne_StartOptions_getXrayConfig(handle C.int64_t) *C.char {
+	defer guardExport("throne_StartOptions_getXrayConfig")
 	return C.CString(handleGet(int64(handle)).(*StartOptions).XrayConfig)
 }
 
 //export throne_StartOptions_setXrayConfig
 func throne_StartOptions_setXrayConfig(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_StartOptions_setXrayConfig")
 	handleGet(int64(handle)).(*StartOptions).XrayConfig = C.GoString(v)
 }
 
 //export throne_StartOptions_getXrayOutboundDNSStrategy
 func throne_StartOptions_getXrayOutboundDNSStrategy(handle C.int64_t) *C.char {
+	defer guardExport("throne_StartOptions_getXrayOutboundDNSStrategy")
 	return C.CString(handleGet(int64(handle)).(*StartOptions).XrayOutboundDNSStrategy)
 }
 
 //export throne_StartOptions_setXrayOutboundDNSStrategy
 func throne_StartOptions_setXrayOutboundDNSStrategy(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_StartOptions_setXrayOutboundDNSStrategy")
 	handleGet(int64(handle)).(*StartOptions).XrayOutboundDNSStrategy = C.GoString(v)
 }
 
 //export throne_StartOptions_getXrayLazyStart
 func throne_StartOptions_getXrayLazyStart(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_StartOptions_getXrayLazyStart")
 	return cbool(handleGet(int64(handle)).(*StartOptions).XrayLazyStart)
 }
 
 //export throne_StartOptions_setXrayLazyStart
 func throne_StartOptions_setXrayLazyStart(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_StartOptions_setXrayLazyStart")
 	handleGet(int64(handle)).(*StartOptions).XrayLazyStart = v != 0
 }
 
 //export throne_StartOptions_getXrayIdleSeconds
 func throne_StartOptions_getXrayIdleSeconds(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_StartOptions_getXrayIdleSeconds")
 	return C.int32_t(handleGet(int64(handle)).(*StartOptions).XrayIdleSeconds)
 }
 
 //export throne_StartOptions_setXrayIdleSeconds
 func throne_StartOptions_setXrayIdleSeconds(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_StartOptions_setXrayIdleSeconds")
 	handleGet(int64(handle)).(*StartOptions).XrayIdleSeconds = int32(v)
 }
 
 //export throne_StartOptions_getXrayFullIdleSeconds
 func throne_StartOptions_getXrayFullIdleSeconds(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_StartOptions_getXrayFullIdleSeconds")
 	return C.int32_t(handleGet(int64(handle)).(*StartOptions).XrayFullIdleSeconds)
 }
 
 //export throne_StartOptions_setXrayFullIdleSeconds
 func throne_StartOptions_setXrayFullIdleSeconds(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_StartOptions_setXrayFullIdleSeconds")
 	handleGet(int64(handle)).(*StartOptions).XrayFullIdleSeconds = int32(v)
 }
 
 //export throne_StartOptions_addXrayFullConfig
 func throne_StartOptions_addXrayFullConfig(handle C.int64_t, config *C.char)  {
+	defer guardExport("throne_StartOptions_addXrayFullConfig")
 	handleGet(int64(handle)).(*StartOptions).AddXrayFullConfig(C.GoString(config))
 }
 
 //export throne_StatusMessage_getMemory
 func throne_StatusMessage_getMemory(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_StatusMessage_getMemory")
 	return C.int64_t(handleGet(int64(handle)).(*StatusMessage).Memory)
 }
 
 //export throne_StatusMessage_setMemory
 func throne_StatusMessage_setMemory(handle C.int64_t, v C.int64_t)  {
+	defer guardExport("throne_StatusMessage_setMemory")
 	handleGet(int64(handle)).(*StatusMessage).Memory = int64(v)
 }
 
 //export throne_StatusMessage_getGoroutines
 func throne_StatusMessage_getGoroutines(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_StatusMessage_getGoroutines")
 	return C.int32_t(handleGet(int64(handle)).(*StatusMessage).Goroutines)
 }
 
 //export throne_StatusMessage_setGoroutines
 func throne_StatusMessage_setGoroutines(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_StatusMessage_setGoroutines")
 	handleGet(int64(handle)).(*StatusMessage).Goroutines = int32(v)
 }
 
 //export throne_StatusMessage_getConnectionsIn
 func throne_StatusMessage_getConnectionsIn(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_StatusMessage_getConnectionsIn")
 	return C.int32_t(handleGet(int64(handle)).(*StatusMessage).ConnectionsIn)
 }
 
 //export throne_StatusMessage_setConnectionsIn
 func throne_StatusMessage_setConnectionsIn(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_StatusMessage_setConnectionsIn")
 	handleGet(int64(handle)).(*StatusMessage).ConnectionsIn = int32(v)
 }
 
 //export throne_StatusMessage_getConnectionsOut
 func throne_StatusMessage_getConnectionsOut(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_StatusMessage_getConnectionsOut")
 	return C.int32_t(handleGet(int64(handle)).(*StatusMessage).ConnectionsOut)
 }
 
 //export throne_StatusMessage_setConnectionsOut
 func throne_StatusMessage_setConnectionsOut(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_StatusMessage_setConnectionsOut")
 	handleGet(int64(handle)).(*StatusMessage).ConnectionsOut = int32(v)
 }
 
 //export throne_StatusMessage_getTrafficAvailable
 func throne_StatusMessage_getTrafficAvailable(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_StatusMessage_getTrafficAvailable")
 	return cbool(handleGet(int64(handle)).(*StatusMessage).TrafficAvailable)
 }
 
 //export throne_StatusMessage_setTrafficAvailable
 func throne_StatusMessage_setTrafficAvailable(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_StatusMessage_setTrafficAvailable")
 	handleGet(int64(handle)).(*StatusMessage).TrafficAvailable = v != 0
 }
 
 //export throne_StatusMessage_getUplink
 func throne_StatusMessage_getUplink(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_StatusMessage_getUplink")
 	return C.int64_t(handleGet(int64(handle)).(*StatusMessage).Uplink)
 }
 
 //export throne_StatusMessage_setUplink
 func throne_StatusMessage_setUplink(handle C.int64_t, v C.int64_t)  {
+	defer guardExport("throne_StatusMessage_setUplink")
 	handleGet(int64(handle)).(*StatusMessage).Uplink = int64(v)
 }
 
 //export throne_StatusMessage_getDownlink
 func throne_StatusMessage_getDownlink(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_StatusMessage_getDownlink")
 	return C.int64_t(handleGet(int64(handle)).(*StatusMessage).Downlink)
 }
 
 //export throne_StatusMessage_setDownlink
 func throne_StatusMessage_setDownlink(handle C.int64_t, v C.int64_t)  {
+	defer guardExport("throne_StatusMessage_setDownlink")
 	handleGet(int64(handle)).(*StatusMessage).Downlink = int64(v)
 }
 
 //export throne_StatusMessage_getUplinkTotal
 func throne_StatusMessage_getUplinkTotal(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_StatusMessage_getUplinkTotal")
 	return C.int64_t(handleGet(int64(handle)).(*StatusMessage).UplinkTotal)
 }
 
 //export throne_StatusMessage_setUplinkTotal
 func throne_StatusMessage_setUplinkTotal(handle C.int64_t, v C.int64_t)  {
+	defer guardExport("throne_StatusMessage_setUplinkTotal")
 	handleGet(int64(handle)).(*StatusMessage).UplinkTotal = int64(v)
 }
 
 //export throne_StatusMessage_getDownlinkTotal
 func throne_StatusMessage_getDownlinkTotal(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_StatusMessage_getDownlinkTotal")
 	return C.int64_t(handleGet(int64(handle)).(*StatusMessage).DownlinkTotal)
 }
 
 //export throne_StatusMessage_setDownlinkTotal
 func throne_StatusMessage_setDownlinkTotal(handle C.int64_t, v C.int64_t)  {
+	defer guardExport("throne_StatusMessage_setDownlinkTotal")
 	handleGet(int64(handle)).(*StatusMessage).DownlinkTotal = int64(v)
 }
 
 //export throne_StringBox_getValue
 func throne_StringBox_getValue(handle C.int64_t) *C.char {
+	defer guardExport("throne_StringBox_getValue")
 	return C.CString(handleGet(int64(handle)).(*StringBox).Value)
 }
 
 //export throne_StringBox_setValue
 func throne_StringBox_setValue(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_StringBox_setValue")
 	handleGet(int64(handle)).(*StringBox).Value = C.GoString(v)
 }
 
 //export throne_TestRequest_getCoreConfig
 func throne_TestRequest_getCoreConfig(handle C.int64_t) *C.char {
+	defer guardExport("throne_TestRequest_getCoreConfig")
 	return C.CString(handleGet(int64(handle)).(*TestRequest).CoreConfig)
 }
 
 //export throne_TestRequest_setCoreConfig
 func throne_TestRequest_setCoreConfig(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_TestRequest_setCoreConfig")
 	handleGet(int64(handle)).(*TestRequest).CoreConfig = C.GoString(v)
 }
 
 //export throne_TestRequest_getXrayConfig
 func throne_TestRequest_getXrayConfig(handle C.int64_t) *C.char {
+	defer guardExport("throne_TestRequest_getXrayConfig")
 	return C.CString(handleGet(int64(handle)).(*TestRequest).XrayConfig)
 }
 
 //export throne_TestRequest_setXrayConfig
 func throne_TestRequest_setXrayConfig(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_TestRequest_setXrayConfig")
 	handleGet(int64(handle)).(*TestRequest).XrayConfig = C.GoString(v)
 }
 
 //export throne_TestRequest_getNeedXray
 func throne_TestRequest_getNeedXray(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_TestRequest_getNeedXray")
 	return cbool(handleGet(int64(handle)).(*TestRequest).NeedXray)
 }
 
 //export throne_TestRequest_setNeedXray
 func throne_TestRequest_setNeedXray(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_TestRequest_setNeedXray")
 	handleGet(int64(handle)).(*TestRequest).NeedXray = v != 0
 }
 
 //export throne_TestRequest_getXrayOutboundDNSStrategy
 func throne_TestRequest_getXrayOutboundDNSStrategy(handle C.int64_t) *C.char {
+	defer guardExport("throne_TestRequest_getXrayOutboundDNSStrategy")
 	return C.CString(handleGet(int64(handle)).(*TestRequest).XrayOutboundDNSStrategy)
 }
 
 //export throne_TestRequest_setXrayOutboundDNSStrategy
 func throne_TestRequest_setXrayOutboundDNSStrategy(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_TestRequest_setXrayOutboundDNSStrategy")
 	handleGet(int64(handle)).(*TestRequest).XrayOutboundDNSStrategy = C.GoString(v)
 }
 
 //export throne_TestRequest_getURL
 func throne_TestRequest_getURL(handle C.int64_t) *C.char {
+	defer guardExport("throne_TestRequest_getURL")
 	return C.CString(handleGet(int64(handle)).(*TestRequest).URL)
 }
 
 //export throne_TestRequest_setURL
 func throne_TestRequest_setURL(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_TestRequest_setURL")
 	handleGet(int64(handle)).(*TestRequest).URL = C.GoString(v)
 }
 
 //export throne_TestRequest_getMaxConcurrency
 func throne_TestRequest_getMaxConcurrency(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_TestRequest_getMaxConcurrency")
 	return C.int32_t(handleGet(int64(handle)).(*TestRequest).MaxConcurrency)
 }
 
 //export throne_TestRequest_setMaxConcurrency
 func throne_TestRequest_setMaxConcurrency(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_TestRequest_setMaxConcurrency")
 	handleGet(int64(handle)).(*TestRequest).MaxConcurrency = int32(v)
 }
 
 //export throne_TestRequest_getTimeoutMs
 func throne_TestRequest_getTimeoutMs(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_TestRequest_getTimeoutMs")
 	return C.int32_t(handleGet(int64(handle)).(*TestRequest).TimeoutMs)
 }
 
 //export throne_TestRequest_setTimeoutMs
 func throne_TestRequest_setTimeoutMs(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_TestRequest_setTimeoutMs")
 	handleGet(int64(handle)).(*TestRequest).TimeoutMs = int32(v)
 }
 
 //export throne_TestRequest_getUseDefaultOutbound
 func throne_TestRequest_getUseDefaultOutbound(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_TestRequest_getUseDefaultOutbound")
 	return cbool(handleGet(int64(handle)).(*TestRequest).UseDefaultOutbound)
 }
 
 //export throne_TestRequest_setUseDefaultOutbound
 func throne_TestRequest_setUseDefaultOutbound(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_TestRequest_setUseDefaultOutbound")
 	handleGet(int64(handle)).(*TestRequest).UseDefaultOutbound = v != 0
 }
 
 //export throne_TestRequest_getTestCurrent
 func throne_TestRequest_getTestCurrent(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_TestRequest_getTestCurrent")
 	return cbool(handleGet(int64(handle)).(*TestRequest).TestCurrent)
 }
 
 //export throne_TestRequest_setTestCurrent
 func throne_TestRequest_setTestCurrent(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_TestRequest_setTestCurrent")
 	handleGet(int64(handle)).(*TestRequest).TestCurrent = v != 0
 }
 
 //export throne_TestRequest_getTestDownload
 func throne_TestRequest_getTestDownload(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_TestRequest_getTestDownload")
 	return cbool(handleGet(int64(handle)).(*TestRequest).TestDownload)
 }
 
 //export throne_TestRequest_setTestDownload
 func throne_TestRequest_setTestDownload(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_TestRequest_setTestDownload")
 	handleGet(int64(handle)).(*TestRequest).TestDownload = v != 0
 }
 
 //export throne_TestRequest_getTestUpload
 func throne_TestRequest_getTestUpload(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_TestRequest_getTestUpload")
 	return cbool(handleGet(int64(handle)).(*TestRequest).TestUpload)
 }
 
 //export throne_TestRequest_setTestUpload
 func throne_TestRequest_setTestUpload(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_TestRequest_setTestUpload")
 	handleGet(int64(handle)).(*TestRequest).TestUpload = v != 0
 }
 
 //export throne_TestRequest_getSimpleDownload
 func throne_TestRequest_getSimpleDownload(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_TestRequest_getSimpleDownload")
 	return cbool(handleGet(int64(handle)).(*TestRequest).SimpleDownload)
 }
 
 //export throne_TestRequest_setSimpleDownload
 func throne_TestRequest_setSimpleDownload(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_TestRequest_setSimpleDownload")
 	handleGet(int64(handle)).(*TestRequest).SimpleDownload = v != 0
 }
 
 //export throne_TestRequest_getSimpleDownloadAddr
 func throne_TestRequest_getSimpleDownloadAddr(handle C.int64_t) *C.char {
+	defer guardExport("throne_TestRequest_getSimpleDownloadAddr")
 	return C.CString(handleGet(int64(handle)).(*TestRequest).SimpleDownloadAddr)
 }
 
 //export throne_TestRequest_setSimpleDownloadAddr
 func throne_TestRequest_setSimpleDownloadAddr(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_TestRequest_setSimpleDownloadAddr")
 	handleGet(int64(handle)).(*TestRequest).SimpleDownloadAddr = C.GoString(v)
 }
 
 //export throne_TestRequest_getOnlyCountry
 func throne_TestRequest_getOnlyCountry(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_TestRequest_getOnlyCountry")
 	return cbool(handleGet(int64(handle)).(*TestRequest).OnlyCountry)
 }
 
 //export throne_TestRequest_setOnlyCountry
 func throne_TestRequest_setOnlyCountry(handle C.int64_t, v C.int8_t)  {
+	defer guardExport("throne_TestRequest_setOnlyCountry")
 	handleGet(int64(handle)).(*TestRequest).OnlyCountry = v != 0
 }
 
 //export throne_TestRequest_getCountryConcurrency
 func throne_TestRequest_getCountryConcurrency(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_TestRequest_getCountryConcurrency")
 	return C.int32_t(handleGet(int64(handle)).(*TestRequest).CountryConcurrency)
 }
 
 //export throne_TestRequest_setCountryConcurrency
 func throne_TestRequest_setCountryConcurrency(handle C.int64_t, v C.int32_t)  {
+	defer guardExport("throne_TestRequest_setCountryConcurrency")
 	handleGet(int64(handle)).(*TestRequest).CountryConcurrency = int32(v)
 }
 
 //export throne_TestRequest_addOutboundTag
 func throne_TestRequest_addOutboundTag(handle C.int64_t, tag *C.char)  {
+	defer guardExport("throne_TestRequest_addOutboundTag")
 	handleGet(int64(handle)).(*TestRequest).AddOutboundTag(C.GoString(tag))
 }
 
 //export throne_TestRequest_addVPNEndpointTag
 func throne_TestRequest_addVPNEndpointTag(handle C.int64_t, tag *C.char)  {
+	defer guardExport("throne_TestRequest_addVPNEndpointTag")
 	handleGet(int64(handle)).(*TestRequest).AddVPNEndpointTag(C.GoString(tag))
 }
 
 //export throne_TestRequest_addXrayFullConfig
 func throne_TestRequest_addXrayFullConfig(handle C.int64_t, config *C.char)  {
+	defer guardExport("throne_TestRequest_addXrayFullConfig")
 	handleGet(int64(handle)).(*TestRequest).AddXrayFullConfig(C.GoString(config))
 }
 
 //export throne_WIFIState_getSSID
 func throne_WIFIState_getSSID(handle C.int64_t) *C.char {
+	defer guardExport("throne_WIFIState_getSSID")
 	return C.CString(handleGet(int64(handle)).(*WIFIState).SSID)
 }
 
 //export throne_WIFIState_setSSID
 func throne_WIFIState_setSSID(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_WIFIState_setSSID")
 	handleGet(int64(handle)).(*WIFIState).SSID = C.GoString(v)
 }
 
 //export throne_WIFIState_getBSSID
 func throne_WIFIState_getBSSID(handle C.int64_t) *C.char {
+	defer guardExport("throne_WIFIState_getBSSID")
 	return C.CString(handleGet(int64(handle)).(*WIFIState).BSSID)
 }
 
 //export throne_WIFIState_setBSSID
 func throne_WIFIState_setBSSID(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_WIFIState_setBSSID")
 	handleGet(int64(handle)).(*WIFIState).BSSID = C.GoString(v)
 }
 
 //export throne_WarpIdentity_getDeviceID
 func throne_WarpIdentity_getDeviceID(handle C.int64_t) *C.char {
+	defer guardExport("throne_WarpIdentity_getDeviceID")
 	return C.CString(handleGet(int64(handle)).(*WarpIdentity).DeviceID)
 }
 
 //export throne_WarpIdentity_setDeviceID
 func throne_WarpIdentity_setDeviceID(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_WarpIdentity_setDeviceID")
 	handleGet(int64(handle)).(*WarpIdentity).DeviceID = C.GoString(v)
 }
 
 //export throne_WarpIdentity_getToken
 func throne_WarpIdentity_getToken(handle C.int64_t) *C.char {
+	defer guardExport("throne_WarpIdentity_getToken")
 	return C.CString(handleGet(int64(handle)).(*WarpIdentity).Token)
 }
 
 //export throne_WarpIdentity_setToken
 func throne_WarpIdentity_setToken(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_WarpIdentity_setToken")
 	handleGet(int64(handle)).(*WarpIdentity).Token = C.GoString(v)
 }
 
 //export throne_WarpIdentity_getLicense
 func throne_WarpIdentity_getLicense(handle C.int64_t) *C.char {
+	defer guardExport("throne_WarpIdentity_getLicense")
 	return C.CString(handleGet(int64(handle)).(*WarpIdentity).License)
 }
 
 //export throne_WarpIdentity_setLicense
 func throne_WarpIdentity_setLicense(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_WarpIdentity_setLicense")
 	handleGet(int64(handle)).(*WarpIdentity).License = C.GoString(v)
 }
 
 //export throne_WarpIdentity_getIPv4
 func throne_WarpIdentity_getIPv4(handle C.int64_t) *C.char {
+	defer guardExport("throne_WarpIdentity_getIPv4")
 	return C.CString(handleGet(int64(handle)).(*WarpIdentity).IPv4)
 }
 
 //export throne_WarpIdentity_setIPv4
 func throne_WarpIdentity_setIPv4(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_WarpIdentity_setIPv4")
 	handleGet(int64(handle)).(*WarpIdentity).IPv4 = C.GoString(v)
 }
 
 //export throne_WarpIdentity_getIPv6
 func throne_WarpIdentity_getIPv6(handle C.int64_t) *C.char {
+	defer guardExport("throne_WarpIdentity_getIPv6")
 	return C.CString(handleGet(int64(handle)).(*WarpIdentity).IPv6)
 }
 
 //export throne_WarpIdentity_setIPv6
 func throne_WarpIdentity_setIPv6(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_WarpIdentity_setIPv6")
 	handleGet(int64(handle)).(*WarpIdentity).IPv6 = C.GoString(v)
 }
 
 //export throne_WarpIdentity_getPrivateKey
 func throne_WarpIdentity_getPrivateKey(handle C.int64_t) *C.char {
+	defer guardExport("throne_WarpIdentity_getPrivateKey")
 	return C.CString(handleGet(int64(handle)).(*WarpIdentity).PrivateKey)
 }
 
 //export throne_WarpIdentity_setPrivateKey
 func throne_WarpIdentity_setPrivateKey(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_WarpIdentity_setPrivateKey")
 	handleGet(int64(handle)).(*WarpIdentity).PrivateKey = C.GoString(v)
 }
 
 //export throne_WarpIdentity_getPeerPublicKey
 func throne_WarpIdentity_getPeerPublicKey(handle C.int64_t) *C.char {
+	defer guardExport("throne_WarpIdentity_getPeerPublicKey")
 	return C.CString(handleGet(int64(handle)).(*WarpIdentity).PeerPublicKey)
 }
 
 //export throne_WarpIdentity_setPeerPublicKey
 func throne_WarpIdentity_setPeerPublicKey(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_WarpIdentity_setPeerPublicKey")
 	handleGet(int64(handle)).(*WarpIdentity).PeerPublicKey = C.GoString(v)
 }
 
 //export throne_WarpIdentity_getEndpoint
 func throne_WarpIdentity_getEndpoint(handle C.int64_t) *C.char {
+	defer guardExport("throne_WarpIdentity_getEndpoint")
 	return C.CString(handleGet(int64(handle)).(*WarpIdentity).Endpoint)
 }
 
 //export throne_WarpIdentity_setEndpoint
 func throne_WarpIdentity_setEndpoint(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_WarpIdentity_setEndpoint")
 	handleGet(int64(handle)).(*WarpIdentity).Endpoint = C.GoString(v)
 }
 
 //export throne_WarpIdentity_getReserved
 func throne_WarpIdentity_getReserved(handle C.int64_t) *C.char {
+	defer guardExport("throne_WarpIdentity_getReserved")
 	return C.CString(handleGet(int64(handle)).(*WarpIdentity).Reserved)
 }
 
 //export throne_WarpIdentity_setReserved
 func throne_WarpIdentity_setReserved(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_WarpIdentity_setReserved")
 	handleGet(int64(handle)).(*WarpIdentity).Reserved = C.GoString(v)
 }
 
 //export throne_WarpRegisterRequest_getTunnelType
 func throne_WarpRegisterRequest_getTunnelType(handle C.int64_t) *C.char {
+	defer guardExport("throne_WarpRegisterRequest_getTunnelType")
 	return C.CString(handleGet(int64(handle)).(*WarpRegisterRequest).TunnelType)
 }
 
 //export throne_WarpRegisterRequest_setTunnelType
 func throne_WarpRegisterRequest_setTunnelType(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_WarpRegisterRequest_setTunnelType")
 	handleGet(int64(handle)).(*WarpRegisterRequest).TunnelType = C.GoString(v)
 }
 
 //export throne_WarpRegisterRequest_getProxy
 func throne_WarpRegisterRequest_getProxy(handle C.int64_t) *C.char {
+	defer guardExport("throne_WarpRegisterRequest_getProxy")
 	return C.CString(handleGet(int64(handle)).(*WarpRegisterRequest).Proxy)
 }
 
 //export throne_WarpRegisterRequest_setProxy
 func throne_WarpRegisterRequest_setProxy(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_WarpRegisterRequest_setProxy")
 	handleGet(int64(handle)).(*WarpRegisterRequest).Proxy = C.GoString(v)
 }
 
 //export throne_WarpRegisterRequest_addAPIHost
 func throne_WarpRegisterRequest_addAPIHost(handle C.int64_t, host *C.char)  {
+	defer guardExport("throne_WarpRegisterRequest_addAPIHost")
 	handleGet(int64(handle)).(*WarpRegisterRequest).AddAPIHost(C.GoString(host))
 }
 
 //export throne_WireGuardKeyPair_getPrivateKey
 func throne_WireGuardKeyPair_getPrivateKey(handle C.int64_t) *C.char {
+	defer guardExport("throne_WireGuardKeyPair_getPrivateKey")
 	return C.CString(handleGet(int64(handle)).(*WireGuardKeyPair).PrivateKey)
 }
 
 //export throne_WireGuardKeyPair_setPrivateKey
 func throne_WireGuardKeyPair_setPrivateKey(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_WireGuardKeyPair_setPrivateKey")
 	handleGet(int64(handle)).(*WireGuardKeyPair).PrivateKey = C.GoString(v)
 }
 
 //export throne_WireGuardKeyPair_getPublicKey
 func throne_WireGuardKeyPair_getPublicKey(handle C.int64_t) *C.char {
+	defer guardExport("throne_WireGuardKeyPair_getPublicKey")
 	return C.CString(handleGet(int64(handle)).(*WireGuardKeyPair).PublicKey)
 }
 
 //export throne_WireGuardKeyPair_setPublicKey
 func throne_WireGuardKeyPair_setPublicKey(handle C.int64_t, v *C.char)  {
+	defer guardExport("throne_WireGuardKeyPair_setPublicKey")
 	handleGet(int64(handle)).(*WireGuardKeyPair).PublicKey = C.GoString(v)
 }
 
 //export throne_AutoSelectorMember_new
 func throne_AutoSelectorMember_new() C.int64_t {
+	defer guardExport("throne_AutoSelectorMember_new")
 	return marshal_handle(&AutoSelectorMember{})
 }
 
 //export throne_AutoSelectorStatus_new
 func throne_AutoSelectorStatus_new() C.int64_t {
+	defer guardExport("throne_AutoSelectorStatus_new")
 	return marshal_handle(&AutoSelectorStatus{})
 }
 
 //export throne_ConnectionOwner_new
 func throne_ConnectionOwner_new() C.int64_t {
+	defer guardExport("throne_ConnectionOwner_new")
 	return marshal_handle(&ConnectionOwner{})
 }
 
 //export throne_DiagnosticsRequest_new
 func throne_DiagnosticsRequest_new() C.int64_t {
+	defer guardExport("throne_DiagnosticsRequest_new")
 	return marshal_handle(&DiagnosticsRequest{})
 }
 
 //export throne_ExchangeContext_new
 func throne_ExchangeContext_new() C.int64_t {
+	defer guardExport("throne_ExchangeContext_new")
 	return marshal_handle(&ExchangeContext{})
 }
 
 //export throne_Instance_new
 func throne_Instance_new(options C.int64_t) C.int64_t {
+	defer guardExport("throne_Instance_new")
 	v, err := NewInstance(bridgePlatform, handleGet(int64(options)).(*StartOptions))
 	if err != nil { setErr(err); return 0 }
 	registerInstance(v)
@@ -1846,236 +2233,283 @@ func throne_Instance_new(options C.int64_t) C.int64_t {
 
 //export throne_LocalDNSFailure_new
 func throne_LocalDNSFailure_new() C.int64_t {
+	defer guardExport("throne_LocalDNSFailure_new")
 	return marshal_handle(&LocalDNSFailure{})
 }
 
 //export throne_NetworkInterface_new
 func throne_NetworkInterface_new() C.int64_t {
+	defer guardExport("throne_NetworkInterface_new")
 	return marshal_handle(&NetworkInterface{})
 }
 
 //export throne_Notification_new
 func throne_Notification_new() C.int64_t {
+	defer guardExport("throne_Notification_new")
 	return marshal_handle(&Notification{})
 }
 
 //export throne_OutboundGroup_new
 func throne_OutboundGroup_new() C.int64_t {
+	defer guardExport("throne_OutboundGroup_new")
 	return marshal_handle(&OutboundGroup{})
 }
 
 //export throne_OutboundGroupItem_new
 func throne_OutboundGroupItem_new() C.int64_t {
+	defer guardExport("throne_OutboundGroupItem_new")
 	return marshal_handle(&OutboundGroupItem{})
 }
 
 //export throne_ResolveRequest_new
 func throne_ResolveRequest_new() C.int64_t {
+	defer guardExport("throne_ResolveRequest_new")
 	return marshal_handle(&ResolveRequest{})
 }
 
 //export throne_ResolvedDomain_new
 func throne_ResolvedDomain_new() C.int64_t {
+	defer guardExport("throne_ResolvedDomain_new")
 	return marshal_handle(&ResolvedDomain{})
 }
 
 //export throne_RoutePrefix_new
 func throne_RoutePrefix_new() C.int64_t {
+	defer guardExport("throne_RoutePrefix_new")
 	return marshal_handle(&RoutePrefix{})
 }
 
 //export throne_RuleSetUpdateResult_new
 func throne_RuleSetUpdateResult_new() C.int64_t {
+	defer guardExport("throne_RuleSetUpdateResult_new")
 	return marshal_handle(&RuleSetUpdateResult{})
 }
 
 //export throne_SetupOptions_new
 func throne_SetupOptions_new() C.int64_t {
+	defer guardExport("throne_SetupOptions_new")
 	return marshal_handle(&SetupOptions{})
 }
 
 //export throne_SpeedTestResult_new
 func throne_SpeedTestResult_new() C.int64_t {
+	defer guardExport("throne_SpeedTestResult_new")
 	return marshal_handle(&SpeedTestResult{})
 }
 
 //export throne_StartOptions_new
 func throne_StartOptions_new() C.int64_t {
+	defer guardExport("throne_StartOptions_new")
 	return marshal_handle(&StartOptions{})
 }
 
 //export throne_StatusMessage_new
 func throne_StatusMessage_new() C.int64_t {
+	defer guardExport("throne_StatusMessage_new")
 	return marshal_handle(&StatusMessage{})
 }
 
 //export throne_StringBox_new
 func throne_StringBox_new() C.int64_t {
+	defer guardExport("throne_StringBox_new")
 	return marshal_handle(&StringBox{})
 }
 
 //export throne_TestRequest_new
 func throne_TestRequest_new() C.int64_t {
+	defer guardExport("throne_TestRequest_new")
 	return marshal_handle(&TestRequest{})
 }
 
 //export throne_WIFIState_new
 func throne_WIFIState_new(wifiSSID *C.char, wifiBSSID *C.char) C.int64_t {
+	defer guardExport("throne_WIFIState_new")
 	return marshal_handle(NewWIFIState(C.GoString(wifiSSID), C.GoString(wifiBSSID)))
 }
 
 //export throne_WarpIdentity_new
 func throne_WarpIdentity_new() C.int64_t {
+	defer guardExport("throne_WarpIdentity_new")
 	return marshal_handle(&WarpIdentity{})
 }
 
 //export throne_WarpRegisterRequest_new
 func throne_WarpRegisterRequest_new() C.int64_t {
+	defer guardExport("throne_WarpRegisterRequest_new")
 	return marshal_handle(&WarpRegisterRequest{})
 }
 
 //export throne_WireGuardKeyPair_new
 func throne_WireGuardKeyPair_new() C.int64_t {
+	defer guardExport("throne_WireGuardKeyPair_new")
 	return marshal_handle(&WireGuardKeyPair{})
 }
 
 //export throne_AutoSelectorMemberIterator_hasNext
 func throne_AutoSelectorMemberIterator_hasNext(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_AutoSelectorMemberIterator_hasNext")
 	return cbool(handleGet(int64(handle)).(AutoSelectorMemberIterator).HasNext())
 }
 
 //export throne_AutoSelectorMemberIterator_len
 func throne_AutoSelectorMemberIterator_len(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_AutoSelectorMemberIterator_len")
 	return C.int32_t(handleGet(int64(handle)).(AutoSelectorMemberIterator).Len())
 }
 
 //export throne_AutoSelectorMemberIterator_next
 func throne_AutoSelectorMemberIterator_next(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_AutoSelectorMemberIterator_next")
 	return marshal_handle(handleGet(int64(handle)).(AutoSelectorMemberIterator).Next())
 }
 
 //export throne_AutoSelectorStatusIterator_hasNext
 func throne_AutoSelectorStatusIterator_hasNext(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_AutoSelectorStatusIterator_hasNext")
 	return cbool(handleGet(int64(handle)).(AutoSelectorStatusIterator).HasNext())
 }
 
 //export throne_AutoSelectorStatusIterator_len
 func throne_AutoSelectorStatusIterator_len(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_AutoSelectorStatusIterator_len")
 	return C.int32_t(handleGet(int64(handle)).(AutoSelectorStatusIterator).Len())
 }
 
 //export throne_AutoSelectorStatusIterator_next
 func throne_AutoSelectorStatusIterator_next(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_AutoSelectorStatusIterator_next")
 	return marshal_handle(handleGet(int64(handle)).(AutoSelectorStatusIterator).Next())
 }
 
 //export throne_Int32Iterator_hasNext
 func throne_Int32Iterator_hasNext(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_Int32Iterator_hasNext")
 	return cbool(handleGet(int64(handle)).(Int32Iterator).HasNext())
 }
 
 //export throne_Int32Iterator_len
 func throne_Int32Iterator_len(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_Int32Iterator_len")
 	return C.int32_t(handleGet(int64(handle)).(Int32Iterator).Len())
 }
 
 //export throne_Int32Iterator_next
 func throne_Int32Iterator_next(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_Int32Iterator_next")
 	return C.int32_t(handleGet(int64(handle)).(Int32Iterator).Next())
 }
 
 //export throne_InterfaceUpdateListener_updateDefaultInterface
 func throne_InterfaceUpdateListener_updateDefaultInterface(handle C.int64_t, interfaceName *C.char, interfaceIndex C.int32_t, isExpensive C.int8_t, isConstrained C.int8_t)  {
+	defer guardExport("throne_InterfaceUpdateListener_updateDefaultInterface")
 	handleGet(int64(handle)).(InterfaceUpdateListener).UpdateDefaultInterface(C.GoString(interfaceName), int32(interfaceIndex), isExpensive != 0, isConstrained != 0)
 }
 
 //export throne_InterfaceUpdateListener_updateNetworkPath
 func throne_InterfaceUpdateListener_updateNetworkPath(handle C.int64_t, networkPath *C.char)  {
+	defer guardExport("throne_InterfaceUpdateListener_updateNetworkPath")
 	handleGet(int64(handle)).(InterfaceUpdateListener).UpdateNetworkPath(C.GoString(networkPath))
 }
 
 //export throne_NetworkInterfaceIterator_hasNext
 func throne_NetworkInterfaceIterator_hasNext(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_NetworkInterfaceIterator_hasNext")
 	return cbool(handleGet(int64(handle)).(NetworkInterfaceIterator).HasNext())
 }
 
 //export throne_NetworkInterfaceIterator_next
 func throne_NetworkInterfaceIterator_next(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_NetworkInterfaceIterator_next")
 	return marshal_handle(handleGet(int64(handle)).(NetworkInterfaceIterator).Next())
 }
 
 //export throne_OutboundGroupItemIterator_hasNext
 func throne_OutboundGroupItemIterator_hasNext(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_OutboundGroupItemIterator_hasNext")
 	return cbool(handleGet(int64(handle)).(OutboundGroupItemIterator).HasNext())
 }
 
 //export throne_OutboundGroupItemIterator_next
 func throne_OutboundGroupItemIterator_next(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_OutboundGroupItemIterator_next")
 	return marshal_handle(handleGet(int64(handle)).(OutboundGroupItemIterator).Next())
 }
 
 //export throne_OutboundGroupIterator_hasNext
 func throne_OutboundGroupIterator_hasNext(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_OutboundGroupIterator_hasNext")
 	return cbool(handleGet(int64(handle)).(OutboundGroupIterator).HasNext())
 }
 
 //export throne_OutboundGroupIterator_next
 func throne_OutboundGroupIterator_next(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_OutboundGroupIterator_next")
 	return marshal_handle(handleGet(int64(handle)).(OutboundGroupIterator).Next())
 }
 
 //export throne_ResolvedDomainIterator_hasNext
 func throne_ResolvedDomainIterator_hasNext(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_ResolvedDomainIterator_hasNext")
 	return cbool(handleGet(int64(handle)).(ResolvedDomainIterator).HasNext())
 }
 
 //export throne_ResolvedDomainIterator_len
 func throne_ResolvedDomainIterator_len(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_ResolvedDomainIterator_len")
 	return C.int32_t(handleGet(int64(handle)).(ResolvedDomainIterator).Len())
 }
 
 //export throne_ResolvedDomainIterator_next
 func throne_ResolvedDomainIterator_next(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_ResolvedDomainIterator_next")
 	return marshal_handle(handleGet(int64(handle)).(ResolvedDomainIterator).Next())
 }
 
 //export throne_RoutePrefixIterator_hasNext
 func throne_RoutePrefixIterator_hasNext(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_RoutePrefixIterator_hasNext")
 	return cbool(handleGet(int64(handle)).(RoutePrefixIterator).HasNext())
 }
 
 //export throne_RoutePrefixIterator_next
 func throne_RoutePrefixIterator_next(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_RoutePrefixIterator_next")
 	return marshal_handle(handleGet(int64(handle)).(RoutePrefixIterator).Next())
 }
 
 //export throne_StringIterator_hasNext
 func throne_StringIterator_hasNext(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_StringIterator_hasNext")
 	return cbool(handleGet(int64(handle)).(StringIterator).HasNext())
 }
 
 //export throne_StringIterator_len
 func throne_StringIterator_len(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_StringIterator_len")
 	return C.int32_t(handleGet(int64(handle)).(StringIterator).Len())
 }
 
 //export throne_StringIterator_next
 func throne_StringIterator_next(handle C.int64_t) *C.char {
+	defer guardExport("throne_StringIterator_next")
 	return C.CString(handleGet(int64(handle)).(StringIterator).Next())
 }
 
 //export throne_TunOptions_getAutoRoute
 func throne_TunOptions_getAutoRoute(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_TunOptions_getAutoRoute")
 	return cbool(handleGet(int64(handle)).(TunOptions).GetAutoRoute())
 }
 
 //export throne_TunOptions_getDNSMode
 func throne_TunOptions_getDNSMode(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_TunOptions_getDNSMode")
 	return marshal_handle(handleGet(int64(handle)).(TunOptions).GetDNSMode())
 }
 
 //export throne_TunOptions_getDNSServerAddress
 func throne_TunOptions_getDNSServerAddress(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_TunOptions_getDNSServerAddress")
 	v, err := handleGet(int64(handle)).(TunOptions).GetDNSServerAddress()
 	if err != nil { setErr(err); return 0 }
 	return marshal_handle(v)
@@ -2083,86 +2517,103 @@ func throne_TunOptions_getDNSServerAddress(handle C.int64_t) C.int64_t {
 
 //export throne_TunOptions_getExcludePackage
 func throne_TunOptions_getExcludePackage(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_TunOptions_getExcludePackage")
 	return marshal_handle(handleGet(int64(handle)).(TunOptions).GetExcludePackage())
 }
 
 //export throne_TunOptions_getHTTPProxyBypassDomain
 func throne_TunOptions_getHTTPProxyBypassDomain(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_TunOptions_getHTTPProxyBypassDomain")
 	return marshal_handle(handleGet(int64(handle)).(TunOptions).GetHTTPProxyBypassDomain())
 }
 
 //export throne_TunOptions_getHTTPProxyMatchDomain
 func throne_TunOptions_getHTTPProxyMatchDomain(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_TunOptions_getHTTPProxyMatchDomain")
 	return marshal_handle(handleGet(int64(handle)).(TunOptions).GetHTTPProxyMatchDomain())
 }
 
 //export throne_TunOptions_getHTTPProxyServer
 func throne_TunOptions_getHTTPProxyServer(handle C.int64_t) *C.char {
+	defer guardExport("throne_TunOptions_getHTTPProxyServer")
 	return C.CString(handleGet(int64(handle)).(TunOptions).GetHTTPProxyServer())
 }
 
 //export throne_TunOptions_getHTTPProxyServerPort
 func throne_TunOptions_getHTTPProxyServerPort(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_TunOptions_getHTTPProxyServerPort")
 	return C.int32_t(handleGet(int64(handle)).(TunOptions).GetHTTPProxyServerPort())
 }
 
 //export throne_TunOptions_getIncludePackage
 func throne_TunOptions_getIncludePackage(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_TunOptions_getIncludePackage")
 	return marshal_handle(handleGet(int64(handle)).(TunOptions).GetIncludePackage())
 }
 
 //export throne_TunOptions_getInet4Address
 func throne_TunOptions_getInet4Address(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_TunOptions_getInet4Address")
 	return marshal_handle(handleGet(int64(handle)).(TunOptions).GetInet4Address())
 }
 
 //export throne_TunOptions_getInet4RouteAddress
 func throne_TunOptions_getInet4RouteAddress(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_TunOptions_getInet4RouteAddress")
 	return marshal_handle(handleGet(int64(handle)).(TunOptions).GetInet4RouteAddress())
 }
 
 //export throne_TunOptions_getInet4RouteExcludeAddress
 func throne_TunOptions_getInet4RouteExcludeAddress(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_TunOptions_getInet4RouteExcludeAddress")
 	return marshal_handle(handleGet(int64(handle)).(TunOptions).GetInet4RouteExcludeAddress())
 }
 
 //export throne_TunOptions_getInet4RouteRange
 func throne_TunOptions_getInet4RouteRange(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_TunOptions_getInet4RouteRange")
 	return marshal_handle(handleGet(int64(handle)).(TunOptions).GetInet4RouteRange())
 }
 
 //export throne_TunOptions_getInet6Address
 func throne_TunOptions_getInet6Address(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_TunOptions_getInet6Address")
 	return marshal_handle(handleGet(int64(handle)).(TunOptions).GetInet6Address())
 }
 
 //export throne_TunOptions_getInet6RouteAddress
 func throne_TunOptions_getInet6RouteAddress(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_TunOptions_getInet6RouteAddress")
 	return marshal_handle(handleGet(int64(handle)).(TunOptions).GetInet6RouteAddress())
 }
 
 //export throne_TunOptions_getInet6RouteExcludeAddress
 func throne_TunOptions_getInet6RouteExcludeAddress(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_TunOptions_getInet6RouteExcludeAddress")
 	return marshal_handle(handleGet(int64(handle)).(TunOptions).GetInet6RouteExcludeAddress())
 }
 
 //export throne_TunOptions_getInet6RouteRange
 func throne_TunOptions_getInet6RouteRange(handle C.int64_t) C.int64_t {
+	defer guardExport("throne_TunOptions_getInet6RouteRange")
 	return marshal_handle(handleGet(int64(handle)).(TunOptions).GetInet6RouteRange())
 }
 
 //export throne_TunOptions_getMTU
 func throne_TunOptions_getMTU(handle C.int64_t) C.int32_t {
+	defer guardExport("throne_TunOptions_getMTU")
 	return C.int32_t(handleGet(int64(handle)).(TunOptions).GetMTU())
 }
 
 //export throne_TunOptions_getStrictRoute
 func throne_TunOptions_getStrictRoute(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_TunOptions_getStrictRoute")
 	return cbool(handleGet(int64(handle)).(TunOptions).GetStrictRoute())
 }
 
 //export throne_TunOptions_isHTTPProxyEnabled
 func throne_TunOptions_isHTTPProxyEnabled(handle C.int64_t) C.int8_t {
+	defer guardExport("throne_TunOptions_isHTTPProxyEnabled")
 	return cbool(handleGet(int64(handle)).(TunOptions).IsHTTPProxyEnabled())
 }
 

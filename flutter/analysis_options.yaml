@@ -2,6 +2,9 @@ include: package:flutter_lints/flutter.yaml
 analyzer:
   exclude:
     - lib/ui/generated/**
+    # Generated FFI bindings: lint rules are enforced on the generator template
+    # instead (tools/bindgen/bindgen.py), not waived file-wide.
+    - lib/core/throne_ffi.dart
     - build/**
     - android/**
     - ios/**

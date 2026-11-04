@@ -482,6 +482,12 @@ char * throne_last_error(void);
 /* Drop a handle returned by a constructor or an object-returning call. */
 void throne_handle_release(int64_t h);
 
+/* Live/created/released handle counters as JSON: FFI lifetime diagnostics. */
+char * throne_handle_stats(void);
+
+/* All status fields in one JSON object; creates no handle and pushes a "status" event. */
+char * throne_status_snapshot(int64_t handle);
+
 /* Feed the VpnService fd and the TunInterface token to the kernel before Start. */
 int32_t throne_start_tun(int32_t fd, void * tun);
 

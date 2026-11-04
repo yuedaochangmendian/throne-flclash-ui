@@ -242,6 +242,37 @@ def site_allowed(site: str, absent_prefixes: set[str]) -> bool:
     return all(verdicts)
 
 
+def ffi_id_contract_failures() -> list[str]:
+    """Prevent a recurrence of the "profile 0 is gone" startup failure.
+
+    The Flutter preference store holds appearance settings only; the native DB
+    (DataStore.selectedProxy) owns the selected ProxyEntity, and the dashboard's
+    selectedProfileId is a *group* id for display. Mining the wrong map used to
+    send `config.build {id: 0}` on every start.
+    """
+    problems: list[str] = []
+    service = (FLUTTER_LIB / "core" / "kernel_service.dart").read_text(encoding="utf-8")
+    args = re.search(r"Json configBuildArgs\(\)\s*=>\s*(.*?);", service, re.S)
+    if not args:
+        problems.append("configBuildArgs() is missing")
+    elif re.search(r"['\"]id['\"]", args.group(1)):
+        problems.append("configBuildArgs() sends an 'id'; the native side must resolve DataStore.selectedProxy")
+    if re.search(r"preferences\[['\"](?:selectedProxy|profileId)['\"]\]", service):
+        problems.append("kernel_service.dart mines Flutter preferences for a proxy id")
+    if re.search(r"\bIsolate\.run\b", service):
+        problems.append("kernel_service.dart still opens a fresh isolate per FFI call")
+
+    kernel = (REPO_ROOT / "app/src/main/java/io/throne/bbox/bridge/BboxKernel.kt").read_text(encoding="utf-8")
+    if not re.search(r"fun buildStartOptions\(\)", kernel):
+        problems.append("BboxKernel.buildStartOptions must resolve the profile itself (no id parameter)")
+    if "DataStore.selectedProxy" not in kernel:
+        problems.append("BboxKernel no longer falls back to DataStore.selectedProxy")
+    if re.search(r'config\.build[\s\S]{0,300}call\.argument<Int>\("id"\)',
+                 BRIDGE.read_text(encoding="utf-8")):
+        problems.append("ThroneBoxBridge.config.build still forwards a guessed id")
+    return problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--verbose", action="store_true", help="also list handlers with no Dart caller")
@@ -312,8 +343,16 @@ def main() -> int:
         for method in uncalled:
             print(f"  {method}")
 
+    id_problems = ffi_id_contract_failures()
+    if id_problems:
+        failed = True
+        print("\nFAIL — FFI profile-id contract:")
+        for problem in id_problems:
+            print(f"  {problem}")
+
     if not failed:
-        print("\ncontract OK: every live call has a handler, every event a consumer")
+        print("\ncontract OK: every live call has a handler, every event a consumer, "
+              "and the FFI path never invents a proxy id")
     return 1 if failed else 0
 
 

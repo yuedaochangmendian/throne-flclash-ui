@@ -89,6 +89,10 @@ EXTRA_EXPORTS = [
      "Read and clear after calls whose Java form declares `throws`."),
     ("throne_handle_release", "void", [("int64_t", "h")],
      "Drop a handle returned by a constructor or an object-returning call."),
+    ("throne_handle_stats", "char *", [],
+     "Live/created/released handle counters as JSON: FFI lifetime diagnostics."),
+    ("throne_status_snapshot", "char *", [("int64_t", "handle")],
+     'All status fields in one JSON object; creates no handle and pushes a "status" event.'),
     ("throne_start_tun", "int32_t", [("int32_t", "fd"), ("void *", "tun")],
      "Feed the VpnService fd and the TunInterface token to the kernel before Start."),
     ("throne_stop_tun", "void", [], "Stop the tun started by throne_start_tun."),
@@ -795,6 +799,8 @@ def emit_go(surface: dict, idx: GoIndex, classes: dict[str, Cls]) -> str:
         'import "C"',
         "",
         "import (",
+        '\t"encoding/json"',
+        '\t"fmt"',
         '\t"reflect"',
         '\t"sync"',
         '\t"unsafe"',
@@ -802,10 +808,14 @@ def emit_go(surface: dict, idx: GoIndex, classes: dict[str, Cls]) -> str:
         "",
         "// --- handle table (replaces go.Seq refnums) ---",
         "",
+        "const handleWarnThreshold = 4096",
+        "",
         "var (",
         "\thandlesMu sync.Mutex",
         "\tnextHandle int64 = 1",
         "\thandles   = map[int64]interface{}{}",
+        "\thandleCreated, handleReleased int64",
+        "\thandleWarned bool",
         ")",
         "",
         "func handleNew(v interface{}) int64 {",
@@ -814,6 +824,12 @@ def emit_go(surface: dict, idx: GoIndex, classes: dict[str, Cls]) -> str:
         "\th := nextHandle",
         "\tnextHandle++",
         "\thandles[h] = v",
+        "\thandleCreated++",
+        "\tif !handleWarned && int64(len(handles)) > handleWarnThreshold {",
+        "\t\thandleWarned = true",
+        '\t\tfmt.Printf("bridge: %d live handles (created %d, released %d) — a caller is leaking handles\\n",',
+        "\t\t\tlen(handles), handleCreated, handleReleased)",
+        "\t}",
         "\treturn h",
         "}",
         "",
@@ -825,13 +841,30 @@ def emit_go(surface: dict, idx: GoIndex, classes: dict[str, Cls]) -> str:
         "",
         "//export throne_handle_release",
         "func throne_handle_release(h C.int64_t) {",
+        '\tdefer guardExport("throne_handle_release")',
         "\thandlesMu.Lock()",
         "\tdefer handlesMu.Unlock()",
-        "\tdelete(handles, int64(h))",
+        "\tif _, ok := handles[int64(h)]; ok {",
+        "\t\tdelete(handles, int64(h))",
+        "\t\thandleReleased++",
+        "\t}",
+        "}",
+        "",
+        "//export throne_handle_stats",
+        "func throne_handle_stats() *C.char {",
+        '\tdefer guardExport("throne_handle_stats")',
+        "\thandlesMu.Lock()",
+        "\tlive, created, released := int64(len(handles)), handleCreated, handleReleased",
+        "\thandlesMu.Unlock()",
+        '\tb, _ := json.Marshal(map[string]int64{"live": live, "created": created, "released": released})',
+        "\treturn C.CString(string(b))",
         "}",
         "",
         "//export throne_free",
-        "func throne_free(p *C.char) { C.free(unsafe.Pointer(p)) }",
+        "func throne_free(p *C.char) {",
+        '\tdefer guardExport("throne_free")',
+        "\tC.free(unsafe.Pointer(p))",
+        "}",
         "",
         "// --- error channel (the Java `throws` surface) ---",
         "",
@@ -844,6 +877,16 @@ def emit_go(surface: dict, idx: GoIndex, classes: dict[str, Cls]) -> str:
         "\terrMu.Lock()",
         "\tlastError = err.Error()",
         "\terrMu.Unlock()",
+        "}",
+        "",
+        "// guardExport keeps a panic inside one C ABI crossing. A Go panic is not",
+        "// allowed to cross cgo: without this the whole process aborts and Dart can",
+        "// neither catch it nor show an error. Result parameters keep their zero",
+        "// value after recover, so callers see a benign empty/0 result plus an error.",
+        "func guardExport(name string) {",
+        "\tif r := recover(); r != nil {",
+        '\t\tsetErr(fmt.Errorf("%s: panic: %v", name, r))',
+        "\t}",
         "}",
         "",
         "//export throne_last_error",
@@ -911,11 +954,51 @@ def emit_go(surface: dict, idx: GoIndex, classes: dict[str, Cls]) -> str:
                     go_params.append(f"{n} C.int64_t")
             L.append(f"//export {sig.symbol}")
             L.append(f"func {sig.symbol}({', '.join(go_params) or ''}) {ret} {{")
+            L.append(f'\tdefer guardExport("{sig.symbol}")')
             body = go_expr(idx, sig, classes)
             L.extend("\t" + line for line in body)
+            if sig.symbol == "throne_Instance_close":
+                L.append("\tthrone_handle_release(handle)")
             L.append("}")
             L.append("")
     return "\n".join(L) + "\n"
+
+
+def _guard_exports(text: str) -> str:
+    """Fence every cgo //export with recover(), including single-line bodies.
+
+    Regenerating needs ThroneCore-sources.jar (CI only), so the checked-in outputs
+    are kept in sync by build/apply_ffi_fixes.py. Both paths must produce the same
+    text; symbol_audit.py checks the symbol sets on every CI run.
+    """
+    lines = text.split("\n")
+    out: list[str] = []
+    pending: str | None = None
+    for idx, line in enumerate(lines):
+        out.append(line)
+        m = re.match(r"^//export (throne_\w+)\s*$", line)
+        if m:
+            pending = m.group(1)
+            continue
+        if pending and re.match(r"^func " + re.escape(pending) + r"\(", line):
+            name = pending
+            pending = None
+            following = lines[idx + 1] if idx + 1 < len(lines) else ""
+            inline = re.match(r"^(func .*?\{)\s*(.+)\}\s*$", line)
+            if inline:
+                if f'defer guardExport("{name}")' in inline.group(2):
+                    continue
+                out[-1] = inline.group(1)
+                out.append(f'\tdefer guardExport("{name}")')
+                out.append("\t" + inline.group(2).strip())
+                out.append("}")
+                continue
+            if not line.rstrip().endswith("{"):
+                raise ValueError(f"multi-line export signature: {name}")
+            if f'defer guardExport("{name}")' in following:
+                continue
+            out.append(f'\tdefer guardExport("{name}")')
+    return "\n".join(out)
 
 
 def emit_go_runtime() -> str:
@@ -951,7 +1034,7 @@ def emit_go_runtime() -> str:
         return (f"{n}C := C.CString({n})\n\tdefer C.free(unsafe.Pointer({n}C))",
                 f"{n}C")
 
-    return f"""// Code generated by tools/bindgen/bindgen.py. DO NOT EDIT.
+    return _guard_exports(f"""// Code generated by tools/bindgen/bindgen.py. DO NOT EDIT.
 //
 // Runtime support for bridge_calls.go: the callback table the JNI shim fills,
 // the Dart message port, port-backed event handlers, and bridgePlatform — the
@@ -1046,7 +1129,9 @@ func bridgeTun() unsafe.Pointer {{
 // --- Dart message port ------------------------------------------------------
 
 //export throne_init_dart_api
-func throne_init_dart_api(api unsafe.Pointer) {{ initDartApi(api) }}
+func throne_init_dart_api(api unsafe.Pointer) {{
+\tif err := initDartApi(api); err != nil {{ setErr(err) }}
+}}
 
 //export throne_attach_message_port
 func throne_attach_message_port(port C.int64_t) {{
@@ -1065,6 +1150,33 @@ func sendEvent(method string, data interface{{}}) {{
 \t}}
 \tmsg, _ := json.Marshal(map[string]interface{{}}{{"method": method, "data": data}})
 \tsendToPort(port, string(msg))
+}}
+
+//export throne_status_snapshot
+func throne_status_snapshot(handle C.int64_t) *C.char {{
+\tv := handleGet(int64(handle))
+\tinst, ok := v.(*Instance)
+\tif !ok || inst == nil {{
+\t\treturn C.CString("")
+\t}}
+\tst := inst.Status()
+\tif st == nil {{
+\t\treturn C.CString("")
+\t}}
+\tsnap := map[string]int64{{
+\t\t"memory": st.Memory,
+\t\t"goroutines": int64(st.Goroutines),
+\t\t"connectionsIn": int64(st.ConnectionsIn),
+\t\t"connectionsOut": int64(st.ConnectionsOut),
+\t\t"uplink": st.Uplink,
+\t\t"downlink": st.Downlink,
+\t\t"uplinkTotal": st.UplinkTotal,
+\t\t"downlinkTotal": st.DownlinkTotal,
+\t}}
+\t// The UI consumes the pushed event; the return value is the heartbeat.
+\tsendEvent("status", snap)
+\tb, _ := json.Marshal(snap)
+\treturn C.CString(string(b))
 }}
 
 func postTo(port int64, method string, data interface{{}}) {{
@@ -1409,7 +1521,7 @@ func throne_TunOptions_toJSON(handle C.int64_t) *C.char {{
 }}
 
 var _ = unsafe.Pointer(nil)
-"""
+""")
 
 
 # ---- Dart --------------------------------------------------------------
@@ -1430,7 +1542,7 @@ def dart_ffi_type(java: str) -> str:
 def emit_dart(surface: dict) -> str:
     L = [
         "// Code generated by tools/bindgen/bindgen.py. DO NOT EDIT.",
-        "// ignore_for_file: non_constant_identifier_names, no_leading_underscores_for_local_identifiers, unused_field",
+        "// Generated bindings are excluded in analysis_options.yaml; no blanket lint waivers.",
         "//",
         "// Dart FFI bindings for the throne_* C ABI (see bridge_symbols.h): a raw",
         "// lookup layer plus typed handle wrappers. The box_api facade calls the",
@@ -1515,6 +1627,54 @@ def emit_dart(surface: dict) -> str:
         "  }",
         "}",
         "",
+        "/// Finalizer token: holds the FFI view, never the wrapper being collected.",
+        "class _HandleRef {",
+        "  _HandleRef(this.ffi, this.handle);",
+        "  final ThroneFFI ffi;",
+        "  final int handle;",
+        "}",
+        "",
+        "/// Shared fallback for wrappers a caller forgot to release explicitly.",
+        "final Finalizer<_HandleRef> _handleFinalizer = Finalizer<_HandleRef>((ref) {",
+        "  ref.ffi.throne_handle_release(ref.handle);",
+        "});",
+        "",
+        "/// Explicit, deterministic release. Prefer this over waiting for GC.",
+        "void detachHandle(Object wrapper, ThroneFFI ffi, int handle) {",
+        "  _handleFinalizer.detach(wrapper);",
+        "  ffi.throne_handle_release(handle);",
+        "}",
+        "",
+        "/// All status fields in one crossing; creates no handle on the Go side.",
+        "Map<String, int>? throneStatusSnapshot(ThroneFFI ffi, int handle) {",
+        "  final p = ffi.throne_status_snapshot(handle);",
+        "  if (p == nullptr) return null;",
+        "  final s = p.toDartString();",
+        "  ffi.throne_free(p);",
+        "  if (s.isEmpty) return null;",
+        "  try {",
+        "    final v = json.decode(s) as Map<String, dynamic>;",
+        "    return v.map((k, value) => MapEntry(k, (value as num).toInt()));",
+        "  } catch (_) {",
+        "    return null;",
+        "  }",
+        "}",
+        "",
+        "/// Handle-table counters for FFI lifetime regression tests.",
+        "Map<String, int>? throneHandleStats(ThroneFFI ffi) {",
+        "  final p = ffi.throne_handle_stats();",
+        "  if (p == nullptr) return null;",
+        "  final s = p.toDartString();",
+        "  ffi.throne_free(p);",
+        "  if (s.isEmpty) return null;",
+        "  try {",
+        "    final v = json.decode(s) as Map<String, dynamic>;",
+        "    return v.map((k, value) => MapEntry(k, (value as num).toInt()));",
+        "  } catch (_) {",
+        "    return null;",
+        "  }",
+        "}",
+        "",
     ]
 
     # Typed wrappers
@@ -1532,7 +1692,12 @@ def emit_dart(surface: dict) -> str:
         L.append(f"class Throne{cls} {{")
         L.append("  final ThroneFFI _ffi;")
         L.append("  final int handle;")
-        L.append(f"  Throne{cls}(this._ffi, this.handle);")
+        L.append(f"  Throne{cls}(this._ffi, this.handle) {{")
+        L.append("    _handleFinalizer.attach(this, _HandleRef(_ffi, handle), detach: this);")
+        L.append("  }")
+        L.append("")
+        L.append("  /// Release this handle now; the finalizer is only a fallback.")
+        L.append("  void release() => detachHandle(this, _ffi, handle);")
         L.append("")
         # constructors as factories
         for m in methods:
@@ -1713,11 +1878,12 @@ import (
 )
 
 // initDartApi wires the Dart API DL once per process (throne_init_dart_api).
-func initDartApi(api unsafe.Pointer) {
+func initDartApi(api unsafe.Pointer) error {
 \tif C.Dart_InitializeApiDL(api) != 0 {
-\t\tpanic("bridge: Dart_InitializeApiDL failed")
+\t\treturn fmt.Errorf("bridge: Dart_InitializeApiDL failed")
 \t}
 \tfmt.Println("bridge: Dart API DL initialized")
+\treturn nil
 }
 
 // sendToPort posts one string message to a Dart ReceivePort.

@@ -24,11 +24,12 @@ import (
 )
 
 // initDartApi wires the Dart API DL once per process (throne_init_dart_api).
-func initDartApi(api unsafe.Pointer) {
+func initDartApi(api unsafe.Pointer) error {
 	if C.Dart_InitializeApiDL(api) != 0 {
-		panic("bridge: Dart_InitializeApiDL failed")
+		return fmt.Errorf("bridge: Dart_InitializeApiDL failed")
 	}
 	fmt.Println("bridge: Dart API DL initialized")
+	return nil
 }
 
 // sendToPort posts one string message to a Dart ReceivePort.

@@ -260,9 +260,17 @@ class BoxController extends ChangeNotifier {
     _kernelSub = ThroneKernel.ensure()?.logs.listen(_onKernelLog, onError: report);
     // The FFI path drives the core lifecycle itself; its status/events feed _onEvent
     // in the same wire shapes the channel uses.
-    await kernel.initialize();
-    await _kernelEvents?.cancel();
-    _kernelEvents = kernel.events.listen(_onEvent, onError: report);
+    try {
+      await kernel.initialize();
+      await _kernelEvents?.cancel();
+      _kernelEvents = kernel.events.listen(_onEvent, onError: report);
+    } catch (error) {
+      // The FFI worker failed to start. KernelService has already handed core
+      // control back to the channel, so the UI stays usable and shows why the
+      // accelerated path is unavailable instead of hanging on the loading view.
+      startupError = describe(error);
+      notifyListeners();
+    }
     try {
       final result = json(await call('ready'));
       version = result['version'] as String;

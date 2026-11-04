@@ -765,11 +765,10 @@ class ThroneBoxBridge(
                     result.success(null)
                 }
                 "config.build" -> result.respond {
-                    // The native DB owns the selection. Dart sends no id; an older
-                    // caller may still send a UI/group id or 0, which is never a
-                    // ProxyEntity id and used to fail with "profile 0 is gone".
-                    val requested = (call.arguments as? Map<*, *>)?.get("id") as? Number
-                    BboxKernel.buildStartOptions(requested?.toLong() ?: 0L)
+                    // The native DB owns the selection. Dart sends no id: a UI/group
+                    // id or 0 is never a ProxyEntity id and used to fail every start
+                    // with "profile 0 is gone". Ignore any stale argument entirely.
+                    BboxKernel.buildStartOptions()
                 }
                 "config.warpParams" -> result.success(
                     WarpClient.registerParams(call.argument<String>("tunnelType").orEmpty()),

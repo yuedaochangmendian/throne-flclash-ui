@@ -1,0 +1,275 @@
+// The single long-lived isolate that owns the FFI view of the kernel.
+//
+// Before this, every kernel operation used Isolate.run: a fresh DynamicLibrary,
+// a fresh ThroneFFI and a fresh object graph per call, stitched together only
+// by the process-global handle table. Status polling did that once a second and
+// leaked a StatusMessage handle each time.
+//
+// Now the FFI is opened exactly once, the Instance wrapper is retained by this
+// isolate (so its finalizer cannot collect it out from under the caller), and
+// temporary wrappers are released explicitly. The heartbeat calls one aggregate
+// status snapshot; the Go side pushes the same snapshot to the UI message port.
+// Errors and "core lost" detections travel back over an event port instead of
+// being swallowed by debugPrint.
+
+import 'dart:async';
+import 'dart:ffi';
+import 'dart:isolate';
+
+import 'throne_ffi.dart';
+
+enum KernelCommand {
+  createInstance,
+  start,
+  stop,
+  setHeartbeat,
+  warpRegister,
+  dispose,
+}
+
+/// Events from the worker: `{'type': 'lost'}` or `{'type': 'error', ...}`.
+typedef WorkerEvent = Map<String, dynamic>;
+
+class KernelWorker {
+  KernelWorker._(this._commands, this._events);
+
+  final SendPort _commands;
+  final Stream<WorkerEvent> _events;
+
+  Stream<WorkerEvent> get events => _events;
+
+  static Future<KernelWorker> spawn() async {
+    final events = ReceivePort();
+    final ready = ReceivePort();
+    await Isolate.spawn(_workerMain, <Object>[events.sendPort, ready.sendPort]);
+    late final SendPort commands;
+    try {
+      commands = await ready.first.timeout(
+        const Duration(seconds: 20),
+        onTimeout: () => throw StateError('the kernel worker did not start'),
+      ) as SendPort;
+    } finally {
+      ready.close();
+    }
+    return KernelWorker._(
+      commands,
+      events.map((raw) => Map<String, dynamic>.from(raw as Map)).asBroadcastStream(),
+    );
+  }
+
+  Future<Object?> _call(KernelCommand command, [Object? payload]) async {
+    final reply = ReceivePort();
+    try {
+      _commands.send(<Object?>[reply.sendPort, command.index, payload]);
+      final result = await reply.first.timeout(
+        const Duration(seconds: 30),
+        onTimeout: () => throw StateError('the kernel worker timed out on ${command.name}'),
+      );
+      if (result is Map && result['__error'] is String) {
+        throw StateError(result['__error'] as String);
+      }
+      return result;
+    } finally {
+      reply.close();
+    }
+  }
+
+  /// Builds StartOptions, creates the Instance and releases the options handle.
+  Future<int> createInstance(Map<String, dynamic> built) async =>
+      (await _call(KernelCommand.createInstance, built))! as int;
+
+  Future<void> start() => _call(KernelCommand.start);
+
+  /// Closes the Instance and releases its handle (the only release path).
+  Future<void> stop() => _call(KernelCommand.stop);
+
+  Future<void> setHeartbeat(bool enabled) =>
+      _call(KernelCommand.setHeartbeat, enabled);
+
+  Future<Map<String, dynamic>> warpRegister(
+    String tunnelType,
+    Map<String, dynamic> params,
+  ) async {
+    final result = await _call(
+      KernelCommand.warpRegister,
+      <String, dynamic>{'tunnelType': tunnelType, 'params': params},
+    );
+    return Map<String, dynamic>.from(result as Map);
+  }
+
+  Future<void> dispose() => _call(KernelCommand.dispose);
+}
+
+void _workerMain(List<Object> init) {
+  final events = init[0] as SendPort;
+  final ready = init[1] as SendPort;
+  final commands = ReceivePort();
+  final ffi = ThroneFFI(DynamicLibrary.open('libthrone.so'));
+  ffi.throne_Mobile_setLogSink();
+
+  ThroneInstance? instance;
+  var heartbeatEnabled = false;
+  var failures = 0;
+  var lostReported = false;
+  Timer? heartbeat;
+
+  heartbeat = Timer.periodic(const Duration(seconds: 1), (_) {
+    final current = instance;
+    if (!heartbeatEnabled || current == null) return;
+    final snapshot = throneStatusSnapshot(ffi, current.handle);
+    if (snapshot == null) {
+      failures++;
+      if (failures >= 3 && !lostReported) {
+        lostReported = true;
+        events.send(<String, dynamic>{'type': 'lost'});
+      }
+    } else {
+      failures = 0;
+      lostReported = false;
+    }
+  });
+
+  ready.send(commands.sendPort);
+  commands.listen((raw) {
+    final message = raw as List<Object?>;
+    final reply = message[0] as SendPort;
+    final command = KernelCommand.values[message[1]! as int];
+    final payload = message[2];
+    try {
+      switch (command) {
+        case KernelCommand.createInstance:
+          final built = Map<String, dynamic>.from(payload! as Map);
+          final options = _startOptions(ffi, built);
+          try {
+            final created = ThroneMobile.newInstance(ffi, options.handle);
+            if (created == null) {
+              throw StateError('the kernel refused to create an instance');
+            }
+            instance = created;
+            failures = 0;
+            lostReported = false;
+            reply.send(created.handle);
+          } finally {
+            options.release();
+          }
+        case KernelCommand.start:
+          final current = instance;
+          if (current == null) throw StateError('no kernel instance to start');
+          current.start();
+          reply.send(null);
+        case KernelCommand.stop:
+          heartbeatEnabled = false;
+          final current = instance;
+          instance = null;
+          if (current != null) {
+            current.close();
+            current.release();
+          }
+          reply.send(null);
+        case KernelCommand.setHeartbeat:
+          heartbeatEnabled = payload as bool;
+          failures = 0;
+          lostReported = false;
+          reply.send(null);
+        case KernelCommand.warpRegister:
+          final data = Map<String, dynamic>.from(payload! as Map);
+          reply.send(_warpRegister(
+            ffi,
+            data['tunnelType'] as String,
+            Map<String, dynamic>.from(data['params'] as Map),
+          ));
+        case KernelCommand.dispose:
+          heartbeatEnabled = false;
+          heartbeat?.cancel();
+          reply.send(null);
+          commands.close();
+      }
+    } catch (error) {
+      reply.send(<String, dynamic>{'__error': error.toString()});
+    }
+  });
+}
+
+/// Assembles StartOptions from the native `config.build` payload.
+ThroneStartOptions _startOptions(ThroneFFI ffi, Map<String, dynamic> built) {
+  final options = ThroneStartOptions.create(ffi);
+  options.setCoreConfig(built['coreConfig'] as String? ?? '');
+  options.setNeedXray(built['needXray'] as bool? ?? false);
+  options.setXrayConfig(built['xrayConfig'] as String? ?? '');
+  options.setXrayOutboundDNSStrategy(built['xrayDnsStrategy'] as String? ?? '');
+  final full = (built['xrayFullConfigs'] as List? ?? const []).cast<String>();
+  for (final config in full) {
+    options.addXrayFullConfig(config);
+  }
+  // BoxInstance.toStartOptions: the idle window must outlast the probe interval.
+  final intervalSec = built['autoSelectorIntervalSec'] as int? ?? 0;
+  if (intervalSec > 0 && (built['needXray'] == true || full.isNotEmpty)) {
+    options.setXrayLazyStart(true);
+    options.setXrayIdleSeconds(intervalSec * 2 > 120 ? intervalSec * 2 : 120);
+    options.setXrayFullIdleSeconds(0);
+  }
+  return options;
+}
+
+Map<String, dynamic> _warpRegister(
+  ThroneFFI ffi,
+  String tunnelType,
+  Map<String, dynamic> params,
+) {
+  final request = ThroneWarpRegisterRequest.create(ffi);
+  ThroneWarpIdentity? identity;
+  ThroneStringIterator? iterator;
+  try {
+    request.setTunnelType(tunnelType);
+    request.setProxy((params['proxy'] as String?) ?? '');
+    for (final host in (params['hosts'] as List? ?? const [])) {
+      request.addAPIHost(host.toString());
+    }
+    identity = ThroneMobile.warpRegister(ffi, request.handle);
+    if (identity == null) throw StateError('warp: the kernel returned no identity');
+    final reserved = identity.getReserved();
+    final identityMap = <String, dynamic>{
+      'deviceId': identity.getDeviceID(),
+      'token': identity.getToken(),
+      'license': identity.getLicense(),
+      'ipv4': identity.getIPv4(),
+      'ipv6': identity.getIPv6(),
+      'privateKey': identity.getPrivateKey(),
+      'peerPublicKey': identity.getPeerPublicKey(),
+      'endpoint': identity.getEndpoint(),
+      'reserved': reserved.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList(),
+    };
+    String? packetsError;
+    var packets = <String>[];
+    if (params['mode'] == 'amnezia') {
+      try {
+        iterator = ThroneMobile.genQuicSignature(ffi, 'www.cloudflare.com');
+        packets = iterator?.toList() ?? [];
+        if (packets.isEmpty || packets.length > 5 || packets.any((p) => p.isEmpty)) {
+          packetsError = 'the core returned an invalid QUIC signature';
+        }
+      } catch (error) {
+        packetsError = error.toString();
+      }
+    }
+    return <String, dynamic>{
+      'identity': identityMap,
+      'packets': packets,
+      'packetsError': packetsError,
+    };
+  } finally {
+    iterator?.release();
+    identity?.release();
+    request.release();
+  }
+}
+
+extension on ThroneStringIterator {
+  List<String> toList() {
+    final out = <String>[];
+    while (hasNext()) {
+      out.add(next());
+    }
+    return out;
+  }
+}

@@ -13,6 +13,7 @@ jobs:
   build:
     name: Unit tests and debug build
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -25,19 +26,33 @@ jobs:
           AAR=$(find flutter/build/host/outputs/repo -name "*.aar" | head -1)
           test -n "$AAR"
           python3 tools/diagnostics/scan_aar_apis.py "$AAR"
+      # The NDK is installed by android-build; its clang is the exact one the
+      # release build uses, so preamble syntax errors are caught before linking.
+      - name: Check cgo preambles
+        run: |
+          CLANG="$ANDROID_HOME/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
+          python3 tools/diagnostics/check_preamble.py
 
   flutter-tests:
     name: Flutter module tests
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     steps:
       - name: Checkout
         uses: actions/checkout@v7
       - name: Channel contract audit
         run: python3 tools/diagnostics/channel_audit.py
+      - name: Bridge contract audits
+        run: |
+          python3 tools/diagnostics/symbol_audit.py
+          python3 tools/diagnostics/settings_audit.py --summary
+          python3 tools/diagnostics/ffi_regression_test.py
+          python3 tools/diagnostics/py_syntax_check.py tools/diagnostics/*.py tools/bindgen/*.py buildScript/*.py
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: stable
+          cache: true
       - name: Analyze
         working-directory: flutter
         run: |
@@ -45,5 +60,11 @@ jobs:
           flutter analyze --fatal-infos
       - name: Test
         working-directory: flutter
-        run: |
-          flutter test
+        run: flutter test --coverage
+      - name: Upload coverage
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: flutter-coverage
+          path: flutter/coverage/lcov.info
+          if-no-files-found: warn

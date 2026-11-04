@@ -28,6 +28,7 @@ runs:
       with:
         distribution: temurin
         java-version: '17'
+        cache: gradle
     # The NDK the app's ndkVersion asks for, installed before the Flutter AAR: without it the
     # first Gradle build auto-installs it mid-build, where a truncated dl.google.com download
     # (seen 2026-11-02) fails the run with no retry. Three tries ride out a flaky CDN.

@@ -8,6 +8,7 @@ jobs:
   preview:
     name: Build a preview
     runs-on: ubuntu-latest
+    timeout-minutes: 60
     env:
       SIGNING_KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
       SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}

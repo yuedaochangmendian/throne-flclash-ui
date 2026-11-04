@@ -1,3 +1,15 @@
+#### 3.2.18
+
+* Hardens the FFI kernel boundary: all 423 `throne_*` exports recover from Go panics instead of aborting the process, and `Dart_InitializeApiDL` failures return an error rather than panicking across cgo
+* Fixes the handle leak: wrapper objects release handles explicitly (`release()`), a shared `Finalizer` is the GC fallback, `Instance.close()` drops its own handle, and `throne_handle_stats()` exposes live/created/released counters with a leak warning
+* Moves every FFI call into one long-lived isolate (`kernel_worker.dart`): no `Isolate.run` per operation, no repeated `dlopen`, and the UI isolate never opens `libthrone.so`
+* Replaces the eight-call-per-second status poll with one `throne_status_snapshot()` crossing that creates no handle; Go pushes a `status` event to the message port. Three failed heartbeats mark the core as lost and trigger one automatic restart
+* Startup and worker failures now surface in the UI (`startupError` and error events) instead of hanging on the loading view or being swallowed by `debugPrint`
+* `config.build` is id-free on both sides: `BboxKernel.buildStartOptions()` takes no parameter and ignores stale arguments, with the native DB as the single source of truth (ADR 0001)
+* CI adds a three-way symbol audit (Go exports / both C headers / Dart lookups), FFI regression tests, cgo preamble `-Werror` checks, a settings audit, coverage upload and job timeouts; generated bindings are excluded from analysis instead of blanket-waived
+* Release publishing is idempotent, retries GitHub API 5xx three times, preserves signed APKs as artifacts on failure, supports `v*` tag pushes, and documents manual recovery in `docs/release-runbook.md`
+* Adds `docs/adr/0001-ffi-boundary.md` declaring the conservative FFI boundary: Kotlin owns the data plane, FFI owns the control plane
+
 #### 3.2.17
 
 * Fixes the FFI startup failure `profile 0 is gone`: `config.build` no longer receives a guessed profile id from the Flutter preference store (which holds UI settings only), and the native bridge resolves the selected node from `DataStore.selectedProxy` instead of looking up id 0

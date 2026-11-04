@@ -4,17 +4,14 @@
 // UI already consumes. Every operation falls back to the method channel when the
 // rebuilt core is absent (ThroneKernel.isAvailable == false).
 //
-// The services themselves (foreground notification, VPN establish) stay Android
-// duties over the channel; the kernel calls never touch it.
+// The FFI itself lives in one long-lived isolate (kernel_worker.dart). The UI
+// isolate never opens libthrone.so for kernel calls: status arrives as a pushed
+// "status" event on the Go message port, and worker failures become UI events.
 
 import 'dart:async';
-import 'dart:ffi';
-import 'dart:isolate';
-
-import 'package:flutter/foundation.dart';
 
 import '../box.dart';
-import 'throne_ffi.dart';
+import 'kernel_worker.dart';
 import 'throne_kernel.dart';
 
 class KernelService {
@@ -28,14 +25,17 @@ class KernelService {
   Stream<Map<String, dynamic>> get events => _events.stream;
 
   ThroneKernel? _kernel;
-  ThroneInstance? _instance;
+  KernelWorker? _worker;
+  int? _instanceHandle;
+  StreamSubscription<WorkerEvent>? _workerSub;
+  StreamSubscription<BridgeEvent>? _statusSub;
   DateTime? _startedAt;
   bool _starting = false;
   bool _stopping = false;
-  Timer? _poll;
+  bool _recovering = false;
 
   /// True when the rebuilt core is present and the FFI path drives it.
-  bool get active => _kernel != null && _instance != null;
+  bool get active => _kernel != null && _instanceHandle != null;
 
   /// True once the FFI path is engaged (the channel handlers step aside).
   bool get ffiMode => _kernel != null;
@@ -52,10 +52,34 @@ class KernelService {
       return;
     }
     _kernel = kernel;
-    // LogSink lives on the message port; the in-process gobind sink steps aside.
-    // (The BoxController already routes the port's log events — the dual path.)
-    kernel.ffi.throne_Mobile_setLogSink();
-    _startPoll();
+    try {
+      final worker = await KernelWorker.spawn();
+      _worker = worker;
+      _workerSub = worker.events.listen(_onWorkerEvent, onError: report);
+      // The Go side pushes a "status" event for every aggregate snapshot; the
+      // worker heartbeat triggers it and uses the return value to detect loss.
+      _statusSub = kernel.events
+          .where((event) => event['method'] == 'status')
+          .listen(_onKernelStatus, onError: report);
+    } catch (_) {
+      await _workerSub?.cancel();
+      await _statusSub?.cancel();
+      _workerSub = null;
+      _statusSub = null;
+      final worker = _worker;
+      _worker = null;
+      _kernel = null;
+      if (worker != null) {
+        try {
+          await worker.dispose();
+        } catch (_) {
+          // The worker never came up; nothing to tear down.
+        }
+      }
+      // Hand control back to the channel path so the app is still usable.
+      await box.call('ffi.mode', {'enabled': false});
+      rethrow;
+    }
   }
 
   /// Starts the foreground service (Android duty) and then the core itself.
@@ -81,6 +105,8 @@ class KernelService {
 
   Future<void> _startCore() async {
     if (_kernel == null || _starting) return;
+    final worker = _worker;
+    if (worker == null) return;
     _starting = true;
     _emitDashboard('Starting');
     try {
@@ -88,22 +114,15 @@ class KernelService {
       // preference store holds UI settings only, so mining it for an id used to
       // send 0 here and fail every start with "profile 0 is gone".
       final built = await box.call('config.build', configBuildArgs()) as Map<String, dynamic>;
-      final instance = await Isolate.run(() {
-        final ffi = ThroneFFI(DynamicLibrary.open('libthrone.so'));
-        final options = _startOptions(ffi, built);
-        return _newInstance(ffi, options.handle);
-      });
-      final kernel = _kernel!;
-      // Re-wrap the returned handle on this isolate's view of the ABI.
-      _instance = ThroneInstance(kernel.ffi, instance);
-      await Isolate.run(() {
-        final ffi = ThroneFFI(DynamicLibrary.open('libthrone.so'));
-        ThroneInstance(ffi, instance).start();
-      });
+      final handle = await worker.createInstance(built);
+      _instanceHandle = handle;
+      await worker.start();
+      await worker.setHeartbeat(true);
       _startedAt = DateTime.now();
       _emitDashboard('Started');
     } catch (error) {
       report(error);
+      _instanceHandle = null;
       _emitDashboard('Stopped');
     } finally {
       _starting = false;
@@ -111,17 +130,16 @@ class KernelService {
   }
 
   Future<void> _stopCore() async {
-    final instance = _instance;
-    _instance = null;
+    final handle = _instanceHandle;
+    _instanceHandle = null;
     _startedAt = null;
-    if (instance == null || _kernel == null) return;
+    final worker = _worker;
+    if (handle == null || worker == null) return;
     _stopping = true;
     _emitDashboard('Stopping');
     try {
-      await Isolate.run(() {
-        final ffi = ThroneFFI(DynamicLibrary.open('libthrone.so'));
-        ThroneInstance(ffi, instance.handle).close();
-      });
+      await worker.setHeartbeat(false);
+      await worker.stop();
     } catch (error) {
       report(error);
     } finally {
@@ -148,51 +166,12 @@ class KernelService {
 
   /// WARP registration through the kernel (Mobile.warpRegister + amnezia packets).
   Future<dynamic> warpRegister(String tunnelType) async {
-    if (_kernel == null) {
+    final worker = _worker;
+    if (_kernel == null || worker == null) {
       return box.call('warp.register', {'tunnelType': tunnelType});
     }
     final params = await box.call('config.warpParams', {'tunnelType': tunnelType}) as Map<String, dynamic>;
-    final result = await Isolate.run(() {
-      final ffi = ThroneFFI(DynamicLibrary.open('libthrone.so'));
-      final request = ThroneWarpRegisterRequest.create(ffi);
-      request.setTunnelType(tunnelType);
-      request.setProxy((params['proxy'] as String?) ?? '');
-      for (final host in (params['hosts'] as List? ?? const [])) {
-        request.addAPIHost(host.toString());
-      }
-      final identity = ThroneMobile.warpRegister(ffi, request.handle);
-      if (identity == null) throw StateError('warp: the kernel returned no identity');
-      final reserved = identity.getReserved();
-      final identityMap = <String, dynamic>{
-        'deviceId': identity.getDeviceID(),
-        'token': identity.getToken(),
-        'license': identity.getLicense(),
-        'ipv4': identity.getIPv4(),
-        'ipv6': identity.getIPv6(),
-        'privateKey': identity.getPrivateKey(),
-        'peerPublicKey': identity.getPeerPublicKey(),
-        'endpoint': identity.getEndpoint(),
-        'reserved': reserved.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList(),
-      };
-      String? packetsError;
-      var packets = <String>[];
-      if (params['mode'] == 'amnezia') {
-        try {
-          final iterator = ThroneMobile.genQuicSignature(ffi, 'www.cloudflare.com');
-          packets = iterator?.toList() ?? [];
-          if (packets.isEmpty || packets.length > 5 || packets.any((p) => p.isEmpty)) {
-            packetsError = 'the core returned an invalid QUIC signature';
-          }
-        } catch (error) {
-          packetsError = error.toString();
-        }
-      }
-      return {
-        'identity': identityMap,
-        'packets': packets,
-        'packetsError': packetsError,
-      };
-    });
+    final result = await worker.warpRegister(tunnelType, params);
     return box.call('state.saveWarpKeys', {
       'tunnelType': tunnelType,
       'identity': result['identity'],
@@ -201,50 +180,51 @@ class KernelService {
     });
   }
 
-  // --- status stream -------------------------------------------------------
+  // --- events --------------------------------------------------------------
 
-  void _startPoll() {
-    _poll?.cancel();
-    _poll = Timer.periodic(const Duration(seconds: 1), (_) => _pollStatus());
+  void _onKernelStatus(BridgeEvent event) {
+    final data = event['data'];
+    if (data is! Map) return;
+    final snapshot = data.map(
+      (key, value) => MapEntry(key.toString(), (value as num).toInt()),
+    );
+    _emitStatus(snapshot);
   }
 
-  Future<void> _pollStatus() async {
-    final kernel = _kernel;
-    final instance = _instance;
-    if (kernel == null || instance == null) return;
+  void _onWorkerEvent(WorkerEvent event) {
+    if (event['type'] != 'lost') return;
+    report(StateError('the kernel stopped responding'));
+    _emitDashboard('Stopped');
+    _recoverOnce();
+  }
+
+  /// One automatic restart after a lost core; further failures stay visible.
+  Future<void> _recoverOnce() async {
+    if (_recovering) return;
+    _recovering = true;
     try {
-      final snapshot = await Isolate.run(() {
-        final ffi = ThroneFFI(DynamicLibrary.open('libthrone.so'));
-        final status = ThroneInstance(ffi, instance.handle).status();
-        if (status == null) return null;
-        return <String, int>{
-          'memory': status.getMemory(),
-          'goroutines': status.getGoroutines(),
-          'connectionsIn': status.getConnectionsIn(),
-          'connectionsOut': status.getConnectionsOut(),
-          'uplink': status.getUplink(),
-          'downlink': status.getDownlink(),
-          'uplinkTotal': status.getUplinkTotal(),
-          'downlinkTotal': status.getDownlinkTotal(),
-        };
-      });
-      if (snapshot == null) return;
-      _events.add({
-        'type': 'rates',
-        'value': {
-          'upload': snapshot['uplink'],
-          'download': snapshot['downlink'],
-          'memoryBytes': snapshot['memory'],
-        },
-      });
-      _emitDashboard(
-        _stopping ? 'Stopping' : (_starting ? 'Starting' : 'Started'),
-        snapshot: snapshot,
-      );
+      await reloadService();
+      if (active) report('the kernel was restarted automatically');
     } catch (error) {
-      // A poll failure is a blip, not a banner.
-      debugPrint('kernel poll: $error');
+      report(error);
+    } finally {
+      _recovering = false;
     }
+  }
+
+  void _emitStatus(Map<String, int> snapshot) {
+    _events.add({
+      'type': 'rates',
+      'value': {
+        'upload': snapshot['uplink'],
+        'download': snapshot['downlink'],
+        'memoryBytes': snapshot['memory'],
+      },
+    });
+    _emitDashboard(
+      _stopping ? 'Stopping' : (_starting ? 'Starting' : 'Started'),
+      snapshot: snapshot,
+    );
   }
 
   /// Emits the dashboard wire (the shape ThroneBoxBridge.dashboardWire produces),
@@ -289,11 +269,15 @@ class KernelService {
   }
 
   void dispose() {
-    _poll?.cancel();
+    unawaited(_workerSub?.cancel());
+    unawaited(_statusSub?.cancel());
+    final worker = _worker;
+    _worker = null;
+    if (worker != null) unawaited(worker.dispose());
     _events.close();
     _kernel?.dispose();
     _kernel = null;
-    _instance = null;
+    _instanceHandle = null;
   }
 }
 
@@ -307,41 +291,3 @@ Json configBuildArgs() => <String, dynamic>{};
 /// for display and for looking the name up in `box.profiles`.
 int dashboardSelectedId(Json dashboard) =>
     (dashboard['selectedProfileId'] as num?)?.toInt() ?? -1;
-
-/// The handle-side StartOptions assembly (shared by the worker isolates).
-ThroneStartOptions _startOptions(ThroneFFI ffi, Map<String, dynamic> built) {
-  final options = ThroneStartOptions.create(ffi);
-  options.setCoreConfig(built['coreConfig'] as String? ?? '');
-  options.setNeedXray(built['needXray'] as bool? ?? false);
-  options.setXrayConfig(built['xrayConfig'] as String? ?? '');
-  options.setXrayOutboundDNSStrategy(built['xrayDnsStrategy'] as String? ?? '');
-  final full = (built['xrayFullConfigs'] as List? ?? const []).cast<String>();
-  for (final config in full) {
-    options.addXrayFullConfig(config);
-  }
-  // BoxInstance.toStartOptions: the idle window must outlast the probe interval.
-  final intervalSec = built['autoSelectorIntervalSec'] as int? ?? 0;
-  if (intervalSec > 0 && (built['needXray'] == true || full.isNotEmpty)) {
-    options.setXrayLazyStart(true);
-    options.setXrayIdleSeconds(intervalSec * 2 > 120 ? intervalSec * 2 : 120);
-    options.setXrayFullIdleSeconds(0);
-  }
-  return options;
-}
-
-int _newInstance(ThroneFFI ffi, int optionsHandle) {
-  final instance = ThroneMobile.newInstance(ffi, optionsHandle);
-  if (instance == null) throw StateError('the kernel refused to create an instance');
-  return instance.handle;
-}
-
-/// Iterator helpers over the generated wrapper types.
-extension on ThroneStringIterator {
-  List<String> toList() {
-    final out = <String>[];
-    while (hasNext()) {
-      out.add(next());
-    }
-    return out;
-  }
-}

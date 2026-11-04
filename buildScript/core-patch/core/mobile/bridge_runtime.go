@@ -65,10 +65,14 @@ var (
 )
 
 //export throne_register_callbacks
-func throne_register_callbacks(table *C.throne_callbacks_t) { C.bridge_set_callbacks(table) }
+func throne_register_callbacks(table *C.throne_callbacks_t) {
+	defer guardExport("throne_register_callbacks")
+	C.bridge_set_callbacks(table)
+}
 
 //export throne_start_tun
 func throne_start_tun(fd C.int32_t, tun unsafe.Pointer) C.int32_t {
+	defer guardExport("throne_start_tun")
 	bridgeMu.Lock()
 	defer bridgeMu.Unlock()
 	bridgeFd = int32(fd)
@@ -78,6 +82,7 @@ func throne_start_tun(fd C.int32_t, tun unsafe.Pointer) C.int32_t {
 
 //export throne_stop_tun
 func throne_stop_tun() {
+	defer guardExport("throne_stop_tun")
 	bridgeMu.Lock()
 	tun := bridgeTunI
 	bridgeFd = 0
@@ -90,6 +95,7 @@ func throne_stop_tun() {
 
 //export throne_suspend
 func throne_suspend(suspended C.int32_t) {
+	defer guardExport("throne_suspend")
 	lastInstance.mu.Lock()
 	inst := lastInstance.inst
 	lastInstance.mu.Unlock()
@@ -112,10 +118,14 @@ func bridgeTun() unsafe.Pointer {
 // --- Dart message port ------------------------------------------------------
 
 //export throne_init_dart_api
-func throne_init_dart_api(api unsafe.Pointer) { initDartApi(api) }
+func throne_init_dart_api(api unsafe.Pointer) {
+	defer guardExport("throne_init_dart_api")
+	if err := initDartApi(api); err != nil { setErr(err) }
+}
 
 //export throne_attach_message_port
 func throne_attach_message_port(port C.int64_t) {
+	defer guardExport("throne_attach_message_port")
 	bridgeMu.Lock()
 	messagePort = int64(port)
 	bridgeMu.Unlock()
@@ -131,6 +141,34 @@ func sendEvent(method string, data interface{}) {
 	}
 	msg, _ := json.Marshal(map[string]interface{}{"method": method, "data": data})
 	sendToPort(port, string(msg))
+}
+
+//export throne_status_snapshot
+func throne_status_snapshot(handle C.int64_t) *C.char {
+	defer guardExport("throne_status_snapshot")
+	v := handleGet(int64(handle))
+	inst, ok := v.(*Instance)
+	if !ok || inst == nil {
+		return C.CString("")
+	}
+	st := inst.Status()
+	if st == nil {
+		return C.CString("")
+	}
+	snap := map[string]int64{
+		"memory": st.Memory,
+		"goroutines": int64(st.Goroutines),
+		"connectionsIn": int64(st.ConnectionsIn),
+		"connectionsOut": int64(st.ConnectionsOut),
+		"uplink": st.Uplink,
+		"downlink": st.Downlink,
+		"uplinkTotal": st.UplinkTotal,
+		"downlinkTotal": st.DownlinkTotal,
+	}
+	// The UI consumes the pushed event; the return value is the heartbeat.
+	sendEvent("status", snap)
+	b, _ := json.Marshal(snap)
+	return C.CString(string(b))
 }
 
 func postTo(port int64, method string, data interface{}) {
@@ -403,6 +441,7 @@ func registerInstance(i *Instance) {
 
 //export throne_getAndroidVpnOptions
 func throne_getAndroidVpnOptions(coreConfig *C.char) *C.char {
+	defer guardExport("throne_getAndroidVpnOptions")
 	var raw map[string]interface{}
 	if json.Unmarshal([]byte(C.GoString(coreConfig)), &raw) != nil {
 		return C.CString("{}")
@@ -427,6 +466,7 @@ func handleRelease(h int64) {
 
 //export throne_TunOptions_toJSON
 func throne_TunOptions_toJSON(handle C.int64_t) *C.char {
+	defer guardExport("throne_TunOptions_toJSON")
 	o, _ := handleGet(int64(handle)).(TunOptions)
 	if o == nil {
 		return C.CString("")
