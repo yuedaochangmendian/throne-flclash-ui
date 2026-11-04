@@ -89,7 +89,17 @@ object BboxCommands : BboxActions {
 
     /** Makes [profileId] the selection; a running service switches to it instead of restarting from scratch. */
     fun select(profileId: Long) {
-        if (profileId <= 0L) return
+        val previous = applySelection(profileId) ?: return
+        scope.launch { postSelectionUpdate(profileId, previous) }
+    }
+
+    /**
+     * Writes the selection and asks a running service to switch to it. Returns the profile that
+     * was selected before, or null when [profileId] is not a usable selection, so the caller can
+     * post the row updates for both sides of the change.
+     */
+    private fun applySelection(profileId: Long): Long? {
+        if (profileId <= 0L) return null
         val previous = DataStore.selectedProxy
         DataStore.selectedProxy = profileId
         DataStore.currentProfile = profileId
@@ -100,15 +110,18 @@ object BboxCommands : BboxActions {
                     .putExtra(Action.EXTRA_PROFILE_ID, profileId)
             )
         }
-        scope.launch {
-            withContext(Dispatchers.IO) {
-                runCatching {
-                    ProfileManager.getProfile(previous)?.let { ProfileManager.postUpdate(it.id, true) }
-                    ProfileManager.postUpdate(profileId, true)
-                }
+        return previous
+    }
+
+    /** Refreshes both affected profile rows and the catalog; IO-bound, so it hops off the caller. */
+    private suspend fun postSelectionUpdate(profileId: Long, previous: Long) {
+        withContext(Dispatchers.IO) {
+            runCatching {
+                ProfileManager.getProfile(previous)?.let { ProfileManager.postUpdate(it.id, true) }
+                ProfileManager.postUpdate(profileId, true)
             }
-            BboxBridge.scheduleRefresh(immediate = true)
         }
+        BboxBridge.scheduleRefresh(immediate = true)
     }
 
     override fun testGroup(group: String) {
@@ -171,24 +184,8 @@ object BboxCommands : BboxActions {
     /** Awaitable variant of [select]: returns after the selection is written and the
      *  profile-update notifications are dispatched. */
     suspend fun selectSuspend(profileId: Long) {
-        if (profileId <= 0L) return
-        val previous = DataStore.selectedProxy
-        DataStore.selectedProxy = profileId
-        DataStore.currentProfile = profileId
-        if (DataStore.serviceState.canStop && previous != profileId) {
-            app.sendBroadcast(
-                Intent(Action.SWITCH_PROFILE)
-                    .setPackage(app.packageName)
-                    .putExtra(Action.EXTRA_PROFILE_ID, profileId)
-            )
-        }
-        withContext(Dispatchers.IO) {
-            runCatching {
-                ProfileManager.getProfile(previous)?.let { ProfileManager.postUpdate(it.id, true) }
-                ProfileManager.postUpdate(profileId, true)
-            }
-        }
-        BboxBridge.scheduleRefresh(immediate = true)
+        val previous = applySelection(profileId) ?: return
+        postSelectionUpdate(profileId, previous)
     }
 
     override fun updateSubscription(id: Long) {
