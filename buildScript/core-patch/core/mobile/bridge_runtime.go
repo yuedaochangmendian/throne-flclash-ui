@@ -11,6 +11,9 @@ package mobile
 #include <stdlib.h>
 #include <string.h>
 
+static throne_callbacks_t g_callbacks;
+static int8_t g_has;
+
 static int32_t call_open_tun(int64_t options) { if (g_has && g_callbacks.open_tun) return g_callbacks.open_tun(options); return 0; }
 static void call_protect(void * tun, int32_t fd) { if (g_has && g_callbacks.protect) return g_callbacks.protect(tun, fd); }
 static const char * call_resolver_process(void * tun, int32_t protocol, const char * source, const char * target, int32_t uid) { if (g_has && g_callbacks.resolver_process) return g_callbacks.resolver_process(tun, protocol, source, target, uid); return NULL; }
@@ -31,9 +34,6 @@ static int8_t call_local_dns_raw(void * tun) { if (g_has && g_callbacks.local_dn
 static const char * call_local_dns_lookup(void * tun, int64_t ctx, const char * network, const char * domain) { if (g_has && g_callbacks.local_dns_lookup) return g_callbacks.local_dns_lookup(tun, ctx, network, domain); return NULL; }
 static const char * call_local_dns_exchange(void * tun, int64_t ctx, const uint8_t * message, int32_t message_len) { if (g_has && g_callbacks.local_dns_exchange) return g_callbacks.local_dns_exchange(tun, ctx, message, message_len); return NULL; }
 static void call_func_invoke(void * obj) { if (g_has && g_callbacks.func_invoke) return g_callbacks.func_invoke(obj); }
-
-static throne_callbacks_t g_callbacks;
-static int8_t g_has;
 
 void bridge_set_callbacks(const throne_callbacks_t *t) {
     if (t) { g_callbacks = *t; g_has = 1; }

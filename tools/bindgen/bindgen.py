@@ -928,10 +928,10 @@ package mobile
 #include <stdlib.h>
 #include <string.h>
 
-{chr(10).join(c_wrappers)}
-
 static throne_callbacks_t g_callbacks;
 static int8_t g_has;
+
+{chr(10).join(c_wrappers)}
 
 void bridge_set_callbacks(const throne_callbacks_t *t) {{
     if (t) {{ g_callbacks = *t; g_has = 1; }}
