@@ -969,7 +969,9 @@ static int8_t g_has;
 
 {chr(10).join(c_wrappers)}
 
-void bridge_set_callbacks(const throne_callbacks_t *t) {{
+// Files with //export copy their preamble into two C translation units; every
+// definition here must be static or the linker sees duplicate symbols.
+static void bridge_set_callbacks(const throne_callbacks_t *t) {{
     if (t) {{ g_callbacks = *t; g_has = 1; }}
 }}
 */

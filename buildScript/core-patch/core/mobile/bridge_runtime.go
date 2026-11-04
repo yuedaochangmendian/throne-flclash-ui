@@ -35,7 +35,9 @@ static const char * call_local_dns_lookup(void * tun, int64_t ctx, const char * 
 static const char * call_local_dns_exchange(void * tun, int64_t ctx, const uint8_t * message, int32_t message_len) { if (g_has && g_callbacks.local_dns_exchange) return g_callbacks.local_dns_exchange(tun, ctx, message, message_len); return NULL; }
 static void call_func_invoke(void * obj) { if (g_has && g_callbacks.func_invoke) return g_callbacks.func_invoke(obj); }
 
-void bridge_set_callbacks(const throne_callbacks_t *t) {
+// Files with //export copy their preamble into two C translation units; every
+// definition here must be static or the linker sees duplicate symbols.
+static void bridge_set_callbacks(const throne_callbacks_t *t) {
     if (t) { g_callbacks = *t; g_has = 1; }
 }
 */
