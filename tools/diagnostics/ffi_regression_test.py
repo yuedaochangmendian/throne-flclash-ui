@@ -90,6 +90,128 @@ class FfiHardeningTests(unittest.TestCase):
                         "warpRegister", "dispose"):
             self.assertIn(f"case KernelCommand.{command}:", self.worker)
 
+    def test_ffi_path_registers_vpn_service_before_open_tun(self) -> None:
+        """The FFI start skips startProcesses(), so openTun would see a null service."""
+        base = (ROOT / "app" / "src" / "main" / "java" / "io" / "nekohasekai" /
+                "sagernet" / "bg" / "BaseService.kt").read_text(encoding="utf-8")
+        platform = (ROOT / "app" / "src" / "main" / "java" / "io" / "throne" /
+                    "bbox" / "bridge" / "BboxCorePlatform.kt").read_text(encoding="utf-8")
+        self.assertIn("DataStore.vpnService ?: run", platform,
+                      "openTun must still depend on the registered VpnService")
+        self.assertIn("openTun without a live VpnService", platform,
+                      "a missing VpnService must be logged instead of failing silently")
+        start = base.index("fun startProxy()")
+        ffi_return = base.index("BboxKernel.ffiMode", start)
+        self.assertIn("if (this is VpnService) DataStore.vpnService = this",
+                      base[start:ffi_return],
+                      "startProxy must register the VpnService before the FFI early return")
+
+    def test_service_start_waits_for_the_vpn_service(self) -> None:
+        """`service.start` only posted an intent, so Dart's FFI start raced the service.
+
+        The channel answer must come after the live VpnService exists; otherwise
+        the core's openTun runs first and the start dies with
+        "configure tun interface: bridge: platform callback failed".
+        """
+        bridge = (ROOT / "app" / "src" / "main" / "java" / "io" / "throne" /
+                  "bbox" / "flutter" / "ThroneBoxBridge.kt").read_text(encoding="utf-8")
+        self.assertIn('"service.start" -> result.respond {', bridge,
+                      "service.start must answer only after the service is ready")
+        self.assertNotIn('"service.start" -> {\n                    if (!DataStore.serviceState.canStop) SagerNet.startService()\n                    result.success(null)\n                }',
+                         bridge,
+                         "service.start must not answer before the service exists")
+        wait = bridge.index("private suspend fun startServiceAndAwaitTun()")
+        body = bridge[wait:bridge.index("override fun onMethodCall", wait)]
+        self.assertIn("SagerNet.startService()", body)
+        self.assertIn("while (DataStore.vpnService == null)", body)
+        self.assertIn("SERVICE_READY_TIMEOUT_MS", body,
+                      "the wait needs a timeout so a broken start fails loudly")
+        self.assertIn("Key.MODE_VPN", body,
+                      "the tun only exists in VPN mode; proxy mode must not wait")
+
+
+    def test_tun_spec_json_tolerates_a_disabled_http_proxy(self) -> None:
+        """GetHTTPProxyServer() dereferences the nil TunPlatformOptions.HTTPProxy.
+
+        Calling the proxy getters unconditionally panicked inside
+        throne_TunOptions_toJSON, so the spec reached VpnService empty and every
+        start died with "configure tun interface: bridge: platform callback
+        failed" (really: JSONException "End of input at character 0").
+        """
+        runtime = (ROOT / "buildScript" / "core-patch" / "core" / "mobile" /
+                   "bridge_runtime.go").read_text(encoding="utf-8")
+        self.assertIn("if httpProxy := o.IsHTTPProxyEnabled(); httpProxy {", runtime,
+                      "the HTTP proxy getters must stay behind the enabled guard")
+        self.assertNotIn('dto["httpProxyServer"] = o.GetHTTPProxyServer()\n\tdto["httpProxyServerPort"]',
+                         runtime,
+                         "unguarded GetHTTPProxyServer() panics when the option is off")
+        # The guarded branch must still report the full spec when it is on.
+        for key in ('dto["httpProxyEnabled"] = true', 'dto["httpProxyServer"] = ""',
+                    'dto["httpProxyServerPort"] = int32(0)', 'dto["httpProxyBypassDomain"] = []string{}'):
+            self.assertIn(key, runtime, f"missing proxy field default: {key}")
+
+    def test_tun_spec_json_marshals_every_builder_field(self) -> None:
+        """VpnService.Builder needs the same fields the old gobind path fed it."""
+        runtime = (ROOT / "buildScript" / "core-patch" / "core" / "mobile" /
+                   "bridge_runtime.go").read_text(encoding="utf-8")
+        start = runtime.index("func throne_TunOptions_toJSON")
+        body = runtime[start:runtime.index("var _ = unsafe.Pointer(nil)", start)]
+        for field in ("mtu", "autoRoute", "inet4Address", "inet6Address", "inet4RouteAddress",
+                      "inet6RouteAddress", "inet4RouteExcludeAddress", "inet6RouteExcludeAddress",
+                      "inet4RouteRange", "inet6RouteRange", "includePackage", "excludePackage",
+                      "dnsMode", "dnsServerAddress"):
+            self.assertIn(f'"{field}"', body, f"tun spec is missing {field}")
+
+
+    def test_stop_releases_the_cached_tun_descriptor(self) -> None:
+        """The kernel caches the fd from throne_start_tun and reuses it.
+
+        Nothing called Core.stopTun(), so a stop left the cached descriptor behind
+        and the next start skipped establishing the interface: no tun0 and no VPN
+        network while the dashboard still said Running.
+        """
+        vpn = (ROOT / "app" / "src" / "main" / "java" / "io" / "nekohasekai" /
+               "sagernet" / "bg" / "VpnService.kt").read_text(encoding="utf-8")
+        kill = vpn.index("override suspend fun killProcesses()")
+        body = vpn[kill:vpn.index("override fun onBind", kill)]
+        self.assertIn("Core.stopTun()", body,
+                      "killProcesses must drop the cached tun descriptor")
+        destroy = vpn.index("override fun onDestroy()")
+        self.assertIn("Core.stopTun()", vpn[destroy:destroy + 500],
+                      "a service torn down without killProcesses must drop it too")
+
+
+    def test_set_mode_refreshes_the_pushed_dashboard(self) -> None:
+        """The FFI mode switch persisted the mode but never refreshed the UI state.
+
+        BboxBridge caches dashboard.mode and the bridge re-publishes that cache on
+        every change. BboxKernel.setMode only wrote the store, so the next push
+        carried the previous mode, Dart applied it and the chips snapped back: the
+        switch looked dead even though the store already held the new value.
+        """
+        kernel = (ROOT / "app" / "src" / "main" / "java" / "io" / "throne" / "bbox" /
+                  "bridge" / "BboxKernel.kt").read_text(encoding="utf-8")
+        start = kernel.index("fun setMode(mode: String)")
+        body = kernel[start:kernel.index("\n    }", start)]
+        self.assertIn("BboxMode.set(", body, "the mode must reach the store")
+        self.assertIn("BboxBridge.scheduleRefresh(immediate = true)", body,
+                      "without a refresh the cached dashboard keeps the old mode")
+
+    def test_dashboard_wire_reads_the_stored_mode(self) -> None:
+        """The wire must never echo a cached mode back to Dart.
+
+        Even with the refresh above, a push can race the catalog reload. Reading the
+        store makes every emission self-consistent, so the highlight cannot revert.
+        """
+        bridge = (ROOT / "app" / "src" / "main" / "java" / "io" / "throne" / "bbox" /
+                  "flutter" / "ThroneBoxBridge.kt").read_text(encoding="utf-8")
+        start = bridge.index("private fun dashboardWire(")
+        body = bridge[start:bridge.index("private fun profilesWire", start)]
+        self.assertIn('"mode" to BboxMode.get().id', body,
+                      "dashboardWire must read the stored mode, not dashboard.mode")
+        self.assertNotIn('"mode" to dashboard.mode', body)
+        self.assertIn("import io.throne.bbox.bridge.BboxMode", bridge)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

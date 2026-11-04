@@ -609,6 +609,12 @@ class BaseService {
         /** Starts the selected profile; the notification and the receiver of a restart are reused. */
         fun startProxy() {
             DataStore.baseService = this
+            // The FFI core opens the tun through CorePlatform.openTun while it starts.
+            // The channel path registers the live VpnService in startProcesses(), but
+            // the FFI path returns early and never calls it, so openTun used to see a
+            // null service and the start failed with "bridge: platform callback failed".
+            // Register here, before the core can ask for the interface.
+            if (this is VpnService) DataStore.vpnService = this
             val data = data
             val profile = SagerDatabase.proxyDao.getById(DataStore.selectedProxy)
             this as Context

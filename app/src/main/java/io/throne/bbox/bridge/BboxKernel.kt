@@ -51,6 +51,12 @@ object BboxKernel {
     /** The mode switch's persist half; Dart reloads the core itself (FFI). */
     fun setMode(mode: String) {
         BboxMode.set(BboxMode.Mode.of(mode))
+        // Writing the store is not enough: BboxBridge caches the mode in its UI state
+        // and re-publishes that cache every second. Without this refresh the pump kept
+        // pushing the *old* mode, so it stomped the value Dart had just pushed and the
+        // mode chips kept highlighting the previous choice until some unrelated catalog
+        // change happened to rebuild the state. BboxCommands.setMode does the same.
+        BboxBridge.scheduleRefresh(immediate = true)
     }
 
     /**

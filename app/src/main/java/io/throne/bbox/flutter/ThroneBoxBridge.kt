@@ -40,6 +40,7 @@ import io.throne.bbox.bridge.BboxEgress
 import io.throne.bbox.bridge.BboxKernel
 import io.throne.bbox.bridge.BboxLogcat
 import io.throne.bbox.bridge.BboxLogs
+import io.throne.bbox.bridge.BboxMode
 import io.throne.bbox.bridge.BboxProbeSession
 import io.throne.bbox.bridge.BboxProfiles
 import io.throne.bbox.bridge.BboxRoutes
@@ -258,13 +259,36 @@ class ThroneBoxBridge(
         }
     }
 
+    /**
+     * Starts the background service and, in VPN mode, waits until it exists before answering.
+     *
+     * `SagerNet.startService()` only posts a startForegroundService intent, so it returns before
+     * the service object is created. Dart calls this immediately before the FFI kernel start, and
+     * the core asks the platform for the tun as part of that start: with the wait removed, openTun
+     * saw a null `DataStore.vpnService` and every start died with "configure tun interface:
+     * bridge: platform callback failed". Answering the channel call only after the live VpnService
+     * is registered makes the ordering deterministic instead of a race.
+     */
+    private suspend fun startServiceAndAwaitTun() {
+        if (DataStore.serviceState.canStop) return // already running: the service is registered
+        SagerNet.startService()
+        if (DataStore.serviceMode != Key.MODE_VPN) return
+        val deadline = System.currentTimeMillis() + SERVICE_READY_TIMEOUT_MS
+        while (DataStore.vpnService == null) {
+            if (System.currentTimeMillis() > deadline) {
+                error("VpnService did not start within ${SERVICE_READY_TIMEOUT_MS / 1000}s")
+            }
+            delay(50)
+        }
+    }
+
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         try {
             when (call.method) {
                 "ready" -> result.success(readyPayload())
-                "service.start" -> {
-                    if (!DataStore.serviceState.canStop) SagerNet.startService()
-                    result.success(null)
+                "service.start" -> result.respond {
+                    startServiceAndAwaitTun()
+                    null
                 }
                 "service.stop" -> {
                     if (DataStore.serviceState.canStop) SagerNet.stopService()
@@ -1364,7 +1388,10 @@ class ThroneBoxBridge(
             "selectedProfileId" to (BboxBridge.catalog.selectedGroupId.takeIf { it > 0 } ?: -1),
             "selectedProfileName" to (dashboard.profile?.name ?: ""),
             "modes" to dashboard.modes,
-            "mode" to dashboard.mode,
+            // Read the store instead of the cached copy: the cached mode only changes on a
+            // catalog refresh, and between the switch tap and that refresh the pump would
+            // otherwise emit the previous mode back to Dart and revert the chip highlight.
+            "mode" to BboxMode.get().id,
             "startedAt" to dashboard.status.startedAt,
             "uploadTotal" to dashboard.traffic.uploadTotal,
             "downloadTotal" to dashboard.traffic.downloadTotal,
@@ -1504,6 +1531,8 @@ class ThroneBoxBridge(
     }
 
     private companion object {
+        /** How long `service.start` waits for the live VpnService before failing loudly. */
+        const val SERVICE_READY_TIMEOUT_MS = 8_000L
         const val PREFERENCES_KEY = "value"
         const val SETTINGS_KEY = "settings"
         const val QUALITY_KEY = "ipQuality"

@@ -46,7 +46,8 @@ if (HAS_THRONE_ABI)
             jni_helper.cpp
             core.cpp)
     target_link_libraries(${CMAKE_PROJECT_NAME}
-            throne)
+            throne
+            log)
 else ()
     message(WARNING "libthrone.so has no throne_* ABI for ${ANDROID_ABI}; building the shim without the kernel bridge")
     add_library(${CMAKE_PROJECT_NAME} SHARED

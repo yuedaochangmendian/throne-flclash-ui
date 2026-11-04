@@ -12,6 +12,7 @@ import 'dart:async';
 
 import '../box.dart';
 import 'kernel_worker.dart';
+import 'platform_value.dart';
 import 'throne_kernel.dart';
 
 class KernelService {
@@ -113,7 +114,13 @@ class KernelService {
       // The native DB owns the selection (DataStore.selectedProxy). The Flutter
       // preference store holds UI settings only, so mining it for an id used to
       // send 0 here and fail every start with "profile 0 is gone".
-      final built = await box.call('config.build', configBuildArgs()) as Map<String, dynamic>;
+      // The channel reply is a `Map<String, dynamic>` after BoxController.call
+      // normalizes it. Use a checked conversion so a future codec change fails
+      // with a readable message instead of a bare type-cast exception.
+      final built = asStringKeyedMap(
+        await box.call('config.build', configBuildArgs()),
+        context: 'config.build',
+      );
       final handle = await worker.createInstance(built);
       _instanceHandle = handle;
       await worker.start();
@@ -170,7 +177,10 @@ class KernelService {
     if (_kernel == null || worker == null) {
       return box.call('warp.register', {'tunnelType': tunnelType});
     }
-    final params = await box.call('config.warpParams', {'tunnelType': tunnelType}) as Map<String, dynamic>;
+    final params = asStringKeyedMap(
+      await box.call('config.warpParams', {'tunnelType': tunnelType}),
+      context: 'config.warpParams',
+    );
     final result = await worker.warpRegister(tunnelType, params);
     return box.call('state.saveWarpKeys', {
       'tunnelType': tunnelType,

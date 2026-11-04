@@ -8,6 +8,7 @@
 
 #ifdef LIBCORE
 #include <jni.h>
+#include <android/log.h>
 #include <cstring>
 #include <cstdlib>
 #include "jni_helper.h"
@@ -275,7 +276,18 @@ extern "C"
 JNIEXPORT jstring JNICALL
 Java_io_throne_bbox_core_Core_tunSpecJson(JNIEnv *env, jobject, const jlong handle) {
     const auto json = throne_TunOptions_toJSON(handle);
-    const auto out = env->NewStringUTF(json != nullptr ? json : "");
+    const char *text = json != nullptr ? json : "";
+    if (text[0] == '\0') {
+        // An empty spec used to surface only as a JSONException in VpnService,
+        // which hid whether the handle was unknown or the marshaling panicked.
+        const auto last = throne_last_error();
+        __android_log_print(ANDROID_LOG_WARN, "ThroneTun",
+                            "tunSpecJson(handle=%lld) is empty; last_error=%s",
+                            static_cast<long long>(handle),
+                            last != nullptr ? last : "(none)");
+        if (last != nullptr) throne_free(const_cast<char *>(last));
+    }
+    const auto out = env->NewStringUTF(text);
     if (json != nullptr) throne_free(const_cast<char *>(json));
     return out;
 }

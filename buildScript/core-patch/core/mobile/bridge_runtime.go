@@ -500,10 +500,22 @@ func throne_TunOptions_toJSON(handle C.int64_t) *C.char {
 	dto["inet6RouteRange"] = prefixes(o.GetInet6RouteRange())
 	dto["includePackage"] = stringsOf(o.GetIncludePackage())
 	dto["excludePackage"] = stringsOf(o.GetExcludePackage())
-	dto["httpProxyEnabled"] = o.IsHTTPProxyEnabled()
-	dto["httpProxyServer"] = o.GetHTTPProxyServer()
-	dto["httpProxyServerPort"] = o.GetHTTPProxyServerPort()
-	dto["httpProxyBypassDomain"] = stringsOf(o.GetHTTPProxyBypassDomain())
+	// HTTPProxy is a pointer in TunPlatformOptions and stays nil whenever the
+	// option is off. GetHTTPProxyServer/Port/BypassDomain dereference it without
+	// a guard, so calling them unconditionally panicked the whole marshaling —
+	// the tun spec arrived empty and every start died in VpnService.Builder with
+	// "End of input at character 0". Read them only when they exist.
+	if httpProxy := o.IsHTTPProxyEnabled(); httpProxy {
+		dto["httpProxyEnabled"] = true
+		dto["httpProxyServer"] = o.GetHTTPProxyServer()
+		dto["httpProxyServerPort"] = o.GetHTTPProxyServerPort()
+		dto["httpProxyBypassDomain"] = stringsOf(o.GetHTTPProxyBypassDomain())
+	} else {
+		dto["httpProxyEnabled"] = false
+		dto["httpProxyServer"] = ""
+		dto["httpProxyServerPort"] = int32(0)
+		dto["httpProxyBypassDomain"] = []string{}
+	}
 	if mode := o.GetDNSMode(); mode != nil {
 		dto["dnsMode"] = mode.Value
 	}

@@ -1,3 +1,14 @@
+#### 3.2.19
+
+* Fixes the crash `type '_Map<Object?, Object?>' is not a subtype of type 'Map<String, dynamic>' in type cast`: `StandardMessageCodec` decodes native maps into `_Map<Object?, Object?>`, so every channel reply is now normalised recursively (`normalizePlatformValue` / `asStringKeyedMap`) instead of being cast, with `TypedData` payloads preserved
+* Fixes `Bad state: configure tun interface: bridge: platform callback failed`, which had three separate causes: the FFI start path never registered `DataStore.vpnService` (it returns before `startProcesses()`), `service.start` replied before the service existed, and `throne_TunOptions_toJSON` panicked on the nil `TunPlatformOptions.HTTPProxy`
+* `service.start` now waits for a live `VpnService` (8 s, then fails loudly) instead of posting an intent and returning, so Dart can no longer start the core before the tunnel owner exists
+* `throne_TunOptions_toJSON` reads the HTTP proxy getters only when the option is enabled (they dereference a nil pointer otherwise); the panic used to empty the whole TUN spec, so `VpnService.Builder` failed with "End of input at character 0"
+* Stopping the service releases the kernel's cached tun descriptor (`Core.stopTun()` in `killProcesses()` and `onDestroy()`); without it the second start reused a closed fd and skipped establishing `tun0` while the dashboard still said Running
+* The outbound mode switch now sticks: `BboxKernel.setMode` refreshes the bridge state and `dashboardWire` reads the stored mode instead of its cached copy, so the chips no longer snap back to the previous choice after the per-second state push
+* `openTun` failures are logged with their reason instead of returning a silent `-1`, and `tunSpecJson` reports `throne_last_error()` when the spec comes back empty
+* Adds five regression tests (15 total) covering the service-start ordering, the disabled-proxy spec, the mode refresh and the tun descriptor release
+
 #### 3.2.18
 
 * Hardens the FFI kernel boundary: all 423 `throne_*` exports recover from Go panics instead of aborting the process, and `Dart_InitializeApiDL` failures return an error rather than panicking across cgo

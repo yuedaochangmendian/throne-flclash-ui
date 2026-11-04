@@ -273,6 +273,57 @@ def ffi_id_contract_failures() -> list[str]:
     return problems
 
 
+def platform_value_contract_failures() -> list[str]:
+    """Prevent the `_Map<Object?, Object?> is not a Map<String, dynamic>` crash.
+
+    StandardMessageCodec decodes native maps into `_Map<Object?, Object?>`.
+    Casting those directly to `Json` used to abort `config.build` and
+    `config.warpParams` on every start / WARP registration. The fix belongs at
+    the channel boundary (BoxController.call + the EventChannel stream), with
+    checked conversions anywhere an isolate bounces a map back.
+    """
+    problems: list[str] = []
+    box = (FLUTTER_LIB / "box.dart").read_text(encoding="utf-8")
+    helper = FLUTTER_LIB / "core" / "platform_value.dart"
+    service = FLUTTER_LIB / "core" / "kernel_service.dart"
+    worker = FLUTTER_LIB / "core" / "kernel_worker.dart"
+
+    if not helper.exists():
+        problems.append("flutter/lib/core/platform_value.dart is missing")
+    else:
+        text = helper.read_text(encoding="utf-8")
+        if not re.search(r"Object\?\s+normalizePlatformValue\(", text):
+            problems.append("normalizePlatformValue() is missing")
+        if "value is TypedData" not in text:
+            problems.append("normalizePlatformValue() must preserve typed data (app icons)")
+        if not re.search(r"value is Map[\s\S]{0,200}normalizePlatformValue", text):
+            problems.append("normalizePlatformValue() must recurse into nested maps")
+
+    call = re.search(r"Future<dynamic> call\(String method[\s\S]{0,300}?;", box)
+    if not call or "normalizePlatformValue" not in call.group(0):
+        problems.append("BoxController.call must normalize method-channel replies")
+    if not re.search(r"_events\s*=[\s\S]{0,250}normalizePlatformValue", box):
+        problems.append("the EventChannel stream must normalize its payloads")
+    if "import 'core/platform_value.dart';" not in box:
+        problems.append("box.dart must import the normalization helper")
+
+    # Generated bindings (throne_ffi.dart) legitimately cast json.decode output;
+    # hand-written runtime code must never cast a channel/isolate value to Json.
+    for path in (service, worker):
+        text = path.read_text(encoding="utf-8")
+        if re.search(r"\bas\s+(?:Map<String,\s*dynamic>|Json)\b", text):
+            problems.append(f"{path.name} casts a platform value directly to Json")
+        if "asStringKeyedMap" not in text:
+            problems.append(f"{path.name} must use asStringKeyedMap() for wire maps")
+
+    test = REPO_ROOT / "flutter" / "test" / "platform_value_test.dart"
+    if not test.exists():
+        problems.append("platform_value_test.dart regression suite is missing")
+    elif "StandardMessageCodec" not in test.read_text(encoding="utf-8"):
+        problems.append("the regression suite must exercise the real codec shape")
+    return problems
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--verbose", action="store_true", help="also list handlers with no Dart caller")
@@ -350,9 +401,16 @@ def main() -> int:
         for problem in id_problems:
             print(f"  {problem}")
 
+    wire_problems = platform_value_contract_failures()
+    if wire_problems:
+        failed = True
+        print("\nFAIL — platform value contract:")
+        for problem in wire_problems:
+            print(f"  {problem}")
+
     if not failed:
         print("\ncontract OK: every live call has a handler, every event a consumer, "
-              "and the FFI path never invents a proxy id")
+              "the FFI path never invents a proxy id, and platform values are normalized")
     return 1 if failed else 0
 
 

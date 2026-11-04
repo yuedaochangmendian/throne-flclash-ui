@@ -63,6 +63,14 @@ class VpnService : BaseVpnService(),
             cleanupError = error
         } finally {
             conn = null
+            // The kernel caches the fd it was given (throne_start_tun) and reuses it on
+            // the next OpenTun. Without this the second start after a stop skipped
+            // establishing the interface altogether — no tun0, no VPN network, while the
+            // UI still reported Running — because it trusted the previous, already closed
+            // descriptor. Dropping the cached fd (and the TunInterface global ref) makes
+            // every start ask the platform for a fresh interface.
+            runCatching { io.throne.bbox.core.Core.stopTun() }
+                .onFailure { Logs.w("bridge: stopTun failed: ${it.message}") }
         }
         super.killProcesses()?.let { error ->
             if (cleanupError == null) {
@@ -312,6 +320,9 @@ class VpnService : BaseVpnService(),
     override fun onRevoke() = stopRunner()
 
     override fun onDestroy() {
+        // Belt and braces: a service torn down without killProcesses (system reclaim,
+        // always-on VPN restart) must not leave the kernel holding a dead descriptor.
+        runCatching { io.throne.bbox.core.Core.stopTun() }
         DataStore.vpnService = null
         super.onDestroy()
         data.binder.close()

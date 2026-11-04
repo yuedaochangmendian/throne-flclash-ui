@@ -16,6 +16,7 @@ import 'dart:async';
 import 'dart:ffi';
 import 'dart:isolate';
 
+import 'platform_value.dart';
 import 'throne_ffi.dart';
 
 enum KernelCommand {
@@ -53,7 +54,7 @@ class KernelWorker {
     }
     return KernelWorker._(
       commands,
-      events.map((raw) => Map<String, dynamic>.from(raw as Map)).asBroadcastStream(),
+      events.map((raw) => asStringKeyedMap(raw, context: 'worker event')).asBroadcastStream(),
     );
   }
 
@@ -94,7 +95,7 @@ class KernelWorker {
       KernelCommand.warpRegister,
       <String, dynamic>{'tunnelType': tunnelType, 'params': params},
     );
-    return Map<String, dynamic>.from(result as Map);
+    return asStringKeyedMap(result, context: 'warp.register result');
   }
 
   Future<void> dispose() => _call(KernelCommand.dispose);
@@ -138,7 +139,7 @@ void _workerMain(List<Object> init) {
     try {
       switch (command) {
         case KernelCommand.createInstance:
-          final built = Map<String, dynamic>.from(payload! as Map);
+          final built = asStringKeyedMap(payload, context: 'createInstance payload');
           final options = _startOptions(ffi, built);
           try {
             final created = ThroneMobile.newInstance(ffi, options.handle);
@@ -172,11 +173,11 @@ void _workerMain(List<Object> init) {
           lostReported = false;
           reply.send(null);
         case KernelCommand.warpRegister:
-          final data = Map<String, dynamic>.from(payload! as Map);
+          final data = asStringKeyedMap(payload, context: 'warpRegister payload');
           reply.send(_warpRegister(
             ffi,
             data['tunnelType'] as String,
-            Map<String, dynamic>.from(data['params'] as Map),
+            asStringKeyedMap(data['params'], context: 'warp params'),
           ));
         case KernelCommand.dispose:
           heartbeatEnabled = false;
@@ -197,7 +198,10 @@ ThroneStartOptions _startOptions(ThroneFFI ffi, Map<String, dynamic> built) {
   options.setNeedXray(built['needXray'] as bool? ?? false);
   options.setXrayConfig(built['xrayConfig'] as String? ?? '');
   options.setXrayOutboundDNSStrategy(built['xrayDnsStrategy'] as String? ?? '');
-  final full = (built['xrayFullConfigs'] as List? ?? const []).cast<String>();
+  // A channel reply can carry a List<Object?> here; cast<String>() would build
+  // a view that throws on the first non-string element while iterating.
+  final rawFull = built['xrayFullConfigs'];
+  final full = rawFull is List ? rawFull.whereType<String>().toList() : <String>[];
   for (final config in full) {
     options.addXrayFullConfig(config);
   }

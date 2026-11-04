@@ -45,11 +45,17 @@ object BboxCorePlatform : CorePlatform {
      * TunOptions handle, establishes and feeds the fd back with Core.startTun.
      */
     override fun openTun(optionsHandle: Long): Int {
-        val service = DataStore.vpnService ?: return -1
+        val service = DataStore.vpnService ?: run {
+            // Previously a silent -1: the core surfaced it only as "platform callback failed",
+            // which hid the real cause (no live VpnService yet, i.e. a start ordering problem).
+            Logs.w("bridge: openTun without a live VpnService (serviceMode=${DataStore.serviceMode})")
+            return -1
+        }
         return runCatching {
             service.openTunJson(Core.tunSpecJson(optionsHandle), VpnTunInterface(service))
         }.getOrElse {
             Logs.w("bridge: openTun failed: ${it.message}")
+            android.util.Log.w("ThroneTun", "openTun failed: ${it.javaClass.name}: ${it.message}", it)
             -1
         }
     }

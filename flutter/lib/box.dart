@@ -6,16 +6,25 @@ import 'package:flutter/widgets.dart';
 import 'capabilities.dart';
 import 'common/ip_quality_cache.dart';
 import 'core/kernel_service.dart';
+import 'core/platform_value.dart';
 import 'core/throne_kernel.dart';
 
 part 'box_api.dart';
 
 typedef Json = Map<String, dynamic>;
 
-Json json(Object? value) => value is Map
-    ? value.map((key, value) => MapEntry(key.toString(), value))
-    : <String, dynamic>{};
-List<Json> rows(Object? value) => value is List ? value.map(json).toList() : [];
+/// StandardMessageCodec yields `_Map<Object?, Object?>` for native maps, and
+/// nested maps keep that shape. Normalize the whole tree, not just the top
+/// level: `as Json` on a nested value used to throw on startup.
+Json json(Object? value) {
+  final normalized = normalizePlatformValue(value);
+  return normalized is Json ? normalized : <String, dynamic>{};
+}
+
+List<Json> rows(Object? value) {
+  final normalized = normalizePlatformValue(value);
+  return normalized is List ? normalized.whereType<Json>().toList() : <Json>[];
+}
 
 enum BoxAspect { state, appearance, traffic, memory, connections, logs, logcat, testSession }
 enum BoxData { memory, logs, logcat, testSession }
@@ -70,7 +79,10 @@ class BoxEventBus {
 class BoxController extends ChangeNotifier {
   BoxController({MethodChannel? channel, Stream<dynamic>? events})
       : _channel = channel ?? const MethodChannel('io.ericlee.bfa/box'),
-        _events = events ?? const EventChannel('io.ericlee.bfa/events').receiveBroadcastStream();
+        // EventChannel uses the same codec as MethodChannel, so its payloads
+        // arrive as `_Map<Object?, Object?>` too.
+        _events = (events ?? const EventChannel('io.ericlee.bfa/events').receiveBroadcastStream())
+            .map<dynamic>(normalizePlatformValue);
 
   final MethodChannel _channel;
   final Stream<dynamic> _events;
@@ -298,7 +310,11 @@ class BoxController extends ChangeNotifier {
     notifyListeners();
   }
 
-  Future<dynamic> call(String method, [Json? args]) => _channel.invokeMethod<dynamic>(method, args);
+  /// Every method-channel reply is normalized here. Without this, callers that
+  /// cast a reply to `Json` fail with
+  /// `type '_Map<Object?, Object?>' is not a subtype of type 'Map<String, dynamic>'`.
+  Future<dynamic> call(String method, [Json? args]) async =>
+      normalizePlatformValue(await _channel.invokeMethod<dynamic>(method, args));
 
   void clearApplyRequired() { applyRequired = null; _notify([BoxAspect.state]); }
 
