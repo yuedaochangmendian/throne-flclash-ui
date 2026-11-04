@@ -18,7 +18,13 @@ class RoutedIpProbe implements IpProbeTransport {
 
   Future<void> open() async {
     if (cancelled || _closed) throw const IpProbeCancelled();
-    await (_opening ??= _open());
+    try {
+      await (_opening ??= _open());
+    } catch (error) {
+      // A transient open failure must not be cached forever; allow retry.
+      _opening = null;
+      rethrow;
+    }
     if (cancelled || _closed) throw const IpProbeCancelled();
   }
   Future<void> _open() async {

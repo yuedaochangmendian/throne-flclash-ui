@@ -285,8 +285,8 @@ class BoxController extends ChangeNotifier {
     }
     try {
       final result = json(await call('ready'));
-      version = result['version'] as String;
-      coreVersion = result['coreVersion'] as String;
+      version = result['version'] as String? ?? '';
+      coreVersion = result['coreVersion'] as String? ?? '';
       systemAccentColor = (result['systemAccentColor'] as num?)?.toInt() ?? 0xff007aff;
       dashboard = json(result['dashboard']);
       profiles = rows(result['profiles']);
@@ -435,9 +435,9 @@ class BoxController extends ChangeNotifier {
         final entries = rows(logState['entries']);
         if (logState['reset'] == false) {
           final firstId = (logState['firstId'] as num?)?.toInt();
-          final retained = firstId == null ? <Json>[] : logs.where((entry) => (entry['id'] as num).toInt() >= firstId);
-          final lastId = logs.isEmpty ? -1 : (logs.last['id'] as num).toInt();
-          logs = [...retained, ...entries.where((entry) => (entry['id'] as num).toInt() > lastId)];
+          final retained = firstId == null ? <Json>[] : logs.where((entry) => ((entry['id'] as num?)?.toInt() ?? -1) >= firstId);
+          final lastId = logs.isEmpty ? -1 : ((logs.last['id'] as num?)?.toInt() ?? -1);
+          logs = [...retained, ...entries.where((entry) => ((entry['id'] as num?)?.toInt() ?? -1) > lastId)];
         } else {
           logs = entries;
         }
@@ -449,9 +449,9 @@ class BoxController extends ChangeNotifier {
         final entries = rows(logState['entries']);
         if (logState['reset'] == false) {
           final firstId = (logState['firstId'] as num?)?.toInt();
-          final retained = firstId == null ? <Json>[] : logcat.where((entry) => (entry['id'] as num).toInt() >= firstId);
-          final lastId = logcat.isEmpty ? -1 : (logcat.last['id'] as num).toInt();
-          logcat = [...retained, ...entries.where((entry) => (entry['id'] as num).toInt() > lastId)];
+          final retained = firstId == null ? <Json>[] : logcat.where((entry) => ((entry['id'] as num?)?.toInt() ?? -1) >= firstId);
+          final lastId = logcat.isEmpty ? -1 : ((logcat.last['id'] as num?)?.toInt() ?? -1);
+          logcat = [...retained, ...entries.where((entry) => ((entry['id'] as num?)?.toInt() ?? -1) > lastId)];
         } else {
           logcat = entries;
         }
@@ -465,8 +465,9 @@ class BoxController extends ChangeNotifier {
         preferences = nextPreferences;
         aspects = const [BoxAspect.state, BoxAspect.appearance];
       case 'systemAccent':
-        if (systemAccentColor == (value as num).toInt()) return;
-        systemAccentColor = value.toInt();
+        final accent = (value as num?)?.toInt();
+        if (accent == null || systemAccentColor == accent) return;
+        systemAccentColor = accent;
         aspects = const [BoxAspect.appearance];
       case 'rates':
         sampleRevision++;
@@ -512,16 +513,19 @@ class BoxController extends ChangeNotifier {
 
   /// Kernel logs arriving through the FFI message port (dual path: only when
   /// the rebuilt core is present). Same entry shape the channel pushes.
+  /// The id uses a high offset to stay clear of the channel's id space;
+  /// receivedAt is milliseconds since epoch to match the channel wire format.
+  static const _kernelLogIdBase = 0x10000000;
   void _onKernelLog(Json data) {
     if (_disposed) return;
     logs = [...logs, {
-      'id': _kernelLogId++,
+      'id': _kernelLogIdBase + _kernelLogId++,
       'level': data['level'],
       'message': data['message'],
-      'receivedAt': DateTime.now().toIso8601String(),
+      'receivedAt': DateTime.now().millisecondsSinceEpoch,
     }];
     if (logs.length > maxLogLength) logs = logs.sublist(logs.length - maxLogLength);
-    _notify([BoxAspect.logs]);
+    _notifyBatched(const [BoxAspect.logs]);
   }
 
   @override

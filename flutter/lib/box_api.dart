@@ -39,7 +39,7 @@ extension ProfilesApi on BoxController {
   Future<bool> profileClearTraffic(dynamic id) => act('profiles.clearTraffic', {'id': id});
   Future<bool> profileDelete(dynamic id) => act('profiles.delete', {'id': id});
   Future<bool> profileSwitchRelative(int step) async {
-    if (ThroneKernel.isAvailable) {
+    if (kernel.ffiMode) {
       final done = await act('profiles.switchRelative', {'step': step});
       if (done) await kernel.onSelectionChanged();
       return done;
@@ -48,7 +48,7 @@ extension ProfilesApi on BoxController {
   }
 
   Future<bool> profileSelect(dynamic id) async {
-    if (ThroneKernel.isAvailable) {
+    if (kernel.ffiMode) {
       final done = await act('profiles.select', {'id': id});
       if (done) await kernel.onSelectionChanged();
       return done;
@@ -102,7 +102,7 @@ extension ReportsApi on BoxController {
 extension GroupsApi on BoxController {
   Future<bool> groupTest(dynamic tag) => act('groups.test', {'tag': tag});
   Future<bool> groupSelect(dynamic group, dynamic tag) async {
-    if (ThroneKernel.isAvailable) {
+    if (kernel.ffiMode) {
       final done = await act('groups.select', {'group': group, 'tag': tag});
       if (done) await kernel.onSelectionChanged();
       return done;
@@ -182,17 +182,17 @@ extension ShareApi on BoxController {
 
 extension ServiceApi on BoxController {
   Future<bool> serviceReload({bool restart = false}) async {
-    if (ThroneKernel.isAvailable) return _kernelOp(this, kernel.reloadService);
+    if (kernel.ffiMode) return _kernelOp(this, kernel.reloadService);
     return act('service.reload', restart ? {'restart': true} : null);
   }
 
   Future<bool> serviceStart() async {
-    if (ThroneKernel.isAvailable) return _kernelOp(this, kernel.startService);
+    if (kernel.ffiMode) return _kernelOp(this, kernel.startService);
     return act('service.start');
   }
 
   Future<bool> serviceStop() async {
-    if (ThroneKernel.isAvailable) return _kernelOp(this, kernel.stopService);
+    if (kernel.ffiMode) return _kernelOp(this, kernel.stopService);
     return act('service.stop');
   }
 }
@@ -240,7 +240,7 @@ extension MiscApi on BoxController {
   Future<bool> wifiPermissionsEnsure() => act('wifiPermissions.ensure');
   Future<bool> systemProxySet(bool enabled) => act('systemProxy.set', {'enabled': enabled});
   Future<bool> modeSet(dynamic mode) async {
-    if (ThroneKernel.isAvailable) return _kernelOp(this, () => kernel.setMode(mode.toString()));
+    if (kernel.ffiMode) return _kernelOp(this, () => kernel.setMode(mode.toString()));
     return act('mode.set', {'mode': mode});
   }
   Future<dynamic> filesOpen(String uri) => call('files.open', {'uri': uri});

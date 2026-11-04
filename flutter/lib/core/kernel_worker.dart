@@ -32,10 +32,11 @@ enum KernelCommand {
 typedef WorkerEvent = Map<String, dynamic>;
 
 class KernelWorker {
-  KernelWorker._(this._commands, this._events);
+  KernelWorker._(this._commands, this._events, this._eventsPort);
 
   final SendPort _commands;
   final Stream<WorkerEvent> _events;
+  final ReceivePort _eventsPort;
 
   Stream<WorkerEvent> get events => _events;
 
@@ -55,6 +56,7 @@ class KernelWorker {
     return KernelWorker._(
       commands,
       events.map((raw) => asStringKeyedMap(raw, context: 'worker event')).asBroadcastStream(),
+      events,
     );
   }
 
@@ -98,7 +100,13 @@ class KernelWorker {
     return asStringKeyedMap(result, context: 'warp.register result');
   }
 
-  Future<void> dispose() => _call(KernelCommand.dispose);
+  Future<void> dispose() async {
+    try {
+      await _call(KernelCommand.dispose);
+    } finally {
+      _eventsPort.close();
+    }
+  }
 }
 
 void _workerMain(List<Object> init) {
@@ -140,6 +148,13 @@ void _workerMain(List<Object> init) {
       switch (command) {
         case KernelCommand.createInstance:
           final built = asStringKeyedMap(payload, context: 'createInstance payload');
+          // Release any previous instance before creating a new one to prevent orphans.
+          final previous = instance;
+          if (previous != null) {
+            instance = null;
+            try { previous.close(); }
+            finally { previous.release(); }
+          }
           final options = _startOptions(ffi, built);
           try {
             final created = ThroneMobile.newInstance(ffi, options.handle);
@@ -163,8 +178,8 @@ void _workerMain(List<Object> init) {
           final current = instance;
           instance = null;
           if (current != null) {
-            current.close();
-            current.release();
+            try { current.close(); }
+            finally { current.release(); }
           }
           reply.send(null);
         case KernelCommand.setHeartbeat:
@@ -182,6 +197,13 @@ void _workerMain(List<Object> init) {
         case KernelCommand.dispose:
           heartbeatEnabled = false;
           heartbeat?.cancel();
+          // Release any still-running instance so the native handle is not orphaned.
+          final current = instance;
+          instance = null;
+          if (current != null) {
+            try { current.close(); }
+            finally { current.release(); }
+          }
           reply.send(null);
           commands.close();
       }

@@ -34,6 +34,8 @@ class KernelService {
   bool _starting = false;
   bool _stopping = false;
   bool _recovering = false;
+  bool _disposed = false;
+  bool _initializing = false;
 
   /// True when the rebuilt core is present and the FFI path drives it.
   bool get active => _kernel != null && _instanceHandle != null;
@@ -44,42 +46,47 @@ class KernelService {
   // --- lifecycle ----------------------------------------------------------
 
   Future<void> initialize() async {
-    if (_kernel != null) return;
-    // Tell the bridge the FFI path drives the core from now on, then open the ABI.
-    await box.call('ffi.mode', {'enabled': true});
-    final kernel = ThroneKernel.ensure();
-    if (kernel == null) {
-      await box.call('ffi.mode', {'enabled': false});
-      return;
-    }
-    _kernel = kernel;
+    if (_kernel != null || _initializing) return;
+    _initializing = true;
     try {
-      final worker = await KernelWorker.spawn();
-      _worker = worker;
-      _workerSub = worker.events.listen(_onWorkerEvent, onError: report);
-      // The Go side pushes a "status" event for every aggregate snapshot; the
-      // worker heartbeat triggers it and uses the return value to detect loss.
-      _statusSub = kernel.events
-          .where((event) => event['method'] == 'status')
-          .listen(_onKernelStatus, onError: report);
-    } catch (_) {
-      await _workerSub?.cancel();
-      await _statusSub?.cancel();
-      _workerSub = null;
-      _statusSub = null;
-      final worker = _worker;
-      _worker = null;
-      _kernel = null;
-      if (worker != null) {
-        try {
-          await worker.dispose();
-        } catch (_) {
-          // The worker never came up; nothing to tear down.
-        }
+      // Tell the bridge the FFI path drives the core from now on, then open the ABI.
+      await box.call('ffi.mode', {'enabled': true});
+      final kernel = ThroneKernel.ensure();
+      if (kernel == null) {
+        await box.call('ffi.mode', {'enabled': false});
+        return;
       }
-      // Hand control back to the channel path so the app is still usable.
-      await box.call('ffi.mode', {'enabled': false});
-      rethrow;
+      _kernel = kernel;
+      try {
+        final worker = await KernelWorker.spawn();
+        _worker = worker;
+        _workerSub = worker.events.listen(_onWorkerEvent, onError: report);
+        // The Go side pushes a "status" event for every aggregate snapshot; the
+        // worker heartbeat triggers it and uses the return value to detect loss.
+        _statusSub = kernel.events
+            .where((event) => event['method'] == 'status')
+            .listen(_onKernelStatus, onError: report);
+      } catch (_) {
+        await _workerSub?.cancel();
+        await _statusSub?.cancel();
+        _workerSub = null;
+        _statusSub = null;
+        final worker = _worker;
+        _worker = null;
+        _kernel = null;
+        if (worker != null) {
+          try {
+            await worker.dispose();
+          } catch (_) {
+            // The worker never came up; nothing to tear down.
+          }
+        }
+        // Hand control back to the channel path so the app is still usable.
+        await box.call('ffi.mode', {'enabled': false});
+        rethrow;
+      }
+    } finally {
+      _initializing = false;
     }
   }
 
@@ -98,14 +105,16 @@ class KernelService {
   }
 
   /// Rebuilds the config and restarts the core in place (the foreground service stays).
+  /// Only restarts if the core was running — a stopped service must not be pulled up
+  /// by a stale selection-change or mode-switch event.
   Future<void> reloadService() async {
-    if (_kernel == null) return;
+    if (_kernel == null || !active) return;
     await _stopCore();
     await _startCore();
   }
 
   Future<void> _startCore() async {
-    if (_kernel == null || _starting) return;
+    if (_kernel == null || _starting || _disposed) return;
     final worker = _worker;
     if (worker == null) return;
     _starting = true;
@@ -129,6 +138,9 @@ class KernelService {
       _emitDashboard('Started');
     } catch (error) {
       report(error);
+      // Release the instance that may have been partially started so the next
+      // createInstance does not silently orphan it inside the worker isolate.
+      try { await worker.stop(); } catch (_) { /* Already stopped or never started. */ }
       _instanceHandle = null;
       _emitDashboard('Stopped');
     } finally {
@@ -195,9 +207,11 @@ class KernelService {
   void _onKernelStatus(BridgeEvent event) {
     final data = event['data'];
     if (data is! Map) return;
-    final snapshot = data.map(
-      (key, value) => MapEntry(key.toString(), (value as num).toInt()),
-    );
+    final snapshot = <String, int>{};
+    for (final entry in data.entries) {
+      final value = (entry.value as num?)?.toInt();
+      if (value != null) snapshot[entry.key.toString()] = value;
+    }
     _emitStatus(snapshot);
   }
 
@@ -223,12 +237,13 @@ class KernelService {
   }
 
   void _emitStatus(Map<String, int> snapshot) {
+    if (_disposed) return;
     _events.add({
       'type': 'rates',
       'value': {
-        'upload': snapshot['uplink'],
-        'download': snapshot['downlink'],
-        'memoryBytes': snapshot['memory'],
+        'upload': snapshot['uplink'] ?? 0,
+        'download': snapshot['downlink'] ?? 0,
+        'memoryBytes': snapshot['memory'] ?? 0,
       },
     });
     _emitDashboard(
@@ -240,6 +255,7 @@ class KernelService {
   /// Emits the dashboard wire (the shape ThroneBoxBridge.dashboardWire produces),
   /// carrying the last known static fields and overriding the live numbers.
   void _emitDashboard(String? status, {Map<String, int>? snapshot, String? mode}) {
+    if (_disposed) return;
     final previous = box.dashboard;
     final profiles = box.profiles;
     final selectedId = _selectedProfileId();
@@ -250,16 +266,21 @@ class KernelService {
         break;
       }
     }
+    final effectiveStatus = status ?? previous['status'] ?? 'Stopped';
+    // Clear startedAt when stopped so the dashboard does not show a stale timer.
+    final startedAt = effectiveStatus == 'Stopped' || effectiveStatus == 'Idle'
+        ? 0
+        : (_startedAt?.millisecondsSinceEpoch ?? (previous['startedAt'] as num?)?.toInt() ?? 0);
     _events.add({
       'type': 'dashboard',
       'value': {
         ...previous,
-        'status': status ?? previous['status'] ?? 'Stopped',
+        'status': effectiveStatus,
         'selectedProfileId': selectedId,
         'selectedProfileName': name,
         'modes': previous['modes'] ?? ['rule', 'global', 'direct'],
         'mode': mode ?? previous['mode'] ?? 'rule',
-        'startedAt': _startedAt?.millisecondsSinceEpoch ?? previous['startedAt'] ?? 0,
+        'startedAt': startedAt,
         'uploadTotal': snapshot?['uplinkTotal'] ?? previous['uploadTotal'] ?? 0,
         'downloadTotal': snapshot?['downlinkTotal'] ?? previous['downloadTotal'] ?? 0,
         'connections': (snapshot?['connectionsIn'] ?? 0) + (snapshot?['connectionsOut'] ?? 0),
@@ -275,10 +296,12 @@ class KernelService {
   int _selectedProfileId() => dashboardSelectedId(box.dashboard);
 
   void report(Object error) {
+    if (_disposed) return;
     _events.add({'type': 'error', 'value': error.toString()});
   }
 
   void dispose() {
+    _disposed = true;
     unawaited(_workerSub?.cancel());
     unawaited(_statusSub?.cancel());
     final worker = _worker;

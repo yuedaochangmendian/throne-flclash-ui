@@ -33,6 +33,7 @@ class VpnService : BaseVpnService(),
 
     }
 
+    @Volatile
     var conn: ParcelFileDescriptor? = null
 
     private var metered = false
@@ -303,6 +304,8 @@ class VpnService : BaseVpnService(),
         metered = DataStore.meteredNetwork
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) builder.setMetered(metered)
         val connection = builder.establish() ?: throw NullConnectionException()
+        // Close any previous fd before overwriting to avoid leaking the old descriptor.
+        conn?.close()
         conn = connection
         return connection.fd
     }

@@ -48,7 +48,9 @@ object BboxCommands : BboxActions {
                     seen = state.done
                     if (seen > 0) BboxBridge.scheduleRefresh()
                 }
-                if (!state.running && seen > 0) {
+                // Cancel when the session is no longer running and we have seen at least
+                // one state emission (seen >= 0 covers sessions that end with 0 results).
+                if (!state.running && seen >= 0) {
                     BboxBridge.scheduleRefresh(immediate = true)
                     testWatcher?.cancel()
                     testWatcher = null
@@ -73,13 +75,16 @@ object BboxCommands : BboxActions {
     }
 
     override fun selectProxy(group: String, tag: String) {
-        scope.launch {
-            val profile = withContext(Dispatchers.IO) {
-                val target = GroupRepo.all().firstOrNull { it.displayName() == group } ?: return@withContext null
-                ProfileManager.members(target.id).firstOrNull { it.displayName() == tag }
-            } ?: return@launch
-            select(profile.id)
-        }
+        scope.launch { selectProxyAwait(group, tag) }
+    }
+
+    /** Awaitable variant: completes after the selection is persisted. */
+    suspend fun selectProxyAwait(group: String, tag: String) {
+        val profile = withContext(Dispatchers.IO) {
+            val target = GroupRepo.all().firstOrNull { it.displayName() == group } ?: return@withContext null
+            ProfileManager.members(target.id).firstOrNull { it.displayName() == tag }
+        } ?: return
+        selectSuspend(profile.id)
     }
 
     /** Makes [profileId] the selection; a running service switches to it instead of restarting from scratch. */
@@ -144,19 +149,46 @@ object BboxCommands : BboxActions {
     }
 
     override fun selectProfile(id: Long) {
-        scope.launch {
-            val member = withContext(Dispatchers.IO) {
-                val group = GroupRepo.get(id) ?: return@withContext null
-                GroupRepo.setCurrent(group.id)
-                // The selection moves even while the service runs (switchProfile hot-switches it):
-                // the profile card, the proxies screen and the running config all follow the same
-                // selected member. A group that already holds it keeps it; another gets its first.
-                val ids = ProfileManager.memberIds(group.id)
-                ids.firstOrNull { it == DataStore.selectedProxy } ?: ids.firstOrNull()
-            }
-            member?.let { select(it) }
-            BboxBridge.scheduleRefresh(immediate = true)
+        scope.launch { selectProfileAwait(id) }
+    }
+
+    /** Awaitable variant: completes after the selection is persisted, so the caller can
+     *  safely rebuild the core config without racing the DB write. */
+    suspend fun selectProfileAwait(id: Long) {
+        val member = withContext(Dispatchers.IO) {
+            val group = GroupRepo.get(id) ?: return@withContext null
+            GroupRepo.setCurrent(group.id)
+            // The selection moves even while the service runs (switchProfile hot-switches it):
+            // the profile card, the proxies screen and the running config all follow the same
+            // selected member. A group that already holds it keeps it; another gets its first.
+            val ids = ProfileManager.memberIds(group.id)
+            ids.firstOrNull { it == DataStore.selectedProxy } ?: ids.firstOrNull()
         }
+        member?.let { selectSuspend(it) }
+        BboxBridge.scheduleRefresh(immediate = true)
+    }
+
+    /** Awaitable variant of [select]: returns after the selection is written and the
+     *  profile-update notifications are dispatched. */
+    suspend fun selectSuspend(profileId: Long) {
+        if (profileId <= 0L) return
+        val previous = DataStore.selectedProxy
+        DataStore.selectedProxy = profileId
+        DataStore.currentProfile = profileId
+        if (DataStore.serviceState.canStop && previous != profileId) {
+            app.sendBroadcast(
+                Intent(Action.SWITCH_PROFILE)
+                    .setPackage(app.packageName)
+                    .putExtra(Action.EXTRA_PROFILE_ID, profileId)
+            )
+        }
+        withContext(Dispatchers.IO) {
+            runCatching {
+                ProfileManager.getProfile(previous)?.let { ProfileManager.postUpdate(it.id, true) }
+                ProfileManager.postUpdate(profileId, true)
+            }
+        }
+        BboxBridge.scheduleRefresh(immediate = true)
     }
 
     override fun updateSubscription(id: Long) {

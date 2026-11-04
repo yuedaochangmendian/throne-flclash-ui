@@ -197,12 +197,25 @@ object BboxBridge : SagerConnection.Callback, GroupRepo.Listener, ProfileManager
 
     // ------------------------------------------------------------------------------------------------ state assembly
 
-    /** Debounces bursts of change notifications into one catalog read. */
+    /** Debounces bursts of change notifications into one catalog read.
+     *  If a change arrives while a refresh is in flight, a trailing refresh is
+     *  scheduled so no update is silently dropped. */
+    @Volatile
+    private var refreshDirty = false
+
     fun scheduleRefresh(immediate: Boolean = false) {
-        if (refreshJob?.isActive == true) return
+        if (refreshJob?.isActive == true) {
+            refreshDirty = true
+            return
+        }
         refreshJob = scope.launch {
             if (!immediate) delay(150)
             refreshNow()
+            // Drain any changes that landed while the previous refresh was reading the DB.
+            while (refreshDirty) {
+                refreshDirty = false
+                refreshNow()
+            }
         }
     }
 
@@ -264,7 +277,11 @@ object BboxBridge : SagerConnection.Callback, GroupRepo.Listener, ProfileManager
 
     /** Probes the outbound identity in the background, then folds the answer into the state. */
     fun requestEgress(force: Boolean = false) {
-        if (egressJob?.isActive == true) return
+        if (egressJob?.isActive == true) {
+            if (!force) return
+            // A forced refresh supersedes whatever slow probe is still running.
+            egressJob?.cancel()
+        }
         if (!DataStore.serviceState.connected) {
             _state.update { it.copy(dashboard = it.dashboard.copy(egress = EgressInfo())) }
             return
@@ -286,7 +303,7 @@ object BboxBridge : SagerConnection.Callback, GroupRepo.Listener, ProfileManager
                             type = info.type,
                             quality = null,
                             checking = false,
-                            error = if (info.isEmpty) failure ?: "Unreachable" else null,
+                            error = failure ?: if (info.isEmpty) "Unreachable" else null,
                         ),
                     ),
                 )

@@ -303,11 +303,11 @@ class ThroneBoxBridge(
                     BboxCommands.setMode(mode)
                     result.success(null)
                 }
-                "groups.select" -> {
+                "groups.select" -> result.respond {
                     val group = call.argument<String>("group") ?: error("Missing group")
                     val tag = call.argument<String>("tag") ?: error("Missing tag")
-                    BboxCommands.selectProxy(group, tag)
-                    result.success(null)
+                    BboxCommands.selectProxyAwait(group, tag)
+                    null
                 }
                 "groups.test" -> {
                     val tag = call.argument<String>("tag") ?: error("Missing tag")
@@ -350,9 +350,9 @@ class ThroneBoxBridge(
                     result.success(null)
                 }
                 "profiles.list" -> result.success(profilesWire(BboxBridge.state.value))
-                "profiles.select" -> {
-                    BboxCommands.selectProfile(call.argument<Int>("id")?.toLong() ?: -1L)
-                    result.success(null)
+                "profiles.select" -> result.respond {
+                    BboxCommands.selectProfileAwait(call.argument<Int>("id")?.toLong() ?: -1L)
+                    null
                 }
                 "profiles.delete" -> {
                     BboxCommands.deleteProfile(call.argument<Int>("id")?.toLong() ?: -1L)
@@ -876,7 +876,10 @@ class ThroneBoxBridge(
     private fun setConnectionsVisible(visible: Boolean) {
         connectionsJob?.cancel()
         connectionsJob = null
-        if (!visible) return
+        if (!visible) {
+            lastConnections = null
+            return
+        }
         if (BboxApi.enable()) {
             if (DataStore.serviceState.canStop) SagerNet.reloadService()
             emit("applyRequired", "Restart")

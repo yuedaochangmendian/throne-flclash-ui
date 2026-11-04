@@ -30,6 +30,9 @@ class ProxyInstance(profile: ProxyEntity, var service: BaseService.Interface? = 
     @Volatile
     private var selectorTraffic: Map<String, List<ProxyEntity>>? = null
 
+    @Volatile
+    private var closed = false
+
     override fun buildConfig() {
         super.buildConfig()
         selectorTraffic = config.autoSelector?.let(::selectorTrafficMap)
@@ -60,20 +63,30 @@ class ProxyInstance(profile: ProxyEntity, var service: BaseService.Interface? = 
         super.launch() // start box
         AutoSelectorRuntime.onStarted(this)
         runOnDefaultDispatcher {
-            looper = service?.let { TrafficLooper(it.data, this) }
-            looper?.start()
+            // Guard against a fast stop/restart: if close() already ran, do not
+            // start a zombie looper that nobody will ever stop.
+            if (closed) return@runOnDefaultDispatcher
+            val newLooper = service?.let { TrafficLooper(it.data, this) }
+            if (closed) return@runOnDefaultDispatcher
+            looper = newLooper
+            newLooper?.start()
         }
     }
 
     override fun close() {
+        closed = true
         var closeError: Throwable? = null
         try {
             AutoSelectorRuntime.onClosed(this)
         } catch (error: Throwable) {
             closeError = error
         }
+        // Stop the looper first so its final collect() runs while the box is still open.
         try {
-            super.close()
+            runBlocking {
+                looper?.stop()
+                looper = null
+            }
         } catch (error: Throwable) {
             if (closeError == null) {
                 closeError = error
@@ -82,10 +95,7 @@ class ProxyInstance(profile: ProxyEntity, var service: BaseService.Interface? = 
             }
         }
         try {
-            runBlocking {
-                looper?.stop()
-                looper = null
-            }
+            super.close()
         } catch (error: Throwable) {
             if (closeError == null) {
                 closeError = error

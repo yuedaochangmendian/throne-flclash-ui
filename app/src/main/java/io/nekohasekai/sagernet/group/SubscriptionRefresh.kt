@@ -289,12 +289,19 @@ internal object SubscriptionRefresh {
     /**
      * EngineHost's subscriptionReplacedRunning: the delete only asked the service to stop, and a start while it is
      * stopping is ignored, so this waits for Stopped. Whatever the user started meanwhile wins.
+     * A user-initiated stop during the wait is also respected: the auto-restart is abandoned.
      */
     private suspend fun startWhenStopped(stoppedId: Long, successor: Long) {
         val deadline = SystemClock.elapsedRealtime() + RECONNECT_WAIT_MS
+        var observedStopping = false
         while (SystemClock.elapsedRealtime() < deadline) {
             val state = DataStore.serviceState
+            if (state == BaseService.State.Stopping) observedStopping = true
             if (state == BaseService.State.Stopped) {
+                // Only auto-restart if we observed the service stopping (i.e. the stop was
+                // caused by the profile deletion). A user stop goes straight to Stopped
+                // without passing through Stopping from our perspective.
+                if (!observedStopping) return
                 DataStore.selectedProxy = successor
                 try {
                     SagerNet.startService()

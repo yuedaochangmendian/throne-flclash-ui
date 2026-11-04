@@ -120,7 +120,9 @@ object BboxEgress {
     }
 
     fun invalidate() {
+        cached = Info()
         cachedAt = 0L
+        cachedDirect = Info()
         cachedDirectAt = 0L
     }
 

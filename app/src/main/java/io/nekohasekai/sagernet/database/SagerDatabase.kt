@@ -200,7 +200,9 @@ abstract class SagerDatabase : RoomDatabase() {
                 .enableMultiInstanceInvalidation()
                 .fallbackToDestructiveMigration()
                 .fallbackToDestructiveMigrationOnDowngrade()
-                .setQueryExecutor { GlobalScope.launch { it.run() } }
+                .setQueryExecutor(java.util.concurrent.Executors.newFixedThreadPool(4) { runnable ->
+                    Thread(runnable, "room-query").apply { isDaemon = true }
+                })
                 .build()
 
         // Failures are logged with android.util.Log: Logs reads the log level from the settings in this database.
