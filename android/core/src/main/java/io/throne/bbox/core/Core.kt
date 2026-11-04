@@ -1,0 +1,36 @@
+// The JNI face of the self-owned kernel bridge (libcore.so + the Go shared
+// library). Kernel control itself goes Dart -> dart:ffi; this object covers the
+// Android duties only: the fd push and the platform callbacks.
+package io.throne.bbox.core
+
+object Core {
+
+    init {
+        System.loadLibrary("core")
+    }
+
+    /**
+     * Feed the VpnService fd and its [TunInterface] to the kernel before the
+     * core starts (the bettbox flow): establish() -> fd -> startTun(fd, tun).
+     */
+    external fun startTun(fd: Int, tun: TunInterface)
+
+    external fun stopTun()
+
+    /** 0 = resume, 1 = suspend, 2 = doze-suspend. */
+    external fun suspend(suspended: Int)
+
+    /** Register the platform-wide duties implementation (once). */
+    external fun setPlatform(platform: CorePlatform)
+
+    /** Report a default-interface change to a Go InterfaceUpdateListener. */
+    external fun updateDefaultInterface(
+        listener: Long,
+        name: String,
+        index: Int,
+        isExpensive: Boolean,
+        isConstrained: Boolean,
+    )
+
+    external fun updateNetworkPath(listener: Long, path: String)
+}

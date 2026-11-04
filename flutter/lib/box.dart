@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'capabilities.dart';
 import 'common/ip_quality_cache.dart';
+import 'core/throne_kernel.dart';
 
 part 'box_api.dart';
 
@@ -83,6 +84,8 @@ class BoxController extends ChangeNotifier {
   late final Stream<Json> browserEvents = _eventsOf<BrowserCompleteEvent>().map((event) => event.payload);
   late final Stream<IntentAvailableEvent> intents = _eventsOf<IntentAvailableEvent>();
   StreamSubscription<dynamic>? _subscription;
+  StreamSubscription<Json>? _kernelSub;
+  int _kernelLogId = 0;
   final _revisions = List<int>.filled(BoxAspect.values.length, 0);
   final _stateChanges = ChangeNotifier();
   final _dataOwners = <BoxData, Set<Object>>{};
@@ -247,6 +250,10 @@ class BoxController extends ChangeNotifier {
     notifyListeners();
     await _subscription?.cancel();
     _subscription = _events.listen(_onEvent, onError: report);
+    // Dual path: when the rebuilt core is present, kernel logs stream in through
+    // the FFI message port (throne_kernel) instead of the channel's 'logs' pushes.
+    await _kernelSub?.cancel();
+    _kernelSub = ThroneKernel.ensure()?.logs.listen(_onKernelLog, onError: report);
     try {
       final result = json(await call('ready'));
       version = result['version'] as String;
@@ -466,11 +473,26 @@ class BoxController extends ChangeNotifier {
     }
   }
 
+  /// Kernel logs arriving through the FFI message port (dual path: only when
+  /// the rebuilt core is present). Same entry shape the channel pushes.
+  void _onKernelLog(Json data) {
+    if (_disposed) return;
+    logs = [...logs, {
+      'id': _kernelLogId++,
+      'level': data['level'],
+      'message': data['message'],
+      'receivedAt': DateTime.now().toIso8601String(),
+    }];
+    if (logs.length > maxLogLength) logs = logs.sublist(logs.length - maxLogLength);
+    _notify([BoxAspect.logs]);
+  }
+
   @override
   void dispose() {
     _disposed = true;
     _batchTimer?.cancel();
     _subscription?.cancel();
+    _kernelSub?.cancel();
     eventBus.close();
     _stateChanges.dispose();
     super.dispose();

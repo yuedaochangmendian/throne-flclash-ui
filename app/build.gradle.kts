@@ -65,6 +65,9 @@ dependencies {
 
     implementation(project(":bboxmodel"))
 
+    // The self-owned kernel JNI shim (libcore.so + TunInterface/CorePlatform).
+    implementation(project(":core"))
+
     // B-box's own interface, built by `flutter build aar` into flutter/build/host/outputs/repo.
     // Every variant links the release AAR, not just release builds. The debug one ships the JIT engine plus Dart as
     // interpreted kernel, which costs ~150 MB of APK and buys hot reload — something this host never exercises,

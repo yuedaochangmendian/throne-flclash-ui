@@ -24,6 +24,13 @@ runs:
           echo "THRONE_CORE_SHA=$(git -C "$THRONE_DIR" rev-parse HEAD)"
           echo "THRONE_CORE_SCRIPT_SHA=$(sha256sum "$THRONE_DIR/script/build_android.sh" | cut -d' ' -f1)"
         } >> "$GITHUB_ENV"
+    - name: Apply core bridge patch
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Additive only: the throne_* C ABI lands in core/mobile so the AAR's
+        # shared library exports it for Dart FFI and the android/core JNI shim.
+        bash buildScript/apply-core-patch.sh "$THRONE_DIR"
     - name: ThroneCore cache
       id: cache
       uses: actions/cache@v6
@@ -31,7 +38,7 @@ runs:
         path: |
           app/libs/ThroneCore.aar
           app/src/main/assets/schema/sing-box.json
-        key: throne-core-${{ env.THRONE_CORE_REF }}-${{ env.THRONE_CORE_SHA }}-${{ env.THRONE_CORE_SCRIPT_SHA }}-${{ hashFiles('.github/actions/throne-core/action.yml') }}
+        key: throne-core-${{ env.THRONE_CORE_REF }}-${{ env.THRONE_CORE_SHA }}-${{ env.THRONE_CORE_SCRIPT_SHA }}-${{ hashFiles('.github/actions/throne-core/action.yml', 'buildScript/core-patch/**') }}
     - name: Install Golang
       if: steps.cache.outputs.cache-hit != 'true'
       uses: actions/setup-go@v7
