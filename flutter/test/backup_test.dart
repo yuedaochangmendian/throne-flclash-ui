@@ -48,7 +48,7 @@ void main() {
     await _mount(tester, (call) async {
       calls.add(call);
       if (call.method == 'backup.create') return _sample;
-      if (call.method == 'backup.read') return _sample;
+      if (call.method == 'backup.open') return _sample;
       if (call.method == 'document.save') return false;
       return null;
     });
@@ -60,7 +60,7 @@ void main() {
     await tester.tap(find.text('Restore profiles only'));
     await tester.pumpAndSettle();
     // The read comes first now, so it carries no scope; the choice is what the dialog is for.
-    expect(calls.singleWhere((call) => call.method == 'backup.read').arguments, isNull);
+    expect(calls.singleWhere((call) => call.method == 'backup.open').arguments, isNull);
     expect(find.text('Restore 1 profiles?'), findsOneWidget);
     await tester.tap(find.text('Cancel'));
     await tester.pumpAndSettle();
@@ -70,19 +70,18 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('an empty local backup says so instead of asking to restore zero profiles', (tester) async {
+  testWidgets('a cancelled local picker asks nothing further and restores nothing', (tester) async {
     final calls = <MethodCall>[];
     await _mount(tester, (call) async {
       calls.add(call);
-      if (call.method == 'backup.read') return null;
+      // The bridge answers null when the user backs out of the file picker.
+      if (call.method == 'backup.open') return null;
       return null;
     });
     await _tapRow(tester, 'local-restore');
-    expect(find.text('No backup to restore'), findsOneWidget);
+    expect(find.text('No backup to restore'), findsNothing);
     expect(find.text('Restore profiles only'), findsNothing);
     expect(calls.where((call) => call.method == 'backup.restore'), isEmpty);
-    await tester.tap(find.text('Close'));
-    await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
   });
 
@@ -90,7 +89,7 @@ void main() {
     final calls = <MethodCall>[];
     await _mount(tester, (call) async {
       calls.add(call);
-      if (call.method == 'backup.read') return {'format': 'bbox-1', 'profiles': <Json>[]};
+      if (call.method == 'backup.open') return {'format': 'bbox-1', 'profiles': <Json>[]};
       return null;
     });
     await _tapRow(tester, 'local-restore');
@@ -110,7 +109,7 @@ void main() {
       var reject = true;
       await _mount(tester, (call) async {
         calls.add(call);
-        if (call.method == 'backup.read') return _sample;
+        if (call.method == 'backup.open') return _sample;
         if (call.method == 'backup.restore') {
           if (reject) throw PlatformException(code: 'restore', message: 'Synthetic restore failed');
           return 1;

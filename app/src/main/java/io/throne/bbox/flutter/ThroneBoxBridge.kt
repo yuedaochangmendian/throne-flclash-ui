@@ -754,6 +754,7 @@ class ThroneBoxBridge(
                 // --- backup, restore and WebDAV, all of which Throne already does natively
                 "backup.create" -> result.respond { BboxBackup.create(call.argument<String>("scope") ?: "all") }
                 "backup.read" -> result.respond { BboxBackup.read() }
+                "backup.open" -> result.respond { openBackupDocument() }
                 "backup.restore" -> {
                     @Suppress("UNCHECKED_CAST")
                     val payload = call.argument<Map<String, Any?>>("backup")
@@ -1206,6 +1207,23 @@ class ThroneBoxBridge(
             )
             true
         }.onFailure { Logs.w(it) }.getOrDefault(false)
+    }
+
+    /**
+     * The local "Restore" entry: the user picks the file, and either the JSON envelope the local
+     * "Backup" entry wrote or a `.thrbackup` container ends up as the same staged payload the WebDAV
+     * read produces. A cancelled picker answers null, which the page treats as "nothing chosen"
+     * rather than "no backup"; a file that is neither is an error the page can show.
+     */
+    private suspend fun openBackupDocument(): Map<String, Any?>? {
+        val host = activity as? BboxFlutterActivity ?: error("The file picker is unavailable")
+        val uri = host.pickDocument() ?: return null
+        val bytes = withContext(Dispatchers.IO) {
+            host.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+        } ?: error("The selected file cannot be read")
+        return BboxBackup.open(bytes)
+            ?: BboxBackup.openJson(bytes.toString(Charsets.UTF_8))
+            ?: error("This is not a Throne backup")
     }
 
     /** A picked file becomes the same draft a pasted link becomes, so both open the same editor. */

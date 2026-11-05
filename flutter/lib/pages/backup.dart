@@ -103,12 +103,13 @@ class _BackupPageState extends State<BackupPage> {
     final box = context.box;
     setState(() { _locked = true; _loading = true; });
     try {
-      // Read first: asking for a scope and then finding nothing to restore is the confusing order.
-      final data = await box.call(remote ? 'webdav.read' : 'backup.read');
+      // Local restore asks the user for a file; WebDAV reads the newest one. A cancelled picker
+      // answers null for both, and only the remote read has a "nothing there" meaning to report.
+      final data = remote ? await box.call('webdav.read') : await box.call('backup.open');
       _showLoading(false);
       if (!mounted) return;
       if (data == null) {
-        await _success('Restore', remote ? 'No remote backup found' : 'No backup to restore');
+        if (remote) await _success('Restore', 'No remote backup found');
         return;
       }
       // The scope narrows what the envelope read brings back.

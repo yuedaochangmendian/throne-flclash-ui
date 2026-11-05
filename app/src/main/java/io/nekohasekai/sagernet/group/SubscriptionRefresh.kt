@@ -18,6 +18,7 @@ import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.ktx.app
 import io.nekohasekai.sagernet.ktx.runOnDefaultDispatcher
 import io.nekohasekai.sagernet.outbound.Outbound
+import io.nekohasekai.sagernet.outbound.distinctNodes
 import io.nekohasekai.sagernet.outbound.`import`.ImportReport
 import io.nekohasekai.sagernet.outbound.`import`.ProfileImport
 import io.nekohasekai.sagernet.validation.vplural
@@ -76,7 +77,13 @@ internal object SubscriptionRefresh {
         val (info, result, routing) = fetchAndParse(group, url, surface, notifyErrors) ?: return
         val parsed = result.outbounds
         // Android-only (#53): filtered servers never enter the sink, so the diff deletes the ones already stored.
-        val servers = SubscriptionNameFilter.apply(parsed, options, group.name)
+        val named = SubscriptionNameFilter.apply(parsed, options, group.name)
+        // A body that lists one server twice must become one row, so the batch is deduplicated before the
+        // sink matches it against what the group already holds.
+        val servers = named.distinctNodes()
+        if (named.size != servers.size) {
+            Logs.i("${group.name}: dropped ${named.size - servers.size} repeated nodes from the subscription")
+        }
         if (servers.isEmpty()) {
             if (info.valid) saveMetadata(group, info)
             val message = str(R.string.subs_filtered_all_aborted, parsed.size)
@@ -177,7 +184,7 @@ internal object SubscriptionRefresh {
             }
         }
 
-        val filteredOut = parsed.size - servers.size
+        val filteredOut = parsed.size - named.size
         if (filteredOut > 0) changeText += "\n" + str(R.string.subs_filtered_out, filteredOut) + "\n"
         val filtered = SubscriptionFilters.removeFlagged(gid, options) {
             ProfileManager.members(gid).filter { it.id !in stickyIds }

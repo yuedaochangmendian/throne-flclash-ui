@@ -30,6 +30,7 @@ import io.nekohasekai.sagernet.outbound.common.Tls
 import io.nekohasekai.sagernet.outbound.common.XRAY_MUX_MAX_COUNT
 import io.nekohasekai.sagernet.outbound.common.XrayMultiplex
 import io.nekohasekai.sagernet.outbound.common.xrayXudpProxyUDP443Modes
+import io.nekohasekai.sagernet.outbound.distinctNodes
 import io.nekohasekai.sagernet.outbound.import.ProfileImport
 import io.nekohasekai.sagernet.outbound.types.AutoSelector
 import io.nekohasekai.sagernet.ui.settings.SettingChecks
@@ -815,7 +816,9 @@ object BboxProfiles {
         if (parsed.outbounds.isEmpty()) {
             error(parsed.messages.joinToString("\n").ifBlank { "No supported proxy node found" })
         }
-        return parsed.outbounds
+        // A pasted subscription/list often repeats a server under several remarks; the group should
+        // receive one row per server, not one per line.
+        return parsed.outbounds.distinctNodes()
     }
 
     private suspend fun document(group: ProxyGroup): String {

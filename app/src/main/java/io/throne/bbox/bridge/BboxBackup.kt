@@ -14,6 +14,7 @@ import io.nekohasekai.sagernet.database.backup.WebDavBackup
 import io.nekohasekai.sagernet.ktx.Logs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -86,6 +87,24 @@ object BboxBackup {
     suspend fun open(bytes: ByteArray): Map<String, Any?>? = withContext(Dispatchers.IO) {
         // "THRN" first and silently: a plain document is not a broken backup.
         if (!ThrBackup.hasMagic(ByteArrayInputStream(bytes))) return@withContext null
+        stage(bytes)
+    }
+
+    /**
+     * The JSON envelope `backup.create` produced — what the local "Backup" entry writes, and what a
+     * user re-selects in "Restore". The envelope's `thr` member is the real container; the rest is a
+     * preview. Returns null when the text is not an envelope at all, so the caller can say so.
+     */
+    suspend fun openJson(text: String): Map<String, Any?>? = withContext(Dispatchers.IO) {
+        val root = runCatching { JSONObject(text) }.getOrNull() ?: return@withContext null
+        val encoded = root.optString(KEY).takeIf { it.isNotBlank() } ?: return@withContext null
+        val bytes = runCatching { Base64.decode(encoded, Base64.DEFAULT) }.getOrNull()
+            ?: return@withContext null
+        stage(bytes)
+    }
+
+    /** Loads a container into the holder [restore] reads, and returns the envelope the UI previews. */
+    private fun stage(bytes: ByteArray): Map<String, Any?> {
         val loaded = runCatching { BackupRestore.load(ByteArrayInputStream(bytes)) }
             .onFailure { Logs.w(it) }.getOrNull() ?: error("This backup cannot be read")
         val payload = mapOf(
@@ -97,7 +116,7 @@ object BboxBackup {
         // The envelope is what travels to the UI and what [restore] decodes, so the staged database goes back.
         loaded.discard()
         holder = Holder(payload)
-        payload
+        return payload
     }
 
     /**

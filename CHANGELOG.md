@@ -1,3 +1,10 @@
+#### 3.2.25
+
+* Local restore asks for the file instead of replaying whatever this process created last: `backup.open` opens the system picker, reads the selection, and accepts both the JSON envelope the local "Backup" entry writes and a `.thrbackup` container. Before, the local entry only returned a backup still held in memory, so after a restart it answered "No backup to restore" and the file the user saved could never be chosen
+* Backing out of the picker now asks nothing further: it used to fall into the same "no backup" dialog, which read as a failure rather than a cancellation
+* A subscription import or refresh drops repeated nodes inside the batch: the duplicate key is the desktop's (the JSON link without its tag), so one server listed under several remarks — or twice in one body — becomes one row. This is per batch only; duplicates already stored across updates remain the subscription's `removeDuplicates` option's job
+* The "filtered out by name" line counts only the name filter again; deduplicated nodes are logged instead of inflating that number
+
 #### 3.2.24
 
 * The bridge drives the core again. `KernelService` no longer claims the service on start-up (`ffi.mode` stays off), so `BaseService` runs `ProxyInstance` itself: this is the path that kept the tunnel up before the FFI rewrite, restored here without deleting the FFI driver — it stays behind `kFfiDriverEnabled` for a later, device-verified return
