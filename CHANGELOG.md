@@ -1,3 +1,12 @@
+#### 3.3.0-pre.3
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. No screen changes: the catalog stops parsing every node's outbound JSON.
+
+* `ProxyEntity.displayType()` reads a row's outbound JSON to name its type, and the catalog called it once per node — a 3000-node subscription parsed 3000 configs on every catalog rebuild, which happens at startup and after every subscription refresh. The label is a property of the outbound class, and the stored `type` selects that class, so one row per type now answers for all of them. `custom` is the exception (its label comes from its own subtype and config type) and is still resolved per row
+* The display name now comes from the name column instead of `displayName()`, which parsed the JSON to answer what the column already holds. The parse stays for the rare row with an empty name, where the address is the only label
+* A row whose outbound cannot be parsed now renders with its stored type. Before, one malformed row threw out of the mapping and the caller turned that into an **empty catalog** — every group disappeared
+* `BboxCatalogTypeLabelsTest` pins the per-type cache and the `custom` exception
+
 #### 3.3.0-pre.2
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. No screen gains a feature here: this is the memory pass over the bridge and the package cache.
