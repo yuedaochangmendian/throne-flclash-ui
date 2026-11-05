@@ -1,3 +1,16 @@
+#### 3.3.0-pre.6
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. Scanner plugin registration.
+
+`MissingPluginException(No implementation found for method state on channel dev.steenbakker.mobile_scanner/scanner/method)` is what the scan screen reported on a device. The channel only exists after `MobileScannerPlugin.onAttachedToActivity`, so the plugin has to be on the engine **and** attached to the activity; Flutter finds the module AAR's `GeneratedPluginRegistrant` by reflection and swallows a failure there (one warning, then nothing), which is why the screen showed a black preview instead of an error.
+
+* The activity now registers the scanner plugin explicitly after `super.configureFlutterEngine`. The engine keys plugins by class, so this is a no-op when the registrant already ran, and it is what creates the channel when it did not
+* If the plugin class is missing from the build at all, one line is logged (`scanner: … is not in this build`) instead of the failure disappearing into a warning
+* Release builds keep `io.flutter.plugins.**` and the plugin's package, so shrinking cannot remove either side of that reflection
+* The permission-first start and the on-screen reason from pre.5 stay: with the channel present, a denied permission now says so instead of leaving a black rectangle
+
+Both AARs were checked locally: the module POM lists `dev.steenbakker.mobile_scanner:mobile_scanner_release:1.0`, the plugin AAR contains `MobileScannerPlugin.class` and the module AAR contains `io/flutter/plugins/GeneratedPluginRegistrant.class` — so packaging is right and the missing piece was registration at runtime.
+
 #### 3.3.0-pre.5
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one is about the black camera preview.

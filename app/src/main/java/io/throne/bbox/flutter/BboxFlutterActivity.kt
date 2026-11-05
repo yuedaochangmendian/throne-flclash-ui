@@ -12,6 +12,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.preference.PreferenceDataStore
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.nekohasekai.sagernet.Key
 import io.nekohasekai.sagernet.SagerNet
 import io.nekohasekai.sagernet.database.DataStore
@@ -146,10 +147,29 @@ class BboxFlutterActivity : FlutterFragmentActivity(), OnPreferenceDataStoreChan
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        registerScannerPlugin(flutterEngine)
         bridge = ThroneBoxBridge(this, flutterEngine.dartExecutor.binaryMessenger).also { it.attach() }
         // The UI really came up: give the next crash its full restart budget back, so a
         // startup crash that always recurs cannot restart the app forever.
         CrashHandler.noteStarted()
+    }
+
+    /**
+     * Registers mobile_scanner explicitly, on top of the automatic registration.
+     *
+     * Flutter finds the module AAR's `GeneratedPluginRegistrant` by reflection and **swallows the
+     * failure** (it logs a warning and carries on), so a registrant that cannot be loaded shows up
+     * much later as `MissingPluginException` on the scanner channel — the camera preview then never
+     * appears. Adding the plugin here is a no-op when it is already registered (the engine's registry
+     * keys plugins by class) and, when the class is absent from the APK, logs the reason instead of
+     * leaving a silent black screen.
+     */
+    private fun registerScannerPlugin(engine: FlutterEngine) {
+        val name = "dev.steenbakker.mobile_scanner.MobileScannerPlugin"
+        runCatching {
+            val plugin = Class.forName(name).getDeclaredConstructor().newInstance() as FlutterPlugin
+            engine.plugins.add(plugin)
+        }.onFailure { Logs.w("scanner: $name is not in this build: ${it.message}") }
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
