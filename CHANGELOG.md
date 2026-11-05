@@ -1,3 +1,11 @@
+#### 3.2.21
+
+* The status card asks every IP source at once instead of trying three in sequence: the richest one (ipwho.is) gets 3.5 s on its own, the first fallback that answered takes over after that, and the whole probe gives up at 8 s — a blocked endpoint used to cost up to twelve seconds each
+* Two reachable-where-it-matters sources join the list (uapis.cn, geojs.io), so a phone that cannot reach the international endpoints still shows its exit address; the card and the details screen now name the endpoint that actually answered rather than always claiming ipwho.is
+* The probe closes the HTTP client it opened for each check; its dispatcher threads and pooled sockets used to outlive every request
+* The network-speed sparkline is sampled once a second while the service runs, the way Bettbox's `tick1s` does: an idle tunnel scrolls to zero instead of freezing on its last peak, and a burst of pushes can no longer stretch the half-minute window
+* Stopping the service clears both sparkline windows, the live rates and the totals, so the next session draws a curve of its own instead of continuing the previous one
+
 #### 3.2.20
 
 * Rebuilds the package on the current `main`, so the installable APKs match the branch you ship from: this release carries every 3.2.19 fix and nothing else that changes behaviour
