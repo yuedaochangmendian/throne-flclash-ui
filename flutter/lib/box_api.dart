@@ -203,6 +203,12 @@ extension UrlApi on BoxController {
   Future<bool> openUrl(String url) => act('url.open', {'url': url});
 }
 
+extension PermissionsApi on BoxController {
+  /// Asks the host for the camera permission; the scan screen calls this before starting the
+  /// scanner so a refusal comes back as `false` instead of a preview that never leaves black.
+  Future<bool> ensureCameraPermission() async => await call('permissions.camera') == true;
+}
+
 extension DocumentApi on BoxController {
   Future<dynamic> documentSave(String name, String content, {bool redact = false}) => call('document.save', {'name': name, 'content': content, if (redact) 'redact': true});
 }

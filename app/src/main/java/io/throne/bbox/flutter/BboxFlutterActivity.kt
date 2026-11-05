@@ -1,10 +1,13 @@
 package io.throne.bbox.flutter
 
+import android.Manifest
 import android.app.ActivityManager
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.view.KeyEvent
+import androidx.core.content.ContextCompat
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.preference.PreferenceDataStore
 import io.flutter.embedding.android.FlutterFragmentActivity
@@ -49,6 +52,16 @@ class BboxFlutterActivity : FlutterFragmentActivity(), OnPreferenceDataStoreChan
 
     private var openHandler: ((Uri?) -> Unit)? = null
     private var saveHandler: ((Uri?) -> Unit)? = null
+
+    /** The one camera-permission request in flight; the scan screen awaits it before it starts the camera. */
+    private var cameraHandler: ((Boolean) -> Unit)? = null
+
+    private val cameraPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        cameraHandler?.invoke(granted)
+        cameraHandler = null
+    }
 
     // Registered at construction (before CREATED), as the framework requires. Two separate launchers keep the
     // open-document and create-document results apart, the same distinction the old request codes made; each
@@ -205,6 +218,30 @@ class BboxFlutterActivity : FlutterFragmentActivity(), OnPreferenceDataStoreChan
         } catch (e: Throwable) {
             wifiWaiting = false
             throw e
+        }
+    }
+
+    /**
+     * Asks for the camera permission before the scanner starts.
+     *
+     * mobile_scanner requests it itself, but that request runs through the plugin's own listener and a
+     * host that never answers it leaves the scanner waiting on a black preview with no error to show.
+     * Asking here first means the plugin finds the permission already granted and starts the camera
+     * immediately; a refusal comes back as `false` so the screen can say what to do about it.
+     */
+    suspend fun ensureCameraPermission(): Boolean {
+        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+        if (granted) return true
+        if (cameraHandler != null) return false
+        return suspendCancellableCoroutine { continuation ->
+            cameraHandler = { result -> if (continuation.isActive) continuation.resume(result) }
+            continuation.invokeOnCancellation { cameraHandler = null }
+            runCatching { cameraPermission.launch(Manifest.permission.CAMERA) }
+                .onFailure {
+                    cameraHandler = null
+                    if (continuation.isActive) continuation.resume(false)
+                }
         }
     }
 

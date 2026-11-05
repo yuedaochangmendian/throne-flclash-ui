@@ -1,3 +1,15 @@
+#### 3.3.0-pre.5
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one is about the black camera preview.
+
+The scan screen no longer sits on a black rectangle without saying why:
+
+* The camera is started by the screen itself, **after the host has answered the camera permission** (`permissions.camera`, a `RequestPermission` launcher on the activity). mobile_scanner asks too, but its request only completes when the host forwards the permission result — a request that is never answered leaves `MobileScanner` on its black placeholder with `error == null`, which is exactly the "scan does nothing" symptom
+* The preview area now reports state: a spinner while the camera starts, the plugin's own exception or the denial message when it fails, and after five seconds a hint to check the camera permission in the system settings plus a retry button
+* A denied permission says so instead of leaving a black box
+
+If the preview is still black after this, the message on screen names the cause (permission, or the plugin's exception text), which is the same thing `adb logcat | grep -iE "mobile_scanner|CameraX"` would tell us.
+
 #### 3.3.0-pre.4
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one fixes QR import.
