@@ -14,8 +14,20 @@ class _ProxiesPageState extends State<ProxiesPage> {
   final _scrolls = <String, ScrollController>{};
   final _selectedOffsets = <String, double>{};
   String? _currentGroup;
+  BoxController? _box;
+
+  @override void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_box == null) {
+      _box = context.box;
+      // The node rows are the largest payload the bridge carries, so they only travel while this
+      // screen is open; every other screen renders the group counts.
+      _box!.groupsSetVisible(true);
+    }
+  }
 
   @override void dispose() {
+    _box?.groupsSetVisible(false);
     for (final scroll in _scrolls.values) { scroll.dispose(); }
     super.dispose();
   }
@@ -119,8 +131,9 @@ class _ProxiesPageState extends State<ProxiesPage> {
     final list = box.preferences['proxyLayout'] == 'List';
     if (!groups.any((group) => group['tag'] == _currentGroup)) {
       // Land on a group that has nodes. Otherwise an unselected configuration's empty group comes
-      // first and the page reads as if the import brought nothing.
-      final withNodes = groups.where((group) => rows(group['items']).isNotEmpty);
+      // first and the page reads as if the import brought nothing. `nodeCount` carries this before
+      // the node rows arrive, so the choice does not depend on them.
+      final withNodes = groups.where((group) => ((group['nodeCount'] as num?)?.toInt() ?? 0) > 0);
       _currentGroup = (withNodes.isNotEmpty ? withNodes.first : groups.firstOrNull)?['tag'] as String?;
     }
     return Scaffold(

@@ -1,5 +1,6 @@
 package io.throne.bbox.flutter
 
+import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -41,6 +42,7 @@ import io.throne.bbox.bridge.BboxEgress
 import io.throne.bbox.bridge.BboxKernel
 import io.throne.bbox.bridge.BboxLogcat
 import io.throne.bbox.bridge.BboxLogs
+import io.throne.bbox.bridge.BboxMemory
 import io.throne.bbox.bridge.BboxMode
 import io.throne.bbox.bridge.BboxProbeSession
 import io.throne.bbox.bridge.BboxProfiles
@@ -53,7 +55,6 @@ import io.throne.bbox.bridge.Apply
 // Aliased: this file also uses android.provider.Settings for the battery-optimisation intents.
 import io.throne.bbox.bridge.Settings as ThroneSettings
 import io.throne.bbox.model.BboxUiState
-import io.throne.bbox.model.ProxyGroup
 import io.nekohasekai.sagernet.ui.warp.WarpClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
@@ -113,9 +114,23 @@ class ThroneBoxBridge(
     private var lastProfiles: List<Map<String, Any?>>? = null
     private var lastGroups: List<Map<String, Any?>>? = null
 
+    /** True once `ready` has answered, so the pump does not repeat that snapshot as an event. */
+    @Volatile
+    private var readyServed = false
+
+    /** The catalog revision and node-delivery flag the last pushed rows were built from. */
+    private var sentCatalog: Pair<Long, Boolean>? = null
+
+    /** Only the Proxies screen needs node rows; every other screen renders counts. */
+    @Volatile
+    private var groupsVisible = false
+
     /** The connections screen, the memory panel and the log screen each hold one subscription while they are open. */
     private var connectionsJob: Job? = null
     private var memoryJob: Job? = null
+
+    /** Detaches the trim listener `attach` installs; null while the bridge is closed. */
+    private var stopTrimObserver: (() -> Unit)? = null
 
     /** The update queue's change reports, for as long as the host lives. */
     private var reportsJob: Job? = null
@@ -151,6 +166,9 @@ class ThroneBoxBridge(
     fun attach() {
         channel.setMethodCallHandler(this)
         events.setStreamHandler(this)
+        // Memory pressure reaches the UI as an event: ART's own gc/trimHeap cannot collect Dart
+        // objects, so the decoded-image cache and the UI's own lists only shrink if Dart is told.
+        stopTrimObserver = BboxMemory.observeTrim { level -> emit("memoryTrim", mapOf("level" to level)) }
         // Subscription change reports (SubscriptionReportDialog.observe): popups, errors, status
         // lines and reload hints of the update queue, forwarded while the host is alive. A report
         // that arrives before the UI listens is dropped, as the native window drops them while closed.
@@ -160,6 +178,8 @@ class ThroneBoxBridge(
     }
 
     override fun close() {
+        stopTrimObserver?.invoke()
+        stopTrimObserver = null
         pump?.cancel()
         ratesTick?.cancel()
         connectionsJob?.cancel()
@@ -220,8 +240,15 @@ class ThroneBoxBridge(
      * Pushes whatever changed since the last push: the dashboard, the rates and the catalog are
      * separate events. [sampleRate] forces the rates through even when the numbers are identical,
      * because the sparkline needs one point per second rather than one per change.
+     *
+     * The catalog half is rebuilt only when `BboxBridge.catalogRevision` moved — a repository change
+     * or the Proxies screen toggling node delivery — because a rates sample used to rebuild every
+     * node row and structurally compare it once a second for nothing.
      */
     private fun pushState(sampleRate: Boolean = false) {
+        // `ready` answers with this same snapshot; emitting it here too made the first frame build
+        // and decode the whole catalog a second time.
+        if (!readyServed) return
         val state = BboxBridge.state.value
         val dashboard = dashboardWire(state)
         if (dashboard != lastDashboard) {
@@ -237,16 +264,28 @@ class ThroneBoxBridge(
             lastRates = rates
             emit("rates", rates)
         }
+        val catalog = BboxBridge.catalogRevision to groupsVisible
+        if (catalog == sentCatalog) return
+        sentCatalog = catalog
         val profiles = profilesWire(state)
         if (profiles != lastProfiles) {
             lastProfiles = profiles
             emit("profiles", profiles)
         }
-        val groups = groupsWire(state)
+        val groups = groupsWire(state, withItems = groupsVisible)
         if (groups != lastGroups) {
             lastGroups = groups
             emit("groups", groups)
         }
+    }
+
+    /** The Proxies screen asks for node rows on open and gives them back on close. */
+    private fun setGroupsVisible(visible: Boolean) {
+        if (groupsVisible == visible) return
+        groupsVisible = visible
+        // The payload shape changes with the flag, so the previous copy is not a baseline for it.
+        lastGroups = null
+        pushState()
     }
 
     private fun BboxUiState.wireKey(): String = buildString {
@@ -254,7 +293,10 @@ class ThroneBoxBridge(
         append(dashboard.status.startedAt).append(dashboard.profile?.id)
         append(dashboard.traffic.uploadTotal).append(dashboard.traffic.downloadTotal)
         append(dashboard.traffic.uploadRate).append(dashboard.traffic.downloadRate)
-        append(dashboard.memory?.inUse).append(dashboard.mode).append(dashboard.groups.hashCode()).append(profiles.hashCode())
+        append(dashboard.memory?.inUse).append(dashboard.mode)
+        // The catalog revision stands in for `groups.hashCode()` + `profiles.hashCode()`: those two
+        // walked every node once a second to answer a question the revision already answers.
+        append(BboxBridge.catalogRevision)
     }
 
     // ------------------------------------------------------------------------------------------------ calls
@@ -308,7 +350,7 @@ class ThroneBoxBridge(
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         try {
             when (call.method) {
-                "ready" -> result.success(readyPayload())
+                "ready" -> result.success(serveReady())
                 "service.start" -> result.respond {
                     startServiceAndAwaitTun()
                     null
@@ -617,6 +659,16 @@ class ThroneBoxBridge(
                         "direct" to DnsServerHistory.directSuggestions(),
                     )
                 )
+                // The Proxies screen asks for the node rows on open and gives them back on close;
+                // `ready` and every other screen only get the counts.
+                "groups.visible" -> {
+                    setGroupsVisible(call.argument<Boolean>("visible") == true)
+                    result.success(null)
+                }
+                // The outbound picker in the rule editor needs names, not rows: id and tag only.
+                "groups.nodes" -> result.respond {
+                    mapOf("nodes" to nodesWire(BboxBridge.state.value))
+                }
                 // Domain resolution for the diagnostics screen: the lookups run in the core process
                 // against the running box's dns-direct transport, so the answer is the tunnel's and
                 // not the phone's. Blocks for up to ~10 s, hence respond() rather than success().
@@ -1414,13 +1466,33 @@ class ThroneBoxBridge(
 
     // ------------------------------------------------------------------------------------------------ payloads
 
+    /**
+     * Answers `ready` and seeds the pump's baselines with what it just sent.
+     *
+     * Without the baselines the first push after this answer would rebuild the catalog and emit it
+     * again — the very duplicate this release removes — and the pump stays silent until this has
+     * answered, so nothing is emitted twice around the first frame.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private fun serveReady(): Map<String, Any?> {
+        val payload = readyPayload()
+        lastDashboard = payload["dashboard"] as? Map<String, Any?>
+        lastProfiles = payload["profiles"] as? List<Map<String, Any?>>
+        lastGroups = payload["groups"] as? List<Map<String, Any?>>
+        sentCatalog = BboxBridge.catalogRevision to groupsVisible
+        readyServed = true
+        return payload
+    }
+
     private fun readyPayload(): Map<String, Any?> = mapOf(
         "version" to BuildConfig.VERSION_NAME,
         "coreVersion" to "sing-box · Xray",
         "systemAccentColor" to 0xFF6750A4.toInt(),
         "dashboard" to dashboardWire(BboxBridge.state.value),
         "profiles" to profilesWire(BboxBridge.state.value),
-        "groups" to groupsWire(BboxBridge.state.value),
+        // Counts only: the node rows are the largest thing the bridge carries, and the first
+        // screen does not render them. `groups.visible` sends them when the Proxies screen opens.
+        "groups" to groupsWire(BboxBridge.state.value, withItems = groupsVisible),
         "settings" to settingsWire(),
         "capabilities" to Capabilities.map(),
         "preferences" to readPreferences(),
@@ -1431,10 +1503,17 @@ class ThroneBoxBridge(
             "quality" to emptyMap<String, Any?>(),
         ),
         "intent" to takeIntent(),
+        // A low-RAM device gets a smaller decoded-image budget than the 50 MiB the UI assumes.
+        "lowRam" to lowRamDevice(),
         // The badge an AppRestart-level write or reset raised; it clears only when the restart
         // gives the process a fresh [restartPending].
         "applyRequired" to (if (restartPending) "Restart" else null),
     )
+
+    /** `ActivityManager.isLowRamDevice`: Android's own memory class, not a build flag of ours. */
+    private fun lowRamDevice(): Boolean = runCatching {
+        (app.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager).isLowRamDevice
+    }.getOrDefault(false)
 
     private fun dashboardWire(state: BboxUiState): Map<String, Any?> {
         val dashboard = state.dashboard
@@ -1483,26 +1562,16 @@ class ThroneBoxBridge(
             )
         }
 
-    private fun groupsWire(state: BboxUiState): List<Map<String, Any?>> =
-        state.dashboard.groups.map { group: ProxyGroup ->
-            mapOf(
-                "id" to group.id.toInt(),
-                "tag" to group.tag,
-                "type" to group.type,
-                "selected" to group.selected,
-                "selectable" to group.selectable,
-                "items" to group.nodes.map { node ->
-                    mapOf(
-                        "id" to node.id.toInt(),
-                        "tag" to node.tag,
-                        "type" to node.type,
-                        "delay" to node.delay,
-                        "testedAt" to node.testedAt,
-                        "isSelector" to node.isSelector,
-                    )
-                },
-            )
-        }
+    /**
+     * The groups the UI renders. [withItems] is false until the Proxies screen asks for them; the
+     * shaping itself lives in [BboxGroupsWire] so the contract is unit-tested.
+     */
+    private fun groupsWire(state: BboxUiState, withItems: Boolean): List<Map<String, Any?>> =
+        BboxGroupsWire.groups(state.dashboard.groups, withItems)
+
+    /** The outbound picker's list: every node of every group, id and tag only. */
+    private fun nodesWire(state: BboxUiState): List<Map<String, Any?>> =
+        BboxGroupsWire.nodes(state.dashboard.groups)
 
     /**
      * The settings map the UI reads, in three layers: keys only this shell has (appearance, sorting,

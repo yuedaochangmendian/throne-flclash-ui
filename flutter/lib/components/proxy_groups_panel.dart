@@ -8,11 +8,12 @@ class ProxyGroupsPanel extends StatelessWidget {
   const ProxyGroupsPanel({super.key});
   @override Widget build(BuildContext context) {
     final box = context.box, groups = context.box.groups;
-    final timeout = <String>{for (final group in groups) for (final node in rows(group['items']))
-      if ((node['testedAt'] as num? ?? 0) > 0 && (node['delay'] as num? ?? 0) <= 0) node['tag'].toString()};
+    // `timeouts` comes with the group counts: the panel used to walk every node row for it, and
+    // the catalog is counts-only until the Proxies screen asks for the rows.
+    final timeouts = groups.fold<int>(0, (sum, group) => sum + ((group['timeouts'] as num?)?.toInt() ?? 0));
     return BoxPanel(onTap: groups.isEmpty ? null : () => openForm(context, const ProxiesPage()), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
       PanelTitle('Proxy groups', AppGlyphs.layers, trailing: Row(mainAxisSize: MainAxisSize.min, spacing: 6, children: [
-        if (timeout.isNotEmpty) DashboardChip(label: '${context.tr('Timeout')} ${timeout.length}', tone: DashboardChipTone.warn),
+        if (timeouts > 0) DashboardChip(label: '${context.tr('Timeout')} $timeouts', tone: DashboardChipTone.warn),
         if (groups.isNotEmpty) const GlyphIcon(AppGlyphs.chevronForward, size: 18),
       ])),
       const SizedBox(height: 12),

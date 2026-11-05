@@ -190,6 +190,15 @@ extension ConnectionsApi on BoxController {
   Future<bool> connectionsClose(dynamic id) => act('connections.close', {'id': id});
 }
 
+extension GroupCatalogApi on BoxController {
+  /// Asks for the node rows (true) or gives them back (false); `ready` and every other screen
+  /// carry counts only, because the rows are the largest payload the bridge builds.
+  Future<bool> groupsSetVisible(bool visible) => act('groups.visible', {'visible': visible});
+
+  /// The outbound picker's list: every node of every group, id and tag only.
+  Future<List<Json>> groupNodes() async => rows(json(await call('groups.nodes'))['nodes']);
+}
+
 extension UrlApi on BoxController {
   Future<bool> openUrl(String url) => act('url.open', {'url': url});
 }

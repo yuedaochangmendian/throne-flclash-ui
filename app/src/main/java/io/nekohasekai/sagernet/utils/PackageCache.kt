@@ -59,7 +59,8 @@ object PackageCache {
     private var current: Snapshot? = null
     private val generations = AtomicLong()
     private val publishLock = Any()
-    private val loaded = Mutex(true)
+    /** Single-flight for the first load: the caller that takes it builds the listing, the rest wait. */
+    private val loaded = Mutex()
     private val registerd = AtomicBoolean(false)
 
     val installedPackages: Map<String, PackageInfo> get() = snapshot().installedPackages
@@ -70,7 +71,12 @@ object PackageCache {
     /** The coalesced reload after package broadcasts; touched on the main thread only. */
     private var pendingReload: Job? = null
 
-    // called from init (suspend)
+    /**
+     * Starts watching for package changes. The listing itself is built by the first [snapshot]
+     * caller instead of here: the startup path only needs the receiver, and enumerating every
+     * installed package (`GET_PERMISSIONS` builds a permission array per app) is a cost the
+     * dashboard never looks at.
+     */
     fun register() {
         if (registerd.getAndSet(true)) return
         app.registerReceiver(object : BroadcastReceiver() {
@@ -95,11 +101,6 @@ object PackageCache {
             addAction(Intent.ACTION_PACKAGE_REMOVED)
             addDataScheme("package")
         })
-        try {
-            reload()
-        } finally {
-            loaded.unlock()
-        }
     }
 
     /** Returns the published listing: this one, or a newer one that a later reload already put in place. */
@@ -117,7 +118,9 @@ object PackageCache {
             }
         }.associateBy { it.packageName }
 
-        val installed = app.packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
+        // No GET_META_DATA: the listing feeds labels (`loadLabel`), uids and icons, and nothing
+        // reads an app's meta-data bundle.
+        val installed = app.packageManager.getInstalledApplications(0)
         val fresh = Snapshot(
             generation,
             installedPackages,
@@ -147,7 +150,8 @@ object PackageCache {
         register()
         runBlocking {
             loaded.withLock {
-                // just await
+                // The first caller builds it; everyone else finds it published and returns.
+                if (current == null) runCatching { reload() }.onFailure { Logs.w(it) }
             }
         }
     }

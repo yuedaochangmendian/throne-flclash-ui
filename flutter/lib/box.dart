@@ -16,17 +16,34 @@ part 'box_api.dart';
 
 typedef Json = Map<String, dynamic>;
 
-/// StandardMessageCodec yields `_Map<Object?, Object?>` for native maps, and
-/// nested maps keep that shape. Normalize the whole tree, not just the top
-/// level: `as Json` on a nested value used to throw on startup.
+/// StandardMessageCodec yields `_Map<Object?, Object?>` for native maps, and nested maps keep
+/// that shape, so the two boundaries (`call` and the event stream) normalize the whole tree.
+/// Everything downstream is already normalized, which is why [json] and [rows] only cast: doing
+/// it again here copied the entire startup payload a second time.
 Json json(Object? value) {
-  final normalized = normalizePlatformValue(value);
-  return normalized is Json ? normalized : <String, dynamic>{};
+  if (value is Json) return value;
+  // A map from somewhere that did not go through the boundary (a test, a raw channel reply):
+  // normalize rather than drop it.
+  if (value is Map) {
+    final normalized = normalizePlatformValue(value);
+    if (normalized is Json) return normalized;
+  }
+  return <String, dynamic>{};
 }
 
+/// The rows of a channel list, with the same one-copy rule as [json].
 List<Json> rows(Object? value) {
-  final normalized = normalizePlatformValue(value);
-  return normalized is List ? normalized.whereType<Json>().toList() : <Json>[];
+  if (value is! List) return <Json>[];
+  final out = <Json>[];
+  for (final item in value) {
+    if (item is Json) {
+      out.add(item);
+    } else if (item is Map) {
+      final normalized = normalizePlatformValue(item);
+      if (normalized is Json) out.add(normalized);
+    }
+  }
+  return out;
 }
 
 enum BoxAspect { state, appearance, traffic, memory, connections, logs, logcat, testSession }
@@ -364,6 +381,8 @@ class BoxController extends ChangeNotifier {
       quality = json(diagnostics['quality']);
       final intent = result['intent'] as String?;
       if (intent != null) pendingIntents.add(intent);
+      // A low-RAM device gets a smaller decoded-image budget than the desktop-sized default.
+      imageCache.maximumSizeBytes = (result['lowRam'] == true ? 24 : 50) << 20;
       // An AppRestart-level write or reset from before this attach; a reload does not clear it.
       applyRequired = result['applyRequired'] as String?;
       ready = true;
@@ -480,6 +499,12 @@ class BoxController extends ChangeNotifier {
         memory = nextMemory;
         aspects = const [BoxAspect.memory];
       case 'lan': lan = json(value);
+      // The system is short of memory: ART's gc/trimHeap cannot touch the Dart heap, so the
+      // decoded images (the largest thing the UI keeps) are dropped here instead.
+      case 'memoryTrim':
+        imageCache.clear();
+        imageCache.clearLiveImages();
+        return;
       case 'browserComplete': eventBus.emit(BrowserCompleteEvent(json(value))); return;
       case 'dashboard':
         final nextDashboard = json(value);

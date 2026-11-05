@@ -1,3 +1,20 @@
+#### 3.3.0-pre.2
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. No screen gains a feature here: this is the memory pass over the bridge and the package cache.
+
+Startup no longer carries the node catalog, and the one-second sample no longer rebuilds it:
+
+* `ready` answers with **group counts** (`nodeCount`, and `timeouts` for the dashboard chip) instead of every node row. The Proxies screen asks for the rows with `groups.visible` and gives them back on close; the rule editor's outbound picker asks `groups.nodes` for names (id + tag) only. The rows cost **134 B per node** on the wire — 391 KiB at 3000 nodes, 652 KiB at 5000, 2.6 MiB at 20000 — and three copies were alive while they were built (Kotlin model, wire maps, Dart decode)
+* The first event-pump emission repeated exactly what `ready` had just returned, so the first frame built and decoded the whole catalog twice. The pump now stays silent until `ready` answers, and seeds its comparison baselines from that answer
+* The 1 Hz rates sample used to rebuild `profilesWire` + `groupsWire` and structurally compare them with the previous copy — once a second, for nothing. The catalog half now rebuilds only when `BboxBridge.catalogRevision` moves (a repository change, or a visibility toggle), and `wireKey` compares that revision instead of hashing every node
+* `json()` / `rows()` no longer re-normalize what the channel boundary already normalized: arrival deep-copied the startup payload a second time
+* Memory pressure now reaches Dart. `onTrimMemory` emits `memoryTrim` and the UI clears its decoded-image cache — ART's `gc`/`trimHeap` cannot collect Dart objects — and a low-RAM device gets a 24 MiB image budget instead of 50 MiB
+* `PackageCache` builds its listing on first use instead of during `Application.onCreate`, and no longer asks for `GET_META_DATA` (nothing reads an app's meta-data bundle)
+
+**Not in this pass:** the per-node wire compaction (tuple encoding or a typed Dart node model) and the catalog's per-node `displayType()` parse. Both only affect the Proxies screen now that the rows are lazy, and the parse cannot be dropped without changing the type labels the UI renders (`AnyTLS`, `Auto Selector`, `Chain Proxy`, a custom config's subtype).
+
+Tests: `BboxGroupsWireTest` pins both payload shapes and the picker list, `platform_value_test` gains the no-second-copy guards, and the Flutter suite is 298 tests.
+
 #### 3.3.0-pre.1
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open.
