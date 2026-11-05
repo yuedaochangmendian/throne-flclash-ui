@@ -145,7 +145,11 @@ func sendEvent(method string, data interface{}) {
 
 //export throne_status_snapshot
 func throne_status_snapshot(handle C.int64_t) *C.char {
-	defer guardExport("throne_status_snapshot")
+	// This is the heartbeat: it runs once a second for as long as the core is up,
+	// so a panic here (a box closing under the read, say) must stay local. It is
+	// reported by the null return, not by the typed error channel, which the next
+	// Instance.start would otherwise read and mistake for its own failure.
+	defer func() { _ = recover() }()
 	v := handleGet(int64(handle))
 	inst, ok := v.(*Instance)
 	if !ok || inst == nil {

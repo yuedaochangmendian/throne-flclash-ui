@@ -92,6 +92,18 @@ func setErr(err error) {
 	errMu.Unlock()
 }
 
+// clearErr drops the message of an earlier crossing. The Dart side polls
+// throne_last_error after every typed call and throws whatever it finds, so a
+// message left behind by a call that was never checked (a status poll, a log
+// sink) used to fail the *next* call as well — including Instance.start, whose
+// failure closes the box again. Every start therefore ended the way it began,
+// on a box that had just come up. The error now belongs to one crossing.
+func clearErr() {
+	errMu.Lock()
+	lastError = ""
+	errMu.Unlock()
+}
+
 // guardExport keeps a panic inside one C ABI crossing. A Go panic is not
 // allowed to cross cgo: without this the whole process aborts and Dart can
 // neither catch it nor show an error. Result parameters keep their zero
@@ -107,7 +119,11 @@ func throne_last_error() *C.char {
 	defer guardExport("throne_last_error")
 	errMu.Lock()
 	defer errMu.Unlock()
-	return C.CString(lastError)
+	msg := lastError
+	// Read-once: the caller polls after each call, so handing the message out
+	// and clearing it keeps one failure from failing every later call.
+	lastError = ""
+	return C.CString(msg)
 }
 
 // --- marshalling helpers ---
@@ -765,6 +781,7 @@ func throne_Instance_clashModeList(handle C.int64_t) C.int64_t {
 //export throne_Instance_close
 func throne_Instance_close(handle C.int64_t)  {
 	defer guardExport("throne_Instance_close")
+	clearErr()
 	if err := handleGet(int64(handle)).(*Instance).Close(); err != nil { setErr(err) }
 	throne_handle_release(handle)
 }
@@ -826,12 +843,15 @@ func throne_Instance_setClashMode(handle C.int64_t, mode *C.char)  {
 //export throne_Instance_start
 func throne_Instance_start(handle C.int64_t)  {
 	defer guardExport("throne_Instance_start")
+	clearErr()
 	if err := handleGet(int64(handle)).(*Instance).Start(); err != nil { setErr(err) }
 }
 
 //export throne_Instance_status
 func throne_Instance_status(handle C.int64_t) C.int64_t {
-	defer guardExport("throne_Instance_status")
+	// Polled on the heartbeat path like throne_status_snapshot: a panic must not
+	// leave a message in the typed channel that the next start would read.
+	defer func() { _ = recover() }()
 	return marshal_handle(handleGet(int64(handle)).(*Instance).Status())
 }
 
@@ -916,6 +936,7 @@ func throne_Mobile_goVersion() *C.char {
 //export throne_Mobile_newInstance
 func throne_Mobile_newInstance(options C.int64_t) C.int64_t {
 	defer guardExport("throne_Mobile_newInstance")
+	clearErr()
 	v, err := NewInstance(bridgePlatform, handleGet(int64(options)).(*StartOptions))
 	if err != nil { setErr(err); return 0 }
 	registerInstance(v)
@@ -2225,6 +2246,7 @@ func throne_ExchangeContext_new() C.int64_t {
 //export throne_Instance_new
 func throne_Instance_new(options C.int64_t) C.int64_t {
 	defer guardExport("throne_Instance_new")
+	clearErr()
 	v, err := NewInstance(bridgePlatform, handleGet(int64(options)).(*StartOptions))
 	if err != nil { setErr(err); return 0 }
 	registerInstance(v)

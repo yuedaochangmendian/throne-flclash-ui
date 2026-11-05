@@ -37,6 +37,14 @@ class KernelService {
   bool _disposed = false;
   bool _initializing = false;
 
+  /// Automatic restarts spent on the current incident; reset by a run that holds.
+  int _recoveryAttempts = 0;
+
+  /// How many restarts a single incident may spend before the failure is shown
+  /// instead of retried. Three covers a transient network blip; more than that
+  /// is a core that will not stay up.
+  static const _maxRecoveries = 3;
+
   /// True when the rebuilt core is present and the FFI path drives it.
   bool get active => _kernel != null && _instanceHandle != null;
 
@@ -94,6 +102,8 @@ class KernelService {
   Future<void> startService() async {
     if (_kernel == null) return;
     await box.call('service.start'); // foreground only in ffiMode
+    // A start the user asked for is a fresh incident, whatever the last one cost.
+    _recoveryAttempts = 0;
     await _startCore();
   }
 
@@ -217,16 +227,38 @@ class KernelService {
 
   void _onWorkerEvent(WorkerEvent event) {
     if (event['type'] != 'lost') return;
-    report(StateError('the kernel stopped responding'));
+    final reason = event['error'];
+    report(StateError(reason is String && reason.isNotEmpty
+        ? 'the kernel stopped responding: $reason'
+        : 'the kernel stopped responding'));
     _emitDashboard('Stopped');
     _recoverOnce();
   }
 
-  /// One automatic restart after a lost core; further failures stay visible.
+  /// Restarts a lost core with a growing delay, and stops after
+  /// [_maxRecoveries] attempts in a row. A core that dies, comes back and dies
+  /// again seconds later is not fixed by another restart: looping forever only
+  /// hides the failure, so the last attempt is reported and left alone.
   Future<void> _recoverOnce() async {
     if (_recovering) return;
+    // A run that held for a while is a new incident, not a repeat of the last one.
+    final ranFor = _startedAt == null ? null : DateTime.now().difference(_startedAt!);
+    if (ranFor != null && ranFor >= const Duration(minutes: 1)) _recoveryAttempts = 0;
+    if (_recoveryAttempts >= _maxRecoveries) {
+      report(StateError(
+          'the kernel cannot stay up; automatic recovery stopped after $_maxRecoveries attempts'));
+      return;
+    }
     _recovering = true;
+    final attempt = _recoveryAttempts;
+    _recoveryAttempts++;
     try {
+      if (attempt > 0) {
+        _emitDashboard('Starting');
+        await Future<void>.delayed(
+            attempt == 1 ? const Duration(seconds: 10) : const Duration(seconds: 30));
+        if (!active) return; // the user stopped it while waiting
+      }
       await reloadService();
       if (active) report('the kernel was restarted automatically');
     } catch (error) {

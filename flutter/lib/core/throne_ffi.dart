@@ -2188,6 +2188,21 @@ Map<String, int>? throneStatusSnapshot(ThroneFFI ffi, int handle) {
   }
 }
 
+/// The message of the last failed crossing, or an empty string.
+///
+/// The Go side hands the message out once and clears it, so a call that is not
+/// going to throw (the heartbeat) can still put a reason on its event without
+/// leaving the text behind for the next typed call to mistake for its own.
+String throneLastError(ThroneFFI ffi) {
+  final p = ffi.throne_last_error();
+  if (p == nullptr) return '';
+  try {
+    return p.toDartString();
+  } finally {
+    ffi.throne_free(p);
+  }
+}
+
 /// Handle-table counters for FFI lifetime regression tests.
 Map<String, int>? throneHandleStats(ThroneFFI ffi) {
   final p = ffi.throne_handle_stats();

@@ -31,6 +31,14 @@ enum KernelCommand {
 /// Events from the worker: `{'type': 'lost'}` or `{'type': 'error', ...}`.
 typedef WorkerEvent = Map<String, dynamic>;
 
+/// How long a fresh start may go without a status before a miss counts. The
+/// box is still opening its tun and loading rule sets in that window.
+const heartbeatGrace = Duration(seconds: 12);
+
+/// How long the status must stay unreadable *after* a good beat to call the
+/// core lost. A single slow read under load is not a lost core.
+const heartbeatGiveUpAfter = Duration(seconds: 8);
+
 class KernelWorker {
   KernelWorker._(this._commands, this._events, this._eventsPort);
 
@@ -118,24 +126,34 @@ void _workerMain(List<Object> init) {
 
   ThroneInstance? instance;
   var heartbeatEnabled = false;
-  var failures = 0;
   var lostReported = false;
   Timer? heartbeat;
+  // The core answers a status only once its box is up, and a start can take a
+  // few seconds (tun, rule sets, xray assets) before that. Counting raw misses
+  // turned a slow start into three "lost" beats, and the recovery then closed
+  // the box it had just opened: the service restarted every few seconds and
+  // never stayed up. A miss now only counts once the start has had its grace
+  // period and the last good beat is older than [heartbeatGiveUpAfter].
+  int? startAtMs;
+  int? lastBeatAtMs;
 
   heartbeat = Timer.periodic(const Duration(seconds: 1), (_) {
     final current = instance;
     if (!heartbeatEnabled || current == null) return;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final startedAt = startAtMs;
+    if (startedAt == null) return;
     final snapshot = throneStatusSnapshot(ffi, current.handle);
-    if (snapshot == null) {
-      failures++;
-      if (failures >= 3 && !lostReported) {
-        lostReported = true;
-        events.send(<String, dynamic>{'type': 'lost'});
-      }
-    } else {
-      failures = 0;
+    if (snapshot != null) {
+      lastBeatAtMs = now;
       lostReported = false;
+      return;
     }
+    if (now - startedAt < heartbeatGrace.inMilliseconds) return;
+    final since = lastBeatAtMs ?? startedAt;
+    if (now - since < heartbeatGiveUpAfter.inMilliseconds || lostReported) return;
+    lostReported = true;
+    events.send(<String, dynamic>{'type': 'lost', 'error': throneLastError(ffi)});
   });
 
   ready.send(commands.sendPort);
@@ -162,7 +180,8 @@ void _workerMain(List<Object> init) {
               throw StateError('the kernel refused to create an instance');
             }
             instance = created;
-            failures = 0;
+            startAtMs = null;
+            lastBeatAtMs = null;
             lostReported = false;
             reply.send(created.handle);
           } finally {
@@ -172,9 +191,15 @@ void _workerMain(List<Object> init) {
           final current = instance;
           if (current == null) throw StateError('no kernel instance to start');
           current.start();
+          // The clock for the heartbeat starts here, not at the process start:
+          // the grace period exists for the box this call just opened.
+          startAtMs = DateTime.now().millisecondsSinceEpoch;
+          lastBeatAtMs = null;
           reply.send(null);
         case KernelCommand.stop:
           heartbeatEnabled = false;
+          startAtMs = null;
+          lastBeatAtMs = null;
           final current = instance;
           instance = null;
           if (current != null) {
@@ -184,7 +209,8 @@ void _workerMain(List<Object> init) {
           reply.send(null);
         case KernelCommand.setHeartbeat:
           heartbeatEnabled = payload as bool;
-          failures = 0;
+          if (heartbeatEnabled && startAtMs == null) startAtMs = DateTime.now().millisecondsSinceEpoch;
+          lastBeatAtMs = null;
           lostReported = false;
           reply.send(null);
         case KernelCommand.warpRegister:
