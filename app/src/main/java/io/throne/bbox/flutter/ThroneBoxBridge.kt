@@ -39,6 +39,7 @@ import io.throne.bbox.bridge.BboxBackup
 import io.throne.bbox.bridge.BboxBridge
 import io.throne.bbox.bridge.BboxCommands
 import io.throne.bbox.bridge.BboxEgress
+import io.throne.bbox.bridge.BboxGroupsWire
 import io.throne.bbox.bridge.BboxKernel
 import io.throne.bbox.bridge.BboxLogcat
 import io.throne.bbox.bridge.BboxLogs
