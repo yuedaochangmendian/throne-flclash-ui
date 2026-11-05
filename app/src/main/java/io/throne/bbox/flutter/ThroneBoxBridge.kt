@@ -44,6 +44,7 @@ import io.throne.bbox.bridge.BboxLogs
 import io.throne.bbox.bridge.BboxMode
 import io.throne.bbox.bridge.BboxProbeSession
 import io.throne.bbox.bridge.BboxProfiles
+import io.throne.bbox.bridge.BboxResolve
 import io.throne.bbox.bridge.BboxRoutes
 import io.throne.bbox.bridge.BboxTestSession
 import io.throne.bbox.bridge.BboxWarp
