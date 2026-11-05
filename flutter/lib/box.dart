@@ -4,7 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'capabilities.dart';
+import 'common/config_guard.dart';
 import 'common/ip_quality_cache.dart';
+import 'common/refresh_gate.dart';
+import 'common/throttle.dart';
 import 'core/kernel_service.dart';
 import 'core/platform_value.dart';
 import 'core/throne_kernel.dart';
@@ -160,6 +163,45 @@ class BoxController extends ChangeNotifier {
   final _pendingAspects = <BoxAspect>{};
   Timer? _batchTimer;
 
+  /// Coalesces repeated bridge round-trips (visibility toggles, refreshes) and
+  /// gates high-frequency rebuilds while the app is backgrounded. Both are the
+  /// pure-Dart parts of Bettbox's refresh/performance work; neither changes the
+  /// data the Kotlin side pushes, only when the UI reacts to it.
+  final Debouncer debouncer = Debouncer();
+  final Throttler throttler = Throttler();
+  final RefreshGate refreshGate = RefreshGate();
+  static const _deferrableAspects = <BoxAspect>{
+    BoxAspect.traffic, BoxAspect.connections, BoxAspect.logs,
+    BoxAspect.logcat, BoxAspect.memory, BoxAspect.testSession,
+  };
+  final _deferredAspects = <BoxAspect>{};
+
+  /// Replays aspects that arrived while the app was hidden. Called on resume so
+  /// the first frame back shows current data instead of a stale dashboard.
+  void resumeRefreshes() {
+    refreshGate.setForeground(true);
+    if (_deferredAspects.isEmpty) return;
+    final aspects = _deferredAspects.toList();
+    _deferredAspects.clear();
+    _notify(aspects);
+  }
+
+  /// Stops tick-driven rebuilds while hidden. Data still lands in the fields.
+  void suspendRefreshes() => refreshGate.setForeground(false);
+
+  /// Routes an event's aspects through the visibility gate.
+  void _dispatch(Iterable<BoxAspect> aspects, bool batched) {
+    if (!refreshGate.shouldRebuild && aspects.every(_deferrableAspects.contains)) {
+      _deferredAspects.addAll(aspects);
+      return;
+    }
+    if (batched) {
+      _notifyBatched(aspects);
+    } else {
+      _notify(aspects);
+    }
+  }
+
   void _notify(Iterable<BoxAspect> aspects) {
     if (_disposed) return;
     for (final aspect in aspects) { _revisions[aspect.index]++; }
@@ -195,6 +237,10 @@ class BoxController extends ChangeNotifier {
   }
 
   void _syncData(BoxData data) {
+    // Must stay synchronous: BoxDataSubscription's demand contract expects one
+    // bridge call per visibility change, and its tests assert the exact order.
+    // The debouncer is for user-driven bursts (see BoxController.debouncer),
+    // not for this negotiated subscription state.
     unawaited(act(switch (data) {
       BoxData.memory => 'dashboard.memory.visible',
       BoxData.logcat => 'logs.logcat.visible',
@@ -535,12 +581,9 @@ class BoxController extends ChangeNotifier {
         return;
       default: return;
     }
-    // A burst of list events shares one rebuild; everything else notifies as it lands.
-    if (_batchedTypes.contains(item['type'])) {
-      _notifyBatched(aspects);
-    } else {
-      _notify(aspects);
-    }
+    // A burst of list events shares one rebuild; everything else notifies as it
+    // lands. While hidden, high-frequency aspects are held for the resume flush.
+    _dispatch(aspects, _batchedTypes.contains(item['type']));
   }
 
   /// Kernel logs arriving through the FFI message port (dual path: only when
@@ -564,6 +607,9 @@ class BoxController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _batchTimer?.cancel();
+    debouncer.cancelAll();
+    throttler.clear();
+    refreshGate.dispose();
     _subscription?.cancel();
     _kernelSub?.cancel();
     _kernelEvents?.cancel();

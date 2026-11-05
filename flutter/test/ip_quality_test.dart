@@ -182,7 +182,7 @@ void main() {
       lookup.adapter.requested.map((uri) => uri.toString()),
       unorderedEquals([
         'https://ident.me/json',
-        'http://ip-api.com/json/$_ip?fields=status,isp,org,as,mobile,proxy,hosting',
+        'https://ip-api.com/json/$_ip?fields=status,isp,org,as,mobile,proxy,hosting',
         'https://api.ipquery.io/$_ip?format=json',
         'https://iplocate.io/api/lookup/$_ip',
         'https://proxycheck.io/v3/$_ip',

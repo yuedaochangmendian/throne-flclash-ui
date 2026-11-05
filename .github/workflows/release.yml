@@ -48,8 +48,35 @@ jobs:
             echo "::error::$TAG already exists: raise VERSION_NAME in nb4a.properties for a new release"
             exit 1
           fi
+          # A versionName containing "-pre." is a preview build: it must use the
+          # preview channel (release_assets.py refuses a -pre. name on stable)
+          # and must be marked as a GitHub prerelease so the in-app updater,
+          # which follows releases/latest, never offers it to existing users.
+          if [[ "$VERSION_NAME" == *-pre.* ]]; then
+            CHANNEL=preview
+            PRERELEASE=true
+            BASE_VERSION="${VERSION_NAME%%-pre.*}"
+            BUILD_NUMBER="${VERSION_NAME##*-pre.}"
+            [[ "$BUILD_NUMBER" =~ ^[0-9]+$ ]] || {
+              echo "::error::preview tag must end in -pre.<number>"
+              exit 1
+            }
+          else
+            CHANNEL=stable
+            PRERELEASE=false
+            BASE_VERSION="$VERSION_NAME"
+            BUILD_NUMBER=999
+          fi
+          DECLARED=$(sed -n 's/^VERSION_NAME=//p' nb4a.properties | tr -d '\r[:space:]')
+          if [ "$BASE_VERSION" != "$DECLARED" ]; then
+            echo "::error::tag base version $BASE_VERSION does not match nb4a.properties VERSION_NAME=$DECLARED"
+            exit 1
+          fi
           echo "version=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
+          echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
       # The release notes are the version's CHANGELOG.md section; a missing one fails before the build.
       - name: Changelog
         if: ${{ env.PUBLISH == 'true' }}
@@ -60,11 +87,11 @@ jobs:
         uses: ./.github/actions/android-build
         with:
           tasks: app:assembleOssRelease
-          channel: stable
-          build-number: '999'
+          channel: ${{ steps.version.outputs.channel }}
+          build-number: ${{ steps.version.outputs.build_number }}
           sign: 'true'
       - name: Release assets
-        run: python3 buildScript/release_assets.py app/build/outputs/apk/oss/release dist stable
+        run: python3 buildScript/release_assets.py app/build/outputs/apk/oss/release dist ${{ steps.version.outputs.channel }}
       - name: Upload artifact
         if: ${{ env.PUBLISH != 'true' }}
         uses: actions/upload-artifact@v7
@@ -81,6 +108,7 @@ jobs:
           GH_REPO: ${{ github.repository }}
           VERSION_NAME: ${{ steps.version.outputs.version }}
           TAG: ${{ steps.version.outputs.tag }}
+          PRERELEASE: ${{ steps.version.outputs.prerelease }}
         run: bash buildScript/publish_release.sh
       # A GitHub API outage must not lose the signed APKs.
       - name: Preserve assets when publishing fails

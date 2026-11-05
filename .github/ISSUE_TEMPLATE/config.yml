@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 使用问题与缺陷反馈（GitHub Issues）
+    url: https://github.com/yuedaochangmendian/throne-flclash-ui/issues
+    about: 请使用本仓库已有的 bug / feature 模板提交问题或建议；提交前先升级到最新版，并附上去除敏感信息后的导出日志与复现步骤。
+  - name: 安全漏洞报告（请勿公开提交 Issue）
+    url: https://github.com/yuedaochangmendian/throne-flclash-ui/blob/main/SECURITY.md
+    about: 漏洞请按 SECURITY.md 的说明通过 GitHub Security Advisories 私下报告，不要在公开 Issue 中披露细节。

@@ -1,3 +1,25 @@
+#### 3.2.26-pre.1
+
+> **Preview build for testing only.** It is published as a GitHub prerelease and deliberately does not write `throne-update.json`, so the in-app updater keeps offering 3.2.25. Install it manually from Releases; do not use it as a daily driver. It has passed CI but has not gone through the full physical-device checklist (`docs/device-checklist.md`).
+
+Runtime work ported from Bettbox, all confined to the Dart layer:
+
+* A tag-scoped `Debouncer` / `Throttler` now coalesces repeated bridge round-trips; subscription refreshes get bounded retry with a per-attempt timeout
+* A visibility gate holds high-frequency rebuilds while the app is backgrounded and replays their aspects once on resume, instead of rebuilding the dashboard for every push the Kotlin side delivers off-screen
+* Config edits have a validated path (`profileWriteGuarded`): JSON is checked before it reaches the core, the previous content is retained, and a rejected write rolls back. An `AtomicFileWriter` provides tmp-file/validate/rename semantics for future Dart-side file writes
+* Startup/framework errors now surface in the same banner the bridge uses, and the decoded-image cache is capped at 50 MiB
+* New unit and performance-budget tests cover the debounce, throttle, retry, refresh gate, validation, atomic write, rollback and large-payload normalization
+
+Release plumbing, needed before a preview can be published safely:
+
+* `release.yml` derives the `preview` channel and GitHub prerelease flag from a `-pre.<n>` version, feeds the matching build number into `android-build`, and refuses a tag whose base version disagrees with `nb4a.properties`
+* `publish_release.sh` marks preview releases with `--prerelease`, keeping them off `releases/latest` and out of the self-update channel
+* Preview builds keep the normal package name, so they can be installed alongside the stable build only if you uninstall first; the signature is unchanged from 3.2.x
+
+Repository governance: multi-language README index, `SIGNING-POLICY.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, PR template, Dependabot config, issue-template config, rewritten `AUTHORS`, CI coverage and generated-model guards, and fixes to stale version/packaging claims in the planning docs.
+
+Not included in this batch (deliberately): the application-id rename, removal of the dormant FFI subtree, `QUERY_ALL_PACKAGES` / targetSdk changes, telemetry, and the physical-device verification pass.
+
 #### 3.2.25
 
 * Local restore asks for the file instead of replaying whatever this process created last: `backup.open` opens the system picker, reads the selection, and accepts both the JSON envelope the local "Backup" entry writes and a `.thrbackup` container. Before, the local entry only returned a backup still held in memory, so after a restart it answered "No backup to restore" and the file the user saved could never be chosen

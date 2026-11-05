@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.view.KeyEvent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.preference.PreferenceDataStore
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -48,6 +49,25 @@ class BboxFlutterActivity : FlutterFragmentActivity(), OnPreferenceDataStoreChan
 
     private var openHandler: ((Uri?) -> Unit)? = null
     private var saveHandler: ((Uri?) -> Unit)? = null
+
+    // Registered at construction (before CREATED), as the framework requires. Two separate launchers keep the
+    // open-document and create-document results apart, the same distinction the old request codes made; each
+    // callback owns its single handler slot and clears it after delivery.
+    private val openDocumentLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val uri = result.data?.data?.takeIf { result.resultCode == RESULT_OK }
+        openHandler?.invoke(uri)
+        openHandler = null
+    }
+
+    private val createDocumentLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val uri = result.data?.data?.takeIf { result.resultCode == RESULT_OK }
+        saveHandler?.invoke(uri)
+        saveHandler = null
+    }
 
     // The first-start prompts and the Wi-Fi walk-through register their launchers at construction,
     // which is what the framework requires; the old UI keeps them as MainActivity fields the same way.
@@ -137,12 +157,10 @@ class BboxFlutterActivity : FlutterFragmentActivity(), OnPreferenceDataStoreChan
         openHandler = { uri -> if (continuation.isActive) continuation.resume(uri) }
         continuation.invokeOnCancellation { openHandler = null }
         runCatching {
-            @Suppress("DEPRECATION")
-            startActivityForResult(
+            openDocumentLauncher.launch(
                 Intent(Intent.ACTION_OPEN_DOCUMENT)
                     .addCategory(Intent.CATEGORY_OPENABLE)
                     .setType("*/*"),
-                REQUEST_OPEN,
             )
         }.onFailure { openHandler = null; continuation.resume(null) }
     }
@@ -156,13 +174,11 @@ class BboxFlutterActivity : FlutterFragmentActivity(), OnPreferenceDataStoreChan
         saveHandler = { uri -> if (continuation.isActive) continuation.resume(uri) }
         continuation.invokeOnCancellation { saveHandler = null }
         runCatching {
-            @Suppress("DEPRECATION")
-            startActivityForResult(
+            createDocumentLauncher.launch(
                 Intent(Intent.ACTION_CREATE_DOCUMENT)
                     .addCategory(Intent.CATEGORY_OPENABLE)
                     .setType(mime)
                     .putExtra(Intent.EXTRA_TITLE, name),
-                REQUEST_SAVE,
             )
         }.onFailure { saveHandler = null; continuation.resume(null) }
     }
@@ -192,18 +208,6 @@ class BboxFlutterActivity : FlutterFragmentActivity(), OnPreferenceDataStoreChan
         }
     }
 
-    @Deprecated("Deprecated in Java")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        val uri = data?.data?.takeIf { resultCode == RESULT_OK }
-        when (requestCode) {
-            REQUEST_OPEN -> openHandler?.invoke(uri)
-            REQUEST_SAVE -> saveHandler?.invoke(uri)
-            else -> super.onActivityResult(requestCode, resultCode, data)
-        }
-        if (requestCode == REQUEST_OPEN) openHandler = null
-        if (requestCode == REQUEST_SAVE) saveHandler = null
-    }
-
     /**
      * A share / open-with landing while the UI is up: the bridge keeps the single-delivery contract
      * per intent instance, and the event tells the UI to ask for this one.
@@ -229,10 +233,5 @@ class BboxFlutterActivity : FlutterFragmentActivity(), OnPreferenceDataStoreChan
             return true
         }
         return super.dispatchKeyEvent(event)
-    }
-
-    private companion object {
-        const val REQUEST_OPEN = 4711
-        const val REQUEST_SAVE = 4712
     }
 }

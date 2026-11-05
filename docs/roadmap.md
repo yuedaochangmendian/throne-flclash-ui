@@ -1,6 +1,6 @@
 # throne-flclash-ui 未来发展规划（AI Agent 执行文档）
 
-> 版本：v1.0（2026-11-03 定稿）。基线：`main` @ `364cda9`（**v3.0.11**，VERSION_CODE 124），CI 全绿，`releases/latest` = v3.0.11。
+> 版本：v1.0（2026-11-03 定稿）。基线：`main` @ `364cda9`（**v3.0.11**，VERSION_CODE 124），CI 全绿，`releases/latest` = v3.0.11。【注：以上为 2026-11-03 的**历史基线快照**，仅记录当时的仓库状态，勿作为当前版本依据；当前版本请以 `nb4a.properties` 的 `VERSION_NAME` 与 `CHANGELOG.md` 首段为准（截至本次文档整理时为 3.2.25）。】
 > 用途：全功能迁移（bbox-full-parity）已于 2026-11-01 完成、旧 UI 退役并归档（`openspec/history/bbox-full-parity.md`），本文档是**后迁移时代的接续规划**，任何 agent 接手时以本文为任务来源。执行前先 `git fetch`（代理断连用 `git -c http.proxy= fetch`）确认基线之后的提交；若前提已变，先做增量审计再动手。
 > 姊妹文档：仓库内 `docs/bbox-full-parity-plan.md`（已完成的迁移规划，其 §2 硬性规则全部沿用）。
 > 执行状态（2026-11-03）：W1/v3.0.12 ✅、v3.0.13 ✅、批次 M 的 M1/M2/M5 ✅、批次 N 的 N1–N4 ✅、工具链 U1/U2 ✅；本文档随仓库分发，批次 O 及里程碑表以 §4 为准。
@@ -27,7 +27,7 @@
 | 4 | README 仍是上游 Throne 原文（捐赠链接指 throneproj、文档指 throneproj.github.io、命名混乱：仓库名 flclash / 应用名 Flrone / 包名 com.throneflclash） | `README.md` | M |
 | 5 | docs 失实风险：`bbox-bridge.md`/`bbox-flutter.md` 在 0.5 修过一轮，3.0.x 又漂移了十余轮 | docs/ | M |
 | 6 | 核心侧日志噪音：TUN lazy 握手下本地 app 提前 RST → `connection: report handshake success: go: connection reset by peer`（ERROR 级，reF1nd/sing-tun `stack_go_conn.go:51` errGoReset；核心 pin 上游不可修） | 本会话已定性 | N |
-| 7 | 并行会话互踩：2026-11-03 两个 agent 会话同时改本仓库，一方 commit 落进另一方新建的分支 | AGENTS.md 已录教训 | 治理 |
+| 7 | 并行会话互踩：2026-11-03 两个 agent 会话同时改本仓库，一方 commit 落进另一方新建的分支 | 该教训记录于本表（§1.2 第 7 项）；AGENTS.md 未随仓库分发 | 治理 |
 | 8 | 验证盲区：所有发布只经 CI（单测/构建/lint），**真机从未系统走查**（TV 焦点、VPN 升级安装、备份恢复跨版本） | 无真机测试记录 | N |
 
 ---
@@ -118,7 +118,7 @@
 |---|---|---|---|
 | **v3.0.12** | ✅ W1 日志轮收尾（2026-11-03 发，commit `41636a9`） | — | 已发，latest 已指向 |
 | **v3.1.0** | ✅ 批次 M + N 合并发版（含 analyze 清零、README/docs、通道审计、噪音折叠、崩溃存储、设备清单、更新拒绝测试；双 agent 评审 18 项） | — | 已发，latest 已指向 |
-| **v3.2.4** | ✅ 体积与运行时过一遍：R8 精确 keep + full mode、Twemoji 删除/字体子集/图标 WebP、`useLegacyPackaging=false`、GC debug-only、Jetifier 关闭 | — | 见 `openspec/changes/2026-11-03-size-pass/` |
+| **v3.2.4** | ✅ 体积与运行时过一遍：R8 精确 keep + full mode、Twemoji 删除/字体子集/图标 WebP、~~`useLegacyPackaging=false`~~（3.2.4 尝试后回退，`app/build.gradle.kts` 现为 `useLegacyPackaging = true`）、GC debug-only、Jetifier 关闭 | — | 见 `openspec/changes/2026-11-03-size-pass/` |
 | **v3.2.15** | ✅ 冗余代码清理批 R1+R2.1+R4（旧偏好 UI 层 16 xml/6 类/3 支撑类 + proguard keep 收窄、12 个死 Kotlin 整文件、2 个 Dart 孤儿 + `flutter_localizations` 降为传递依赖）；R2.2/R4.3 经复核为误判未执行，R3 资源瘦身待 lint UnusedResources 前置复核 | 计划复核 | 单独 patch 发版 |
 | ~~v3.2.0~~ | 并入 v3.1.0（N 批次随 M 同轮落地） | — | — |
 | **v3.3.0** | 批次 O（quality 或 dnsObject，二选一） | 可行性侦察结论 | 同上 |

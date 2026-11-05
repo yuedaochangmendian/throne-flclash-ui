@@ -1,5 +1,9 @@
 # Flrone (Throne for Android)
 
+[![CI](https://github.com/yuedaochangmendian/throne-flclash-ui/actions/workflows/ci.yml/badge.svg)](https://github.com/yuedaochangmendian/throne-flclash-ui/actions/workflows/ci.yml) [![Latest release](https://img.shields.io/github/v/release/yuedaochangmendian/throne-flclash-ui)](https://github.com/yuedaochangmendian/throne-flclash-ui/releases) [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
+
+Other languages: [简体中文](readme/README_zh.md) · [English (short)](readme/README_en.md)
+
 An Android GUI proxy utility on the [sing-box](https://github.com/SagerNet/sing-box) core: Throne's engine with a
 fully rebuilt Flutter interface on the prism UI layer FlClash's dev branch uses. Supports Android 7.0 (API 24) and newer, including
 Android TV.
@@ -89,6 +93,14 @@ Deeplinks are also supported, read the [documentation](https://throneproj.github
   (the pre-release device gate), [docs/roadmap.md](docs/roadmap.md) (where the project is heading).
 - `Capabilities.kt` is the single source of truth for which B-box-only features exist; the bridge documents
   every method and event it serves.
+- **Contributing**: see [CONTRIBUTING.md](CONTRIBUTING.md) for the development environment, local verification
+  commands and the branch / pull-request workflow.
+
+## Community / Feedback
+
+Please use [GitHub Issues](https://github.com/yuedaochangmendian/throne-flclash-ui/issues) to report bugs, request
+features or ask questions; the issue templates there ask for exported logs and reproduction steps. For vulnerabilities
+that must not be disclosed in public, follow [SECURITY.md](SECURITY.md) instead.
 
 ## Credits
 
