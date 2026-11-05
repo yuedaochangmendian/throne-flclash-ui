@@ -1,3 +1,10 @@
+#### 3.2.22
+
+* Fixes the service that restarted every few seconds and never stayed up. Two faults each closed a box that had just come up, and the recovery started it again
+* The FFI error channel no longer keeps an old message: `throne_last_error` hands the text out once and clears it, `Instance.start` / `close` / the instance factories clear it on entry, and the once-a-second status reads keep their panics out of it. A single failure — even a panic inside a status poll nobody checks — used to fail every later start, and the failed start closed the box it had just opened
+* The heartbeat no longer counts raw misses: a status only answers once the box is up, which takes seconds (tun, rule sets, xray assets), so three misses in three seconds read as a lost core. A miss now counts after a 12 s grace from the start and 8 s since the last good beat
+* Automatic recovery is bounded and backs off: the first restart is immediate, then 10 s, then 30 s; after three attempts in a row that never held a minute the failure is reported to the UI instead of retried, and the lost event carries the kernel's own message so the reason is visible
+
 #### 3.2.21
 
 * The status card asks every IP source at once instead of trying three in sequence: the richest one (ipwho.is) gets 3.5 s on its own, the first fallback that answered takes over after that, and the whole probe gives up at 8 s — a blocked endpoint used to cost up to twelve seconds each
