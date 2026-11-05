@@ -1,5 +1,5 @@
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/theme_data.dart';
+import 'package:flrone/ui/theme_data.dart';
 
 /// Apple's iOS Dynamic Type scale at its default size, a dp per point, with
 /// two steps it lacks: [display] for a dashboard figure, [pageTitle] for an app

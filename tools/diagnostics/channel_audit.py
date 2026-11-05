@@ -83,7 +83,9 @@ KOTLIN_METHOD_RE = re.compile(r'"([a-zA-Z][a-zA-Z0-9_.:]*)"\s*->')
 EMIT_RE = re.compile(r'\bemit\(\s*"([a-zA-Z][a-zA-Z0-9_]*)"')
 DART_CASE_RE = re.compile(r"case\s+'([a-zA-Z][a-zA-Z0-9_.:]*)'")
 DART_CHANNEL_RE = re.compile(r"(?:Method|Event)Channel\(\s*'([^']+)'")
-KOTLIN_CHANNEL_RE = re.compile(r'"(io\.ericlee[^"]*)"')
+# Read channel names from the constructors on both ends rather than hard-coding
+# an organisation prefix: renaming the bridge namespace must not break this gate.
+KOTLIN_CHANNEL_RE = re.compile(r'(?:Method|Event)Channel\([^)]*?"([^"]+)"')
 CAPABILITY_RE = re.compile(r'"([a-zA-Z]+)"\s+to\s+(true|false)')
 
 # Handlers are dotted (`word.word…`) with the single historical exception of

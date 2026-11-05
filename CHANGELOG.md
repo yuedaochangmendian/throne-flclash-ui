@@ -1,3 +1,14 @@
+#### 3.2.26-pre.2
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open.
+
+Naming unification: the project is now consistently **Flrone**.
+
+* The Flutter module package `b_box_ui` becomes `flrone` (all Dart imports), its Android package and AAR coordinate `io.ericlee.bbox_ui` become `io.flrone.ui`, and the two bridge channels become `io.flrone/box` / `io.flrone/events` — both ends, the design docs and the contract audit stay in sync.
+* Gradle's `rootProject.name`, APK filename prefixes and CI artifact names are now `Flrone-*` instead of `Throne-*`; the log-export header, READMEs and governance documents use Flrone alone.
+* **Deliberately unchanged**: `applicationId` stays `com.throneflclash`, so this preview still installs over 3.2.x and keeps subscriptions and backups. The GitHub repository name and all URLs are unchanged. Upstream package names (`io.nekohasekai.sagernet.*`, `moe.matsuri.nb4a.*`), Kotlin class names, translated strings that name upstream formats (`Throne-Link`, `.thrbackup`, "Throne-only"), historical CHANGELOG sections and vendored manifests are not rewritten.
+* Historical planning documents keep their original identifiers and now carry a note pointing at the current values.
+
 #### 3.2.26-pre.1
 
 > **Preview build for testing only.** It is published as a GitHub prerelease and deliberately does not write `throne-update.json`, so the in-app updater keeps offering 3.2.25. Install it manually from Releases; do not use it as a daily driver. It has passed CI but has not gone through the full physical-device checklist (`docs/device-checklist.md`).

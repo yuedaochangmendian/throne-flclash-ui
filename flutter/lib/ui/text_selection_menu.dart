@@ -3,12 +3,12 @@ import 'dart:async';
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/widgets.dart';
 
-import 'package:b_box_ui/ui/edit_menu.dart';
-import 'package:b_box_ui/ui/icons/icons.dart';
-import 'package:b_box_ui/ui/l10n.dart';
-import 'package:b_box_ui/ui/popup.dart';
-import 'package:b_box_ui/ui/surface.dart';
-import 'package:b_box_ui/ui/text_selection_controls.dart';
+import 'package:flrone/ui/edit_menu.dart';
+import 'package:flrone/ui/icons/icons.dart';
+import 'package:flrone/ui/l10n.dart';
+import 'package:flrone/ui/popup.dart';
+import 'package:flrone/ui/surface.dart';
+import 'package:flrone/ui/text_selection_controls.dart';
 
 /// The selection menu of every text widget in place of the toolbar each
 /// platform draws its own way: iOS's edit menu by touch, a [PopupMenu] by

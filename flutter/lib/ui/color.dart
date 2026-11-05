@@ -2,12 +2,12 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart' show clampDouble;
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/hct/dynamic_color.dart';
-import 'package:b_box_ui/ui/hct/dynamic_scheme.dart';
-import 'package:b_box_ui/ui/hct/hct.dart';
-import 'package:b_box_ui/ui/hct/material_dynamic_colors.dart';
-import 'package:b_box_ui/ui/hct/tonal_palette.dart';
-import 'package:b_box_ui/ui/theme_data.dart';
+import 'package:flrone/ui/hct/dynamic_color.dart';
+import 'package:flrone/ui/hct/dynamic_scheme.dart';
+import 'package:flrone/ui/hct/hct.dart';
+import 'package:flrone/ui/hct/material_dynamic_colors.dart';
+import 'package:flrone/ui/hct/tonal_palette.dart';
+import 'package:flrone/ui/theme_data.dart';
 
 enum ColorStyle {
   vivid,

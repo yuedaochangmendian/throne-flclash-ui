@@ -3,8 +3,8 @@ import 'dart:ui';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/scroll.dart';
-import 'package:b_box_ui/ui/theme_data.dart';
+import 'package:flrone/ui/scroll.dart';
+import 'package:flrone/ui/theme_data.dart';
 
 bool isTouchPlatform(TargetPlatform platform) => switch (platform) {
   TargetPlatform.android ||

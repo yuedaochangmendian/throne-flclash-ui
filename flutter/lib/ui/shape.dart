@@ -1,5 +1,5 @@
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/input_border.dart';
+import 'package:flrone/ui/input_border.dart';
 
 abstract final class AppCorner {
   static const double none = 0;

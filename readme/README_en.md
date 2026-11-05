@@ -1,4 +1,4 @@
-# Flrone (Throne for Android) — short overview
+# Flrone — short overview
 
 > The full English README is at the repository root: [README.md](../README.md). 简体中文版见 [README_zh.md](README_zh.md).
 

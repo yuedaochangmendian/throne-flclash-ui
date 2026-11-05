@@ -24,7 +24,7 @@
 | 1 | ~~依赖链 force 降级与元数据跳过~~：U2 已升 Kotlin 2.4.10 并删除全套 force 和 `-Xskip-metadata-version-check`；`scan_aar_apis.py` 以新版宿主依赖为基线继续守门 | `app/build.gradle.kts` | ✅ U1/U2；rosemoe 解钉仍属 U3 |
 | 2 | ~~CameraX 1.5.3 钉死~~：U1 已升 AGP 8.12.3 / Gradle 8.13，CameraX 1.6.1 自然解析；compileSdk 36 仍是 Flutter AAR 的独立要求 | `app/build.gradle.kts` | ✅ U1 |
 | 3 | analyze 存量 167 条 info（多为 test 的 curly_braces / unnecessary_import） | `flutter analyze` | M |
-| 4 | README 仍是上游 Throne 原文（捐赠链接指 throneproj、文档指 throneproj.github.io、命名混乱：仓库名 flclash / 应用名 Flrone / 包名 com.throneflclash） | `README.md` | M |
+| 4 | ~~README 仍是上游 Throne 原文~~：已重写为 Flrone；命名统一在 `opt/flrone-naming` 完成——Flutter 包名、AAR 坐标、通道、rootProject、APK/artifact 前缀全部改为 Flrone；**applicationId `com.throneflclash` 与仓库名按决策保留**，以免现有用户无法覆盖安装 | `README.md` | ✅ 已解决 |
 | 5 | docs 失实风险：`bbox-bridge.md`/`bbox-flutter.md` 在 0.5 修过一轮，3.0.x 又漂移了十余轮 | docs/ | M |
 | 6 | 核心侧日志噪音：TUN lazy 握手下本地 app 提前 RST → `connection: report handshake success: go: connection reset by peer`（ERROR 级，reF1nd/sing-tun `stack_go_conn.go:51` errGoReset；核心 pin 上游不可修） | 本会话已定性 | N |
 | 7 | 并行会话互踩：2026-11-03 两个 agent 会话同时改本仓库，一方 commit 落进另一方新建的分支 | 该教训记录于本表（§1.2 第 7 项）；AGENTS.md 未随仓库分发 | 治理 |

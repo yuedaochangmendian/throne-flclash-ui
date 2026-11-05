@@ -6,7 +6,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/physics.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/motion.dart';
+import 'package:flrone/ui/motion.dart';
 
 /// iOS 27's interactive pop, as measured on the simulator: the page trails
 /// the finger on a stiff spring, pops when the distance dragged plus the

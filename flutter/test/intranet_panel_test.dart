@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'package:b_box_ui/main.dart';
-import 'package:b_box_ui/widgets.dart';
-import 'package:b_box_ui/components/intranet_panel.dart';
+import 'package:flrone/main.dart';
+import 'package:flrone/widgets.dart';
+import 'package:flrone/components/intranet_panel.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'support/errors.dart';

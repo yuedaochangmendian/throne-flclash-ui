@@ -1,7 +1,7 @@
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/prism_list.dart';
+import 'package:flrone/ui/prism_list.dart';
 
 const _defaultDuration = Duration(milliseconds: 300);
 

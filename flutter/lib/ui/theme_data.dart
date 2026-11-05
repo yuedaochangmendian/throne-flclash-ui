@@ -2,11 +2,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart' show defaultTargetPlatform, immutable;
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/color.dart';
-import 'package:b_box_ui/ui/color_scheme.dart';
-import 'package:b_box_ui/ui/surface.dart';
+import 'package:flrone/ui/color.dart';
+import 'package:flrone/ui/color_scheme.dart';
+import 'package:flrone/ui/surface.dart';
 
-export 'package:b_box_ui/ui/color_scheme.dart';
+export 'package:flrone/ui/color_scheme.dart';
 
 const kMinInteractiveDimension = 48.0;
 const kThemeAnimationDuration = Duration(milliseconds: 200);

@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'package:b_box_ui/common/ip_probe.dart';
+import 'package:flrone/common/ip_probe.dart';
 
 typedef ProbeReply = ({int status, Object? body, Duration delay});
 

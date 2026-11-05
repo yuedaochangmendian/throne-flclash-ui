@@ -1,5 +1,5 @@
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/context.dart';
+import 'package:flrone/ui/context.dart';
 
 /// The hairline that separates what sits on one surface.
 class Divider extends StatelessWidget {

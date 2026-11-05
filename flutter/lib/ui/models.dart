@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:freezed_annotation/freezed_annotation.dart';
-import 'package:b_box_ui/ui/icons/icons.dart';
+import 'package:flrone/ui/icons/icons.dart';
 
 part 'generated/models.freezed.dart';
 

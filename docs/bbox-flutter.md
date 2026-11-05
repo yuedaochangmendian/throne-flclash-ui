@@ -23,8 +23,8 @@ B-box's screens talk to Android through two channels and nothing else:
 
 | Channel | Direction | Used for |
 | --- | --- | --- |
-| `io.ericlee.bfa/box` | Dart → Android | `ready`, `service.start/stop/reload`, `mode.set`, `groups.select/test`, `profiles.*`, `preferences.set`, `settings.get/set/patch`, `url.open`, … |
-| `io.ericlee.bfa/events` | Android → Dart | `dashboard`, `rates`, `profiles`, `groups`, `settings`, `preferences`, `error`, `applyRequired`, … |
+| `io.flrone/box` | Dart → Android | `ready`, `service.start/stop/reload`, `mode.set`, `groups.select/test`, `profiles.*`, `preferences.set`, `settings.get/set/patch`, `url.open`, … |
+| `io.flrone/events` | Android → Dart | `dashboard`, `rates`, `profiles`, `groups`, `settings`, `preferences`, `error`, `applyRequired`, … |
 
 `BoxController` (`flutter/lib/box.dart`) is the only consumer, so implementing those two channels is what makes the
 whole interface work — dashboard, proxies, profiles, tools and settings included. That is what
@@ -34,7 +34,7 @@ whole interface work — dashboard, proxies, profiles, tools and settings includ
 
 ```
 flutter/                     B-box's Flutter module (assets, shaders, 189 Dart files)
-  pubspec.yaml               module: androidPackage io.ericlee.bbox_ui
+  pubspec.yaml               module: androidPackage io.flrone.ui
   build/host/outputs/repo/   the local Maven repo `flutter build aar` writes
 
 app/src/main/java/io/throne/bbox/
@@ -50,7 +50,7 @@ the first frame, so `BoxController.initialize()` gets a real `ready` answer inst
 
 ```bash
 cd flutter
-flutter create --template=module --project-name b_box_ui --org io.ericlee .   # once: writes .android/
+flutter create --template=module --project-name flrone --org io.flrone .   # once: writes .android/
 flutter pub get
 FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn flutter build aar      # debug + release
 ```
@@ -76,7 +76,7 @@ Things that bite, and their fixes:
   in the module's `.android/settings.gradle`.
 
 The AAR lands in `flutter/build/host/outputs/repo`; `repositories.gradle.kts` already points Gradle at it (plus the
-engine fallback mirrors). `app/build.gradle.kts` depends on `io.ericlee.bbox_ui:flutter_release` — a plain
+engine fallback mirrors). `app/build.gradle.kts` depends on `io.flrone.ui:flutter_release` — a plain
 `implementation`, not a `debugImplementation`/`releaseImplementation` pair. Every variant links the release AAR,
 because the debug one ships the JIT engine and Dart as interpreted kernel, which is ~150 MB of APK buying hot reload
 that this host never exercises (the Dart lives in the module and is developed there). No `flutter` command is needed

@@ -1,15 +1,15 @@
 import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/context.dart';
-import 'package:b_box_ui/ui/icons/icons.dart';
-import 'package:b_box_ui/ui/item_position.dart';
-import 'package:b_box_ui/ui/prism_list.dart';
-import 'package:b_box_ui/ui/shape.dart';
-import 'package:b_box_ui/ui/surface.dart';
-import 'package:b_box_ui/ui/text_style.dart';
-import 'package:b_box_ui/ui/theme_data.dart';
-import 'package:b_box_ui/ui/typography.dart';
+import 'package:flrone/ui/context.dart';
+import 'package:flrone/ui/icons/icons.dart';
+import 'package:flrone/ui/item_position.dart';
+import 'package:flrone/ui/prism_list.dart';
+import 'package:flrone/ui/shape.dart';
+import 'package:flrone/ui/surface.dart';
+import 'package:flrone/ui/text_style.dart';
+import 'package:flrone/ui/theme_data.dart';
+import 'package:flrone/ui/typography.dart';
 
 import 'inherited.dart';
 

@@ -1,5 +1,5 @@
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/prism_ui.dart';
+import 'package:flrone/ui/prism_ui.dart';
 
 import 'qr_matrix.dart';
 

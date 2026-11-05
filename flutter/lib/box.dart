@@ -81,10 +81,10 @@ class BoxEventBus {
 
 class BoxController extends ChangeNotifier {
   BoxController({MethodChannel? channel, Stream<dynamic>? events})
-      : _channel = channel ?? const MethodChannel('io.ericlee.bfa/box'),
+      : _channel = channel ?? const MethodChannel('io.flrone/box'),
         // EventChannel uses the same codec as MethodChannel, so its payloads
         // arrive as `_Map<Object?, Object?>` too.
-        _events = (events ?? const EventChannel('io.ericlee.bfa/events').receiveBroadcastStream())
+        _events = (events ?? const EventChannel('io.flrone/events').receiveBroadcastStream())
             .map<dynamic>(normalizePlatformValue);
 
   final MethodChannel _channel;

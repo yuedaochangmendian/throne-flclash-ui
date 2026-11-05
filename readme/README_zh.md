@@ -1,4 +1,4 @@
-# Flrone（Throne for Android）· 简体中文简介
+# Flrone · 简体中文简介
 
 > 完整英文版见仓库根目录 [README.md](../README.md)；英文精简版见 [README_en.md](README_en.md)。
 

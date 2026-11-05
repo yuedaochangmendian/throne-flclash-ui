@@ -24,7 +24,7 @@
 
 - 发布工作流 `release.yml` 由 `workflow_dispatch`（`publish` 布尔输入，默认 `true`）或推送 `v*` tag 触发；tag 名为 `v` + `nb4a.properties` 中的 `VERSION_NAME`。
 - 工作流在发布前用 `git ls-remote --exit-code --tags origin` 检查同名 tag 是否已存在，已存在的 tag 不会复用；发布说明取自 `CHANGELOG.md` 对应版本段落（`buildScript/release_notes.sh`），缺失会先失败。
-- `PUBLISH=false` 时只构建并上传 artifact，不创建发行版。发布失败时另有 `Throne-<tag>-publish-failed` artifact 保底，避免丢失已签名 APK（见 `docs/release-runbook.md`）。
+- `PUBLISH=false` 时只构建并上传 artifact，不创建发行版。发布失败时另有 `Flrone-<tag>-publish-failed` artifact 保底，避免丢失已签名 APK（见 `docs/release-runbook.md`）。
 - 要求（策略）：仅维护者可触发 `workflow_dispatch` 并推送 `v*` tag；应对 `v*` tag 启用保护规则、限制谁可创建／删除 tag，并对默认分支要求合并前 CI 通过。具体规则在 GitHub 仓库设置中维护。
 
 ## 3. 2FA 要求

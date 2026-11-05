@@ -3,18 +3,18 @@ import 'dart:math' as math;
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/shapes/shapes.dart' as shapes;
-import 'package:b_box_ui/ui/context.dart';
-import 'package:b_box_ui/ui/deferred_push.dart';
-import 'package:b_box_ui/ui/fade_box.dart';
-import 'package:b_box_ui/ui/icons/icons.dart';
-import 'package:b_box_ui/ui/inherited.dart';
-import 'package:b_box_ui/ui/l10n.dart';
-import 'package:b_box_ui/ui/loading.dart';
-import 'package:b_box_ui/ui/metrics.dart';
-import 'package:b_box_ui/ui/navigator.dart';
-import 'package:b_box_ui/ui/theme_data.dart';
-import 'package:b_box_ui/ui/typography.dart';
+import 'package:flrone/ui/shapes/shapes.dart' as shapes;
+import 'package:flrone/ui/context.dart';
+import 'package:flrone/ui/deferred_push.dart';
+import 'package:flrone/ui/fade_box.dart';
+import 'package:flrone/ui/icons/icons.dart';
+import 'package:flrone/ui/inherited.dart';
+import 'package:flrone/ui/l10n.dart';
+import 'package:flrone/ui/loading.dart';
+import 'package:flrone/ui/metrics.dart';
+import 'package:flrone/ui/navigator.dart';
+import 'package:flrone/ui/theme_data.dart';
+import 'package:flrone/ui/typography.dart';
 
 /// What an [EmptyIllustration] draws, on a shape and among accent marks it picks
 /// at random.

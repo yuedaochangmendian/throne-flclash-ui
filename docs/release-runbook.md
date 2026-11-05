@@ -10,13 +10,13 @@
 4. `buildScript/publish_release.sh` 负责创建/复用发行版：每次写操作重试 3 次（间隔 15s），已存在的 release/draft 改为上传资产并取消草稿，最后打印资产清单。
 5. 核对：`gh release view <tag> --json tagName,isDraft,targetCommitish,assets`，确认非草稿、tag 指向目标提交、5 个资产齐全（3 个 ABI APK + `SHA256SUMS` + `throne-update.json`）。
 
-只想要 APK 不发布时，用 `-f publish=false`，产物以 `Throne-<tag>` artifact 上传（保留 14 天）。
+只想要 APK 不发布时，用 `-f publish=false`，产物以 `Flrone-<tag>` artifact 上传（保留 14 天）。
 
 ## 当 runner 侧 GitHub API 返回 502 / 500
 
 2026-11-04 的 v3.2.17 连续两次在 `gh release create` 因 runner 侧 502、500 失败，而构建、签名、`release_assets.py` 全部成功；同一时刻从本地调用 `api.github.com` 却正常。因此：
 
-- 工作流现在会给失败的发布加上 `Throne-<tag>-publish-failed` artifact，**签名 APK 不会丢**；
+- 工作流现在会给失败的发布加上 `Flrone-<tag>-publish-failed` artifact，**签名 APK 不会丢**；
 - 发布脚本会保留失败状态（CI 标红），不要误以为"重跑就好"——按下面的本地补发路径收口。
 
 ### 本地补发步骤
@@ -28,7 +28,7 @@ SHA=<目标提交 sha>
 
 # 1. 取回已构建并签名的产物
 gh run download <失败或 publish=false 的 run id> \
-    -n "Throne-$TAG-publish-failed" -D dist/     # 或 -n "Throne-$TAG"
+    -n "Flrone-$TAG-publish-failed" -D dist/     # 或 -n "Flrone-$TAG"
 ls -l dist/                                      # 应含 3 个 APK、SHA256SUMS、throne-update.json
 
 # 2. 若发行版不存在，先创建草稿（本地 API 通道通常可用）

@@ -1,5 +1,5 @@
-name: b_box_ui
-description: B-box Android interface, using FlClash presentation and sing-box services.
+name: flrone
+description: Flrone's Flutter interface, built on the FlClash presentation layer and sing-box services.
 publish_to: none
 version: 1.0.0+1
 environment:
@@ -36,5 +36,5 @@ flutter:
         - asset: assets/fonts/JetBrainsMono-Regular.ttf
   module:
     androidX: true
-    androidPackage: io.ericlee.bbox_ui
-    iosBundleIdentifier: io.ericlee.bboxUi
+    androidPackage: io.flrone.ui
+    iosBundleIdentifier: io.flrone.ui

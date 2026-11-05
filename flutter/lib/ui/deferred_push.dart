@@ -2,8 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/motion.dart';
-import 'package:b_box_ui/ui/navigator.dart';
+import 'package:flrone/ui/motion.dart';
+import 'package:flrone/ui/navigator.dart';
 
 const arrivalHoldLimit = Duration(milliseconds: 200);
 

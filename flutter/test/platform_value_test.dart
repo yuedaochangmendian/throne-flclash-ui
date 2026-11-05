@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:b_box_ui/box.dart';
-import 'package:b_box_ui/core/platform_value.dart';
+import 'package:flrone/box.dart';
+import 'package:flrone/core/platform_value.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 

@@ -1,6 +1,6 @@
-import 'package:b_box_ui/ui/icons/app_glyphs.dart';
-import 'package:b_box_ui/ui/icons/glyph.dart';
-import 'package:b_box_ui/ui/null_status.dart';
+import 'package:flrone/ui/icons/app_glyphs.dart';
+import 'package:flrone/ui/icons/glyph.dart';
+import 'package:flrone/ui/null_status.dart';
 
 /// The illustrations of FlClash's empty pages.
 enum NullStatusIllustration implements Illustration {

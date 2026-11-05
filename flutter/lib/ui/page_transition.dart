@@ -5,11 +5,11 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/physics.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/drag_back.dart';
-import 'package:b_box_ui/ui/liquid_glass.dart';
-import 'package:b_box_ui/ui/motion.dart';
-import 'package:b_box_ui/ui/surface.dart';
-import 'package:b_box_ui/ui/theme_data.dart';
+import 'package:flrone/ui/drag_back.dart';
+import 'package:flrone/ui/liquid_glass.dart';
+import 'package:flrone/ui/motion.dart';
+import 'package:flrone/ui/surface.dart';
+import 'package:flrone/ui/theme_data.dart';
 
 /// iOS 27 pushes and pops a page on a critically damped spring of 0.3 s that
 /// sets off at nine times its distance a second, as measured on the simulator.

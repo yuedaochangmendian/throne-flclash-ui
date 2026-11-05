@@ -2,7 +2,7 @@
 
 ## 本发行版
 
-本仓库 **yuedaochangmendian/throne-flclash-ui**（应用名 Flrone / Throne for Android）是
+本仓库 **yuedaochangmendian/throne-flclash-ui**（应用名 Flrone）是
 [throneproj/ThroneForAndroid](https://github.com/throneproj/ThroneForAndroid) 的**下游发行版**，由 **yuedaochangmendian** 维护。
 
 本发行版的工作集中在 Flutter 界面、桥接层与发布线；核心按 `nb4a.properties` 中的 `THRONE_CORE_REF` 固定并跟随上游。

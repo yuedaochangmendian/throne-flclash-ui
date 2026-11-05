@@ -1,7 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/icons/icons.dart';
-import 'package:b_box_ui/ui/prism_ui.dart';
+import 'package:flrone/ui/icons/icons.dart';
+import 'package:flrone/ui/prism_ui.dart';
 
 sealed class _ListItemAction {
   const _ListItemAction();

@@ -96,7 +96,7 @@ jobs:
         if: ${{ env.PUBLISH != 'true' }}
         uses: actions/upload-artifact@v7
         with:
-          name: Throne-${{ steps.version.outputs.tag }}
+          name: Flrone-${{ steps.version.outputs.tag }}
           path: dist/
           if-no-files-found: error
           retention-days: 14
@@ -115,7 +115,7 @@ jobs:
         if: ${{ failure() && steps.publish.outcome == 'failure' }}
         uses: actions/upload-artifact@v7
         with:
-          name: Throne-${{ steps.version.outputs.tag }}-publish-failed
+          name: Flrone-${{ steps.version.outputs.tag }}-publish-failed
           path: dist/
           if-no-files-found: error
           retention-days: 14

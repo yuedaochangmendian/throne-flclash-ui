@@ -1,4 +1,4 @@
-import 'package:b_box_ui/common/http_message.dart';
+import 'package:flrone/common/http_message.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

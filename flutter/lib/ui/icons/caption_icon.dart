@@ -1,7 +1,7 @@
 import 'dart:ui' show ClipOp;
 
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/theme_data.dart';
+import 'package:flrone/ui/theme_data.dart';
 
 /// Windows 11 renders every caption glyph as a 10x10 Segoe Fluent icon.
 const captionGlyphSize = 10.0;

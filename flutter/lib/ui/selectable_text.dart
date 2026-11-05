@@ -1,10 +1,10 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/rendering.dart' show SelectedContent;
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/text_field.dart';
-import 'package:b_box_ui/ui/text_loupe.dart';
-import 'package:b_box_ui/ui/text_selection_controls.dart';
-import 'package:b_box_ui/ui/text_selection_menu.dart';
+import 'package:flrone/ui/text_field.dart';
+import 'package:flrone/ui/text_loupe.dart';
+import 'package:flrone/ui/text_selection_controls.dart';
+import 'package:flrone/ui/text_selection_menu.dart';
 
 /// Lets the [Text]s under it be selected together.
 class SelectionArea extends StatelessWidget {

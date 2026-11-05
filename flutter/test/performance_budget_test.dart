@@ -1,5 +1,5 @@
-import 'package:b_box_ui/box.dart';
-import 'package:b_box_ui/common/config_guard.dart';
+import 'package:flrone/box.dart';
+import 'package:flrone/common/config_guard.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// A deliberately generous frame-time budget rather than a pixel golden: the

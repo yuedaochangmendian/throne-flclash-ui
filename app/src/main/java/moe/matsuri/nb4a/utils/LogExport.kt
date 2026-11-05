@@ -80,7 +80,7 @@ object LogExport {
             else -> "on (best effort: review before sharing)"
         }
         return buildString {
-            appendLine("===== Throne for Android log export =====")
+            appendLine("===== Flrone log export =====")
             appendLine("exported  : ${utc.format(Date())}")
             appendLine(
                 "app       : ${SagerNet.appVersionNameForDisplay} (versionCode ${BuildConfig.VERSION_CODE}), " +

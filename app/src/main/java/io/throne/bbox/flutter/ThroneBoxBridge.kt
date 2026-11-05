@@ -76,8 +76,8 @@ import java.util.concurrent.TimeUnit
 /**
  * The host side of B-box's own interface.
  *
- * B-box's Flutter screens talk to Android through exactly two channels — `io.ericlee.bfa/box` for calls and
- * `io.ericlee.bfa/events` for pushes — and know nothing about the app behind them. This class implements that
+ * B-box's Flutter screens talk to Android through exactly two channels — `io.flrone/box` for calls and
+ * `io.flrone/events` for pushes — and know nothing about the app behind them. This class implements that
  * contract over Throne: the state comes from [BboxBridge], the writes go through [BboxCommands], and the payloads
  * are shaped the way the Dart side reads them (`box.dart`, `dashboard.dart`, `proxies.dart`, `profiles.dart`).
  *
@@ -94,8 +94,8 @@ class ThroneBoxBridge(
     messenger: BinaryMessenger,
 ) : MethodChannel.MethodCallHandler, EventChannel.StreamHandler, Closeable {
 
-    private val channel = MethodChannel(messenger, "io.ericlee.bfa/box")
-    private val events = EventChannel(messenger, "io.ericlee.bfa/events")
+    private val channel = MethodChannel(messenger, "io.flrone/box")
+    private val events = EventChannel(messenger, "io.flrone/events")
 
     private val scope = activity.lifecycleScope
     private var sink: EventChannel.EventSink? = null

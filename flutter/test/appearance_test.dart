@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'package:b_box_ui/main.dart';
-import 'package:b_box_ui/widgets.dart';
-import 'package:b_box_ui/pages/appearance.dart';
-import 'package:b_box_ui/theme_settings.dart';
-import 'package:b_box_ui/components/page_switcher.dart';
+import 'package:flrone/main.dart';
+import 'package:flrone/widgets.dart';
+import 'package:flrone/pages/appearance.dart';
+import 'package:flrone/theme_settings.dart';
+import 'package:flrone/components/page_switcher.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 

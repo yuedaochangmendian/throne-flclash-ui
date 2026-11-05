@@ -1,8 +1,8 @@
 import 'dart:async';
-import 'package:b_box_ui/components/record.dart';
-import 'package:b_box_ui/main.dart';
-import 'package:b_box_ui/pages/logs.dart';
-import 'package:b_box_ui/widgets.dart';
+import 'package:flrone/components/record.dart';
+import 'package:flrone/main.dart';
+import 'package:flrone/pages/logs.dart';
+import 'package:flrone/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 

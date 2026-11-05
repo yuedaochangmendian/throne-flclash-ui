@@ -1,6 +1,6 @@
 # 贡献指南（Contributing）
 
-感谢你考虑为 Flrone（Throne for Android）贡献。本文件说明开发环境、本地验证、提交流程与需要同步的契约。命令与路径均对应仓库内真实配置：`.github/workflows/ci.yml`、`.github/actions/android-build/action.yml`、`tools/diagnostics/`、`openspec/`。
+感谢你考虑为 Flrone 贡献。本文件说明开发环境、本地验证、提交流程与需要同步的契约。命令与路径均对应仓库内真实配置：`.github/workflows/ci.yml`、`.github/actions/android-build/action.yml`、`tools/diagnostics/`、`openspec/`。
 
 ## 1. 开发环境
 

@@ -5,10 +5,10 @@ import 'package:flutter/physics.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/icons/glyph_icon.dart';
-import 'package:b_box_ui/ui/liquid_glass.dart';
-import 'package:b_box_ui/ui/navigator.dart';
-import 'package:b_box_ui/ui/page_transition.dart';
+import 'package:flrone/ui/icons/glyph_icon.dart';
+import 'package:flrone/ui/liquid_glass.dart';
+import 'package:flrone/ui/navigator.dart';
+import 'package:flrone/ui/page_transition.dart';
 
 /// SwiftUI's glass toolbar springs an item in from 1.2 and a blur of 10 a
 /// frame after its page first moves, which is when a ticker started then

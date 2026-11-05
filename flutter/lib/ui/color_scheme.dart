@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/color.dart';
-import 'package:b_box_ui/ui/theme_data.dart';
+import 'package:flrone/ui/color.dart';
+import 'package:flrone/ui/theme_data.dart';
 
 /// The color roles every component draws with.
 @immutable

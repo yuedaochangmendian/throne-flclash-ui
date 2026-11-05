@@ -1,9 +1,9 @@
 import 'dart:io';
 
-import 'package:b_box_ui/common/config_guard.dart';
-import 'package:b_box_ui/common/isolate_json.dart';
-import 'package:b_box_ui/common/refresh_gate.dart';
-import 'package:b_box_ui/common/throttle.dart';
+import 'package:flrone/common/config_guard.dart';
+import 'package:flrone/common/isolate_json.dart';
+import 'package:flrone/common/refresh_gate.dart';
+import 'package:flrone/common/throttle.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

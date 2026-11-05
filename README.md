@@ -1,4 +1,4 @@
-# Flrone (Throne for Android)
+# Flrone
 
 [![CI](https://github.com/yuedaochangmendian/throne-flclash-ui/actions/workflows/ci.yml/badge.svg)](https://github.com/yuedaochangmendian/throne-flclash-ui/actions/workflows/ci.yml) [![Latest release](https://img.shields.io/github/v/release/yuedaochangmendian/throne-flclash-ui)](https://github.com/yuedaochangmendian/throne-flclash-ui/releases) [![License: GPL-3.0](https://img.shields.io/badge/License-GPL--3.0-blue.svg)](LICENSE)
 

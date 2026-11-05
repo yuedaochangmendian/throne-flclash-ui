@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/shape.dart';
-import 'package:b_box_ui/ui/theme_data.dart';
-import 'package:b_box_ui/ui/typography.dart';
+import 'package:flrone/ui/shape.dart';
+import 'package:flrone/ui/theme_data.dart';
+import 'package:flrone/ui/typography.dart';
 
 /// A short message over a widget, shown by hovering or long pressing it.
 class Tooltip extends StatelessWidget {
