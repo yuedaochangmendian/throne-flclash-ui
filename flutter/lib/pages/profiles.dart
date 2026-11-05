@@ -476,6 +476,10 @@ class _ScanPageState extends State<ScanPage> {
   bool _complete = false, _busy = false;
   int _decoded = 0, _total = 0;
   String? _error;
+  /// The payload that failed to import and when: the camera re-delivers it every frame, so retrying
+  /// immediately would only flash the same error. A different code retries at once.
+  String? _failed;
+  DateTime? _failedAt;
   @override void didChangeDependencies() { super.didChangeDependencies(); _box ??= context.box; }
   @override void dispose() {
     _box?.profileScanClose(_session);
@@ -485,6 +489,10 @@ class _ScanPageState extends State<ScanPage> {
 
   Future<void> _scan(String text) async {
     if (_busy || _complete) return;
+    // A payload that just failed is not retried frame after frame; the same code retries after a
+    // pause (a transient failure), a different one immediately.
+    final failedAt = _failedAt;
+    if (text == _failed && failedAt != null && DateTime.now().difference(failedAt) < const Duration(seconds: 3)) return;
     _busy = true;
     try {
       final result = json(await _box!.profileScan(_session, text));
@@ -497,8 +505,9 @@ class _ScanPageState extends State<ScanPage> {
       if (!mounted) return;
       if (profile != null) { _complete = true; context.safeNestedPop(profile); }
       else { setState(() { _decoded = decoded; _total = (result['total'] as num).toInt(); _error = null; }); }
-    } catch (error) { if (mounted) setState(() => _error = BoxController.describe(error)); }
-    finally { _busy = false; }
+    } catch (error) {
+      if (mounted) setState(() { _error = BoxController.describe(error); _failed = text; _failedAt = DateTime.now(); });
+    } finally { _busy = false; }
   }
   @override Widget build(BuildContext context) => Scaffold(
     title: context.tr('Scan QR code'),

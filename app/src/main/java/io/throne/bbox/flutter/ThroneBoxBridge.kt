@@ -26,7 +26,6 @@ import io.nekohasekai.sagernet.group.SubscriptionClient
 import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.ktx.app
 import io.nekohasekai.sagernet.ktx.streamUri
-import io.nekohasekai.sagernet.outbound.OutboundFactory
 import io.nekohasekai.sagernet.ui.json.engine.JsonTree
 import io.nekohasekai.sagernet.ui.json.engine.JsonType
 import io.nekohasekai.sagernet.ui.json.engine.JsonFormatter
@@ -49,6 +48,7 @@ import io.throne.bbox.bridge.BboxProbeSession
 import io.throne.bbox.bridge.BboxProfiles
 import io.throne.bbox.bridge.BboxResolve
 import io.throne.bbox.bridge.BboxRoutes
+import io.throne.bbox.bridge.BboxScanChunks
 import io.throne.bbox.bridge.BboxTestSession
 import io.throne.bbox.bridge.BboxWarp
 import io.throne.bbox.bridge.Capabilities
@@ -142,8 +142,8 @@ class ThroneBoxBridge(
     @Volatile
     private var lastTestSession: Map<String, Any?>? = null
 
-    /** QR scans that span several frames: what has arrived so far, per session. */
-    private val scans = ConcurrentHashMap<String, StringBuilder>()
+    /** QR scans that span several frames, and the completeness rule for a single-frame symbol. */
+    private val scanChunks = BboxScanChunks()
 
     /** Probe sessions: one HTTP client per id, tunneled through the running service. */
     private val probes = ConcurrentHashMap<String, BboxProbeSession>()
@@ -599,7 +599,7 @@ class ThroneBoxBridge(
                     result.respond { scanChunk(session, text) }
                 }
                 "profiles.scan.close" -> {
-                    scans.remove(call.argument<String>("session").orEmpty())
+                    scanChunks.reset(call.argument<String>("session").orEmpty())
                     result.success(null)
                 }
                 "preferences.set" -> {
@@ -1305,29 +1305,17 @@ class ThroneBoxBridge(
      * progress is reported so the screen can show a bar.
      */
     private suspend fun scanChunk(session: String, text: String): Map<String, Any?> {
-        val buffer = scans.getOrPut(session) { StringBuilder() }
-        if (text.isNotBlank()) buffer.append(text)
-        val assembled = buffer.toString().trim()
-        val firstLine = assembled.lineSequence().firstOrNull().orEmpty()
-        // Besides the subscription/JSON payloads, any node link the importer knows is complete on its own.
-        val complete = assembled.startsWith("http://", true) ||
-            assembled.startsWith("https://", true) ||
-            assembled.startsWith("sing-box://", true) ||
-            assembled.startsWith("{") ||
-            firstLine.startsWith("throne://add/", true) ||
-            firstLine.startsWith("json://", true) ||
-            OutboundFactory.typeForScheme(firstLine) != null
-        return if (complete) {
-            scans.remove(session)
-            mapOf(
-                "profile" to BboxProfiles.decodeIntent(assembled),
-                "text" to assembled,
-                "decoded" to 1,
-                "total" to 1,
-            )
-        } else {
-            mapOf("text" to assembled, "decoded" to 0, "total" to 1)
+        val decision = scanChunks.accept(session, text)
+        if (!decision.complete) {
+            return mapOf("text" to decision.text, "decoded" to 0, "total" to 1)
         }
+        scanChunks.reset(session)
+        return mapOf(
+            "profile" to BboxProfiles.decodeIntent(decision.text),
+            "text" to decision.text,
+            "decoded" to 1,
+            "total" to 1,
+        )
     }
 
     // ------------------------------------------------------------------------------------------------ JSON editing

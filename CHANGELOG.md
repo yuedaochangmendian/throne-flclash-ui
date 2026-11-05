@@ -1,3 +1,15 @@
+#### 3.3.0-pre.4
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one fixes QR import.
+
+Scan import could hang forever on a code whose text is not a URL, a JSON object or a share link:
+
+* The scan screen assembles the frames of one QR and asks the bridge when the payload is complete. That decision only recognised a handful of prefixes — `http(s)://`, `{`, `sing-box://`, a share link — so a **base64 subscription** or a YAML document never completed: the screen sat at "0 / 1" while the camera's repeated frames were appended to the buffer over and over
+* The assembly now also treats "this frame added nothing" as completion — a symbol that stopped changing is complete, whatever its text looks like — and a frame the buffer already holds is not appended again (the camera's A,B,A,B cycle used to build "ABAB")
+* A payload that fails to import is no longer retried on every camera frame, which only flashed the same error; the same code retries after a short pause, a different one immediately
+
+`BboxScanChunksTest` covers the link and URL shapes, the base64 case, multi-frame order and the session reset. If a **share link or subscription URL** still fails to import after this, the cause is the camera rather than the assembly — `adb logcat | grep -iE "mobile_scanner|CameraX"` says which.
+
 #### 3.3.0-pre.3
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. No screen changes: the catalog stops parsing every node's outbound JSON.
