@@ -166,6 +166,7 @@ void throne_Instance_resetNetwork(int64_t handle);
 void throne_Instance_selectOutbound(int64_t handle, char * groupTag, char * outboundTag);
 void throne_Instance_setClashMode(int64_t handle, char * mode);
 void throne_Instance_start(int64_t handle);
+int32_t throne_Instance_alive(int64_t handle);
 int64_t throne_Instance_status(int64_t handle);
 void throne_Instance_urlTestGroup(int64_t handle, char * groupTag);
 int64_t throne_Instance_updateRuleSets(int64_t handle);

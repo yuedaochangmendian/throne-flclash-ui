@@ -96,6 +96,18 @@ The `:bg` process is untouched: it still builds configs, runs the core and persi
 in `:bg` when a config is built, from the same shared preference table, so a start triggered by the tile or a shortcut
 honours the mode as well.
 
+### The heartbeat is a liveness question, not a data question
+
+`throne_status_snapshot` is polled once a second from the worker isolate. Reading the traffic counters can race a box
+that is closing, so the read is fenced; when it panics it answers `{"alive":1}` rather than an empty string. An empty
+answer used to mean "the kernel is gone" to the driver, which closed and reopened a tunnel that was still moving
+traffic — the start/restart loop. Before a miss is counted the worker now asks `throne_Instance_alive`, which is
+`started && !closed` on the box and cannot race the counters. Only a box that really stopped is recovered.
+
+Every lifecycle step writes a `[lifecycle] …` line into `core.log` (start, stop, reload with its reason and origin,
+heartbeat loss, start failure), and the service writes `[service] state -> …` on each transition. The log screen tails
+that same file, so a restart loop reads as a sequence instead of a mystery.
+
 ## Not wired yet
 
 These fall through the dispatch to the `unsupported` error. They are the B-box features Throne has

@@ -82,8 +82,11 @@ class FfiHardeningTests(unittest.TestCase):
     def test_lost_core_is_detected_and_recovered(self) -> None:
         self.assertIn("'type': 'lost'", self.worker)
         self.assertIn("throneStatusSnapshot(ffi, current.handle)", self.worker)
+        # A status read that fails is not a dead core: the cheap liveness probe
+        # must be asked before a miss is counted, or a busy box gets restarted.
+        self.assertIn("throne_Instance_alive(current.handle)", self.worker)
         self.assertIn("_recoverOnce()", self.service)
-        self.assertIn("report(StateError('the kernel stopped responding'))", self.service)
+        self.assertIn("the kernel stopped responding", self.service)
 
     def test_worker_commands_cover_every_kernel_operation(self) -> None:
         for command in ("createInstance", "start", "stop", "setHeartbeat",

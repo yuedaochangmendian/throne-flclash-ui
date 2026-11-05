@@ -145,6 +145,12 @@ func sendEvent(method string, data interface{}) {
 
 //export throne_status_snapshot
 func throne_status_snapshot(handle C.int64_t) (out *C.char) {
+	defer func() {
+		if recover() != nil {
+			out = C.CString(`{"alive":1}`)
+		}
+	}()
+	out = C.CString("")
 	// This is the heartbeat: it runs once a second for as long as the core is up,
 	// so a panic here (a box closing under the read, say) must stay local and must
 	// not reach the typed error channel, which the next Instance.start would
@@ -157,12 +163,6 @@ func throne_status_snapshot(handle C.int64_t) (out *C.char) {
 	// tunnel was carrying traffic the whole time. The alive marker keeps the
 	// heartbeat honest ("core answered, numbers unavailable") and leaves the
 	// restart decision to a core that really stopped answering.
-	out = C.CString("")
-	defer func() {
-		if recover() != nil {
-			out = C.CString(`{"alive":1}`)
-		}
-	}()
 	v := handleGet(int64(handle))
 	inst, ok := v.(*Instance)
 	if !ok || inst == nil {

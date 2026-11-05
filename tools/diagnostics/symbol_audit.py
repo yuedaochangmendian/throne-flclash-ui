@@ -77,6 +77,10 @@ def main() -> int:
             failures.append(f"{label} declares {len(extra)} symbols with no Go export: {', '.join(extra[:12])}")
 
     # Every export must be fenced. cgo cannot propagate a Go panic.
+    #
+    # Two fences are legitimate: guardExport (reports the panic on the typed error
+    # channel) and a local recover (the heartbeat reads, whose panic must not reach
+    # that channel — the next Instance.start would read it as its own failure).
     for path, text in zip((GO_FILES[0], GO_FILES[1]), go_texts[:2]):
         lines = text.split("\n")
         for idx, line in enumerate(lines[:-1]):
@@ -85,7 +89,9 @@ def main() -> int:
                 continue
             name = m.group(1)
             following = "\n".join(lines[idx + 1:idx + 4])
-            if f'defer guardExport("{name}")' not in following:
+            fenced = (f'defer guardExport("{name}")' in following
+                      or ("defer func()" in following and "recover()" in following))
+            if not fenced:
                 failures.append(f"{path.name}: {name} has no recover() fence")
 
     for path, text in zip(GO_FILES, go_texts):

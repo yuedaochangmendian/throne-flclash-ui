@@ -593,7 +593,7 @@ class ThroneFFI {
   // Hand-written: the bridge's own liveness probe, outside gomobile's generated surface.
   late final _throne_Instance_alive =
       _lookup<NativeFunction<Int32 Function(Int64)>>('throne_Instance_alive').asFunction<int Function(int handle)>();
-  bool throne_Instance_alive(int handle) => _throne_Instance_alive(handle) != 0;
+  int throne_Instance_alive(int handle) => _throne_Instance_alive(handle);
 
   late final _throne_Instance_status =
       _lookup<NativeFunction<Int64 Function(Int64)>>('throne_Instance_status').asFunction<int Function(int handle)>();

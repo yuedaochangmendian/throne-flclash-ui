@@ -154,7 +154,7 @@ void _workerMain(List<Object> init) {
     // to end the snapshot and, with it, a tunnel that was carrying traffic all
     // along. Ask the cheap question — is the box still started — before counting
     // a miss, and only a box that really stopped counts as lost.
-    if (ffi.throne_Instance_alive(current.handle)) {
+    if (ffi.throne_Instance_alive(current.handle) != 0) {
       lastBeatAtMs = now;
       lostReported = false;
       return;

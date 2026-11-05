@@ -93,6 +93,8 @@ EXTRA_EXPORTS = [
      "Live/created/released handle counters as JSON: FFI lifetime diagnostics."),
     ("throne_status_snapshot", "char *", [("int64_t", "handle")],
      'All status fields in one JSON object; creates no handle and pushes a "status" event.'),
+    ("throne_Instance_alive", "int32_t", [("int64_t", "handle")],
+     "1 while the box behind this handle is started and not closed: the heartbeat's cheap liveness probe."),
     ("throne_start_tun", "int32_t", [("int32_t", "fd"), ("void *", "tun")],
      "Feed the VpnService fd and the TunInterface token to the kernel before Start."),
     ("throne_stop_tun", "void", [], "Stop the tun started by throne_start_tun."),
