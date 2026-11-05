@@ -1,3 +1,10 @@
+#### 3.2.23
+
+* The heartbeat stops killing a core that is running: a status read that failed was reported as an empty snapshot, which the driver read as "the kernel is gone" and answered by closing a tunnel that was carrying traffic. The read now answers an `alive` marker when it panics, and a new `throne_Instance_alive` asks the cheap question — is this box still started — before a miss is counted, so only a core that really stopped is restarted
+* The exit probe no longer runs several five-source races at once: a state that changed faster than the answer started a new round per second (fifteen TLS connections and a fresh dispatcher each time) while the phone was already busy with the tunnel. Rounds are serialised and the second caller reads the cache the first filled
+* The probe keeps one HTTP client per route instead of building and shutting one down on every check, and `invalidate()` drops the pooled sockets of the route that just changed
+* A restart loop can now be read out of the log: the driver writes `[lifecycle]` lines (start, stop, reload with its reason and origin, heartbeat loss, start failure) and the service writes `[service] state -> …` on every transition into the same `core.log` the log screen shows — the core closing on its own left no trace of who asked for it
+
 #### 3.2.22
 
 * Fixes the service that restarted every few seconds and never stayed up. Two faults each closed a box that had just come up, and the recovery started it again

@@ -149,6 +149,16 @@ void _workerMain(List<Object> init) {
       lostReported = false;
       return;
     }
+    // The numbers were unreadable this second. That is not the same as a dead
+    // core: reading the traffic counters races a busy box, and a panic there used
+    // to end the snapshot and, with it, a tunnel that was carrying traffic all
+    // along. Ask the cheap question — is the box still started — before counting
+    // a miss, and only a box that really stopped counts as lost.
+    if (ffi.throne_Instance_alive(current.handle)) {
+      lastBeatAtMs = now;
+      lostReported = false;
+      return;
+    }
     if (now - startedAt < heartbeatGrace.inMilliseconds) return;
     final since = lastBeatAtMs ?? startedAt;
     if (now - since < heartbeatGiveUpAfter.inMilliseconds || lostReported) return;

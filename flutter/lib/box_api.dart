@@ -182,7 +182,9 @@ extension ShareApi on BoxController {
 
 extension ServiceApi on BoxController {
   Future<bool> serviceReload({bool restart = false}) async {
-    if (kernel.ffiMode) return _kernelOp(this, kernel.reloadService);
+    if (kernel.ffiMode) {
+      return _kernelOp(this, () => kernel.reloadService(reason: 'service.reload from the UI'));
+    }
     return act('service.reload', restart ? {'restart': true} : null);
   }
 

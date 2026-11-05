@@ -101,6 +101,7 @@ class KernelService {
   /// Starts the foreground service (Android duty) and then the core itself.
   Future<void> startService() async {
     if (_kernel == null) return;
+    note('start: user asked for the tunnel');
     await box.call('service.start'); // foreground only in ffiMode
     // A start the user asked for is a fresh incident, whatever the last one cost.
     _recoveryAttempts = 0;
@@ -109,6 +110,7 @@ class KernelService {
 
   Future<void> stopService() async {
     if (_kernel == null) return;
+    note('stop: user asked to stop');
     await _stopCore();
     await box.call('service.stop');
     _emitDashboard('Stopped');
@@ -117,8 +119,9 @@ class KernelService {
   /// Rebuilds the config and restarts the core in place (the foreground service stays).
   /// Only restarts if the core was running — a stopped service must not be pulled up
   /// by a stale selection-change or mode-switch event.
-  Future<void> reloadService() async {
+  Future<void> reloadService({String reason = 'reload'}) async {
     if (_kernel == null || !active) return;
+    note('reload: $reason');
     await _stopCore();
     await _startCore();
   }
@@ -129,6 +132,7 @@ class KernelService {
     if (worker == null) return;
     _starting = true;
     _emitDashboard('Starting');
+    final beganAt = DateTime.now();
     try {
       // The native DB owns the selection (DataStore.selectedProxy). The Flutter
       // preference store holds UI settings only, so mining it for an id used to
@@ -145,8 +149,10 @@ class KernelService {
       await worker.start();
       await worker.setHeartbeat(true);
       _startedAt = DateTime.now();
+      note('core started in ${DateTime.now().difference(beganAt).inMilliseconds}ms');
       _emitDashboard('Started');
     } catch (error) {
+      note('core start FAILED: $error');
       report(error);
       // Release the instance that may have been partially started so the next
       // createInstance does not silently orphan it inside the worker isolate.
@@ -182,14 +188,14 @@ class KernelService {
   Future<void> setMode(String mode) async {
     if (_kernel == null) return;
     await box.call('state.setMode', {'mode': mode});
-    await reloadService();
+    await reloadService(reason: 'outbound mode -> $mode');
     _emitDashboard(null, mode: mode);
   }
 
   /// A profile/group selection already persisted by the channel; the core follows.
   Future<void> onSelectionChanged() async {
     if (_kernel == null) return;
-    await reloadService();
+    await reloadService(reason: 'profile selection changed');
     _emitDashboard(null);
   }
 
@@ -259,7 +265,7 @@ class KernelService {
             attempt == 1 ? const Duration(seconds: 10) : const Duration(seconds: 30));
         if (!active) return; // the user stopped it while waiting
       }
-      await reloadService();
+      await reloadService(reason: 'heartbeat lost, attempt ${attempt + 1}');
       if (active) report('the kernel was restarted automatically');
     } catch (error) {
       report(error);
@@ -330,6 +336,21 @@ class KernelService {
   void report(Object error) {
     if (_disposed) return;
     _events.add({'type': 'error', 'value': error.toString()});
+  }
+
+  /// Writes one lifecycle breadcrumb into the core log — the same file the log
+  /// screen shows. A core that closes on its own leaves no trace of who asked
+  /// for it, which is exactly what a start/restart loop is made of; these lines
+  /// name the caller and the reason.
+  void note(String text) {
+    if (_disposed) return;
+    unawaited(() async {
+      try {
+        await box.call('log.note', {'text': text});
+      } catch (_) {
+        // Diagnostics must never be the reason a lifecycle step fails.
+      }
+    }());
   }
 
   void dispose() {

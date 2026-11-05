@@ -507,7 +507,7 @@ class BoxController extends ChangeNotifier {
       case 'applyRequired': applyRequired = value.toString();
       case 'serviceReload':
         // A widget/tile/notification reload reached the FFI driver (BboxKernel.onReloadWanted).
-        unawaited(kernel.reloadService());
+        unawaited(kernel.reloadService(reason: 'widget/tile/notification reload'));
         return;
       case 'subscriptionReport':
         // Errors and untitled status lines are snackbars; a popup report opens the change window

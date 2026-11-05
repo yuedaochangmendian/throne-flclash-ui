@@ -31,6 +31,7 @@ import io.nekohasekai.sagernet.ui.json.engine.JsonType
 import io.nekohasekai.sagernet.ui.json.engine.JsonFormatter
 import io.nekohasekai.sagernet.update.UpdateChecker
 import moe.matsuri.nb4a.utils.LogRedactor
+import moe.matsuri.nb4a.utils.CoreLog
 import io.throne.bbox.bridge.BboxApi
 import io.throne.bbox.bridge.BboxApps
 import io.throne.bbox.bridge.BboxBackup
@@ -806,6 +807,16 @@ class ThroneBoxBridge(
                         { emit("serviceReload", true) }
                     } else {
                         null
+                    }
+                    result.success(null)
+                }
+                // Lifecycle breadcrumbs from the FFI driver, written into the same core.log the
+                // log screen shows. A restart loop is otherwise invisible: the core simply
+                // closes, and nothing in its own output says who asked for it or why.
+                "log.note" -> {
+                    val text = call.argument<String>("text").orEmpty()
+                    if (text.isNotEmpty()) {
+                        runCatching { CoreLog.write("[lifecycle] $text") }.onFailure { Logs.w(it) }
                     }
                     result.success(null)
                 }

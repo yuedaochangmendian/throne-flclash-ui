@@ -14,6 +14,7 @@ import io.nekohasekai.sagernet.database.ProfileManager
 import io.nekohasekai.sagernet.database.ProxyEntity
 import io.nekohasekai.sagernet.database.ProxyGroup
 import io.nekohasekai.sagernet.ktx.Logs
+import moe.matsuri.nb4a.utils.CoreLog
 import io.throne.bbox.model.BboxStatus
 import io.throne.bbox.model.BboxUiState
 import io.throne.bbox.model.DashboardState
@@ -113,6 +114,10 @@ object BboxBridge : SagerConnection.Callback, GroupRepo.Listener, ProfileManager
     override fun stateChanged(state: BaseService.State, profileName: String?, msg: String?) {
         DataStore.serviceState = state
         lastProfileName = profileName.orEmpty()
+        // The service state is the other half of a restart loop: the core closing on its own and
+        // the service bouncing are indistinguishable from the outside. One line per transition,
+        // in the same file the log screen tails, makes the sequence readable after the fact.
+        runCatching { CoreLog.write("[service] state -> $state${if (msg.isNullOrEmpty()) "" else " ($msg)"}") }
         when (state) {
             BaseService.State.Connected -> if (connectedAt == null) connectedAt = System.currentTimeMillis()
             // A start invalidates the exit the previous session reported; a stop makes the direct answer stale.
@@ -143,6 +148,7 @@ object BboxBridge : SagerConnection.Callback, GroupRepo.Listener, ProfileManager
     override fun onServiceDisconnected() {
         DataStore.serviceState = BaseService.State.Idle
         connectedAt = null
+        runCatching { CoreLog.write("[service] binder disconnected -> Idle") }
         scheduleRefresh(immediate = true)
     }
 

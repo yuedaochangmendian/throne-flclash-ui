@@ -144,20 +144,33 @@ func sendEvent(method string, data interface{}) {
 }
 
 //export throne_status_snapshot
-func throne_status_snapshot(handle C.int64_t) *C.char {
+func throne_status_snapshot(handle C.int64_t) (out *C.char) {
 	// This is the heartbeat: it runs once a second for as long as the core is up,
-	// so a panic here (a box closing under the read, say) must stay local. It is
-	// reported by the null return, not by the typed error channel, which the next
-	// Instance.start would otherwise read and mistake for its own failure.
-	defer func() { _ = recover() }()
+	// so a panic here (a box closing under the read, say) must stay local and must
+	// not reach the typed error channel, which the next Instance.start would
+	// otherwise read and mistake for its own failure.
+	//
+	// A panic while *reading* the numbers says nothing about whether the core is
+	// running — a busy tunnel reads fine one second and races its traffic manager
+	// the next. Answering with an empty string made the driver treat every such
+	// race as a dead kernel and restart it, which is the start/restart loop: the
+	// tunnel was carrying traffic the whole time. The alive marker keeps the
+	// heartbeat honest ("core answered, numbers unavailable") and leaves the
+	// restart decision to a core that really stopped answering.
+	out = C.CString("")
+	defer func() {
+		if recover() != nil {
+			out = C.CString(`{"alive":1}`)
+		}
+	}()
 	v := handleGet(int64(handle))
 	inst, ok := v.(*Instance)
 	if !ok || inst == nil {
-		return C.CString("")
+		return out
 	}
 	st := inst.Status()
 	if st == nil {
-		return C.CString("")
+		return out
 	}
 	snap := map[string]int64{
 		"memory": st.Memory,

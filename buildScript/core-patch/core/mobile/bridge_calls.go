@@ -847,6 +847,24 @@ func throne_Instance_start(handle C.int64_t)  {
 	if err := handleGet(int64(handle)).(*Instance).Start(); err != nil { setErr(err) }
 }
 
+//export throne_Instance_alive
+func throne_Instance_alive(handle C.int64_t) (out C.int32_t) {
+	// The rest of the bridge is ABI-locked to gomobile's generated surface, so this
+	// is the one cheap liveness question the Dart heartbeat can ask: is the box
+	// behind this handle still started and not closed? Reading the traffic counters
+	// can race a busy box; asking whether it runs does not. The handle being gone
+	// answers 0 (the instance was released), which is exactly when a restart is due.
+	defer func() { _ = recover() }()
+	inst, ok := handleGet(int64(handle)).(*Instance)
+	if !ok || inst == nil {
+		return 0
+	}
+	if inst.running() {
+		return 1
+	}
+	return 0
+}
+
 //export throne_Instance_status
 func throne_Instance_status(handle C.int64_t) C.int64_t {
 	// Polled on the heartbeat path like throne_status_snapshot: a panic must not

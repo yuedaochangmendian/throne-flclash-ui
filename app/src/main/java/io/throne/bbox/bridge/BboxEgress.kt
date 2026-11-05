@@ -8,6 +8,8 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Call
@@ -83,6 +85,24 @@ object BboxEgress {
 
     private const val TTL_MS = 30_000L
 
+    // One probe at a time. The card asks on every state change, and a state that
+    // flickers faster than the answer used to start a new five-source race per
+    // second — fifteen TLS connections and a fresh dispatcher each time, all of it
+    // on a phone already busy with the tunnel. Callers queue here instead, and the
+    // second one finds the cache the first just filled.
+    private val gate = Mutex()
+
+    // Clients are per route, not per probe: building one spawns a dispatcher and a
+    // pool, and shutting it down immediately after throws both away.
+    @Volatile
+    private var tunnelClient: OkHttpClient? = null
+
+    @Volatile
+    private var tunnelClientPort = -1
+
+    @Volatile
+    private var directClient: OkHttpClient? = null
+
     fun cached(direct: Boolean = false): Info = if (direct) cachedDirect else cached
 
     /**
@@ -93,7 +113,10 @@ object BboxEgress {
      * rich source replies and still gets an answer when that source is blocked — the old sequential loop spent up to
      * 12 s per endpoint before giving up.
      */
-    suspend fun probe(force: Boolean = false, direct: Boolean = false, onError: (String) -> Unit = {}): Info {
+    suspend fun probe(force: Boolean = false, direct: Boolean = false, onError: (String) -> Unit = {}): Info =
+        gate.withLock { probeLocked(force, direct, onError) }
+
+    private suspend fun probeLocked(force: Boolean, direct: Boolean, onError: (String) -> Unit): Info {
         val now = System.currentTimeMillis()
         val fresh = if (direct) {
             now - cachedDirectAt < TTL_MS && !cachedDirect.isEmpty
@@ -103,25 +126,19 @@ object BboxEgress {
         if (!force && fresh) return cached(direct)
         val http = clientFor(direct) ?: return cached(direct)
         val failure = AtomicReference<String?>(null)
-        try {
-            val answer = race(http, failure)
-            if (answer != null && !answer.isEmpty) {
-                if (direct) {
-                    cachedDirect = answer
-                    cachedDirectAt = System.currentTimeMillis()
-                } else {
-                    cached = answer
-                    cachedAt = System.currentTimeMillis()
-                }
-                return answer
+        val answer = race(http, failure)
+        if (answer != null && !answer.isEmpty) {
+            if (direct) {
+                cachedDirect = answer
+                cachedDirectAt = System.currentTimeMillis()
+            } else {
+                cached = answer
+                cachedAt = System.currentTimeMillis()
             }
-            onError(failure.get() ?: "Unreachable")
-            return cached(direct)
-        } finally {
-            // One client per probe; without this its dispatcher threads and pooled sockets outlive the answer.
-            runCatching { http.dispatcher.executorService.shutdown() }
-            runCatching { http.connectionPool.evictAll() }
+            return answer
         }
+        onError(failure.get() ?: "Unreachable")
+        return cached(direct)
     }
 
     /**
@@ -178,14 +195,26 @@ object BboxEgress {
 
     /** The client for one route; null when the tunnel is asked for but no inbound is configured yet. */
     private fun clientFor(direct: Boolean): OkHttpClient? {
+        if (direct) {
+            return directClient ?: newClient(null).also { directClient = it }
+        }
+        val port = DataStore.inboundSocksPort
+        if (port <= 0) return null
+        val cached = tunnelClient
+        if (cached != null && tunnelClientPort == port) return cached
+        val client = newClient(port)
+        tunnelClient = client
+        tunnelClientPort = port
+        return client
+    }
+
+    private fun newClient(port: Int?): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .connectTimeout(6, TimeUnit.SECONDS)
             .readTimeout(8, TimeUnit.SECONDS)
             .callTimeout(12, TimeUnit.SECONDS)
             .retryOnConnectionFailure(false)
-        if (direct) return builder.build()
-        val port = DataStore.inboundSocksPort
-        if (port <= 0) return null
+        if (port == null) return builder.build()
         val host = DataStore.inboundAddress.ifBlank { SettingsRegistry.LOOPBACK_ADDRESS }
         return builder.proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress(host, port))).build()
     }
@@ -195,6 +224,9 @@ object BboxEgress {
         cachedAt = 0L
         cachedDirect = Info()
         cachedDirectAt = 0L
+        // The route changed, so the pooled sockets of the previous route are worthless.
+        runCatching { tunnelClient?.connectionPool?.evictAll() }
+        runCatching { directClient?.connectionPool?.evictAll() }
     }
 
     private fun parseIpSb(json: JSONObject): Info = Info(
