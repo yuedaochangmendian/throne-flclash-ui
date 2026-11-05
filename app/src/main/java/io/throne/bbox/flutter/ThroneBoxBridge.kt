@@ -100,6 +100,9 @@ class ThroneBoxBridge(
     private var sink: EventChannel.EventSink? = null
     private var pump: Job? = null
 
+    /** Bettbox's `tick1s`: one traffic sample per second, independent of whether a number changed. */
+    private var ratesTick: Job? = null
+
     /** B-box keeps its interface preferences in a store of its own; so does the port. */
     private val preferences = activity.getSharedPreferences("bbox_ui", Context.MODE_PRIVATE)
 
@@ -156,6 +159,7 @@ class ThroneBoxBridge(
 
     override fun close() {
         pump?.cancel()
+        ratesTick?.cancel()
         connectionsJob?.cancel()
         memoryJob?.cancel()
         reportsJob?.cancel()
@@ -183,11 +187,24 @@ class ThroneBoxBridge(
                 .distinctUntilChanged()
                 .collect { pushState() }
         }
+        // The dashboard sparkline is a window in time, not a list of changes: Bettbox appends one
+        // sample per second (`tick1s`), so an idle tunnel scrolls to zero instead of freezing on
+        // its last peak. A sample is pushed every second while the service runs, and not at all
+        // while it is stopped — the window belongs to the session that produced it.
+        ratesTick?.cancel()
+        ratesTick = scope.launch {
+            while (isActive) {
+                delay(1_000)
+                if (DataStore.serviceState.connected) pushState(sampleRate = true)
+            }
+        }
     }
 
     override fun onCancel(arguments: Any?) {
         pump?.cancel()
         pump = null
+        ratesTick?.cancel()
+        ratesTick = null
         sink = null
     }
 
@@ -197,8 +214,12 @@ class ThroneBoxBridge(
         }
     }
 
-    /** Pushes whatever changed since the last push: the dashboard, the rates and the catalog are separate events. */
-    private fun pushState() {
+    /**
+     * Pushes whatever changed since the last push: the dashboard, the rates and the catalog are
+     * separate events. [sampleRate] forces the rates through even when the numbers are identical,
+     * because the sparkline needs one point per second rather than one per change.
+     */
+    private fun pushState(sampleRate: Boolean = false) {
         val state = BboxBridge.state.value
         val dashboard = dashboardWire(state)
         if (dashboard != lastDashboard) {
@@ -210,7 +231,7 @@ class ThroneBoxBridge(
             "download" to state.dashboard.traffic.downloadRate,
             "memoryBytes" to (state.dashboard.memory?.inUse ?: 0L),
         )
-        if (rates != lastRates) {
+        if (sampleRate || rates != lastRates) {
             lastRates = rates
             emit("rates", rates)
         }
@@ -1045,7 +1066,7 @@ class ThroneBoxBridge(
             "asn" to info.asn,
             "type" to info.type,
             "direct" to direct,
-            "ipSource" to "ipwho.is",
+            "ipSource" to (info.source?.substringAfter("://")?.substringBefore('/') ?: "ipwho.is"),
             "checkedAt" to System.currentTimeMillis(),
         )
     }

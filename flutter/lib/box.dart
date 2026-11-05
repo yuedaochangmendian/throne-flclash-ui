@@ -118,6 +118,18 @@ class BoxController extends ChangeNotifier {
   String? defaultLogLevel;
   final uploadHistory = <double>[];
   final downloadHistory = <double>[];
+  /// Bettbox keeps a 30 point window sampled once a second, so the chart spans half a minute.
+  static const trafficWindow = 30;
+  static const trafficSampleGap = Duration(milliseconds: 700);
+  DateTime? _lastSample;
+
+  /// Appends the current rates to the two sparkline windows, dropping the oldest point.
+  void _sampleTraffic() {
+    uploadHistory.add((rates['upload'] as num? ?? 0).toDouble());
+    downloadHistory.add((rates['download'] as num? ?? 0).toDouble());
+    if (uploadHistory.length > trafficWindow) uploadHistory.removeAt(0);
+    if (downloadHistory.length > trafficWindow) downloadHistory.removeAt(0);
+  }
   String version = '', coreVersion = '';
   int systemAccentColor = 0xff007aff;
   int sampleRevision = 0;
@@ -424,7 +436,17 @@ class BoxController extends ChangeNotifier {
         Json state(Json data) => Map.fromEntries(data.entries.where((entry) => !counters.contains(entry.key)));
         aspects = const DeepCollectionEquality().equals(state(dashboard), state(nextDashboard))
           ? const [BoxAspect.traffic] : const [BoxAspect.state, BoxAspect.traffic];
+        final wasRunning = running;
         dashboard = nextDashboard;
+        // Bettbox clears its traffic window and totals when the session ends, so the next start
+        // draws a curve of its own instead of continuing the one the previous session left.
+        if (wasRunning && !running) {
+          uploadHistory.clear();
+          downloadHistory.clear();
+          rates = {};
+          sampleRevision++;
+          _lastSample = null;
+        }
       case 'profiles': profilesRevision++; _profileStats.clear(); profiles = rows(value);
       case 'groups': groups = rows(value);
       case 'connections':
@@ -470,12 +492,16 @@ class BoxController extends ChangeNotifier {
         systemAccentColor = accent;
         aspects = const [BoxAspect.appearance];
       case 'rates':
-        sampleRevision++;
         rates = json(value);
-        uploadHistory.add((rates['upload'] as num? ?? 0).toDouble());
-        downloadHistory.add((rates['download'] as num? ?? 0).toDouble());
-        if (uploadHistory.length > 30) uploadHistory.removeAt(0);
-        if (downloadHistory.length > 30) downloadHistory.removeAt(0);
+        // One point per second, whoever pushes it: the channel's tick and the FFI status feed can
+        // both report the same second, and a doubled sample would halve the window's span. The
+        // revision tracks the append, so the chart's own delta stays one value per increment.
+        final now = DateTime.now();
+        if (_lastSample == null || now.difference(_lastSample!) >= trafficSampleGap) {
+          _lastSample = now;
+          _sampleTraffic();
+          sampleRevision++;
+        }
         aspects = const [BoxAspect.traffic];
       case 'error': eventBus.emit(BoxMessageEvent(value.toString())); return;
       case 'applyRequired': applyRequired = value.toString();

@@ -2,20 +2,31 @@ package io.throne.bbox.bridge
 
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.SettingsRegistry
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
+import okhttp3.Call
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
 import java.net.InetSocketAddress
 import java.net.Proxy
+import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * The outbound identity the status card shows.
  *
  * B-box asks libbox for the routed egress; Throne exposes the same thing as the local mixed inbound, so the probe
  * sends an HTTP request through `mixedPort` and reads what the far end sees. With the service stopped nothing answers
- * that port, so the same request goes out over the phone's own connection instead and reports the direct address. Two
- * public endpoints are tried in turn because either can rate-limit a shared exit.
+ * that port, so the same request goes out over the phone's own connection instead and reports the direct address.
+ * Several public endpoints are asked at once because any of them can rate-limit a shared exit or be blocked.
  */
 object BboxEgress {
 
@@ -31,17 +42,30 @@ object BboxEgress {
         val organization: String? = null,
         val asn: String? = null,
         val type: String? = null,
+        // The endpoint that answered, so the details screen names the source it actually used
+        // rather than the one that was preferred.
+        val source: String? = null,
     ) {
         val isEmpty: Boolean get() = ip.isNullOrBlank()
     }
 
-    // ipwho.is answers the richest set (country name, region, city, ISP, ASN) over HTTPS; the two existing
-    // endpoints stay as fallbacks for when it rate-limits or is unreachable.
+    // ipwho.is answers the richest set (country name, region, city, ISP, ASN) over HTTPS; the
+    // rest are fallbacks for when it rate-limits, is slow or is unreachable. The order is the
+    // preference order, not the order they are tried: every source is asked at once (Bettbox's
+    // race), so a blocked source costs latency only until another one answers.
     private val endpoints = listOf(
         "https://ipwho.is/" to ::parseIpWhoIs,
+        "https://uapis.cn/api/v1/network/myip" to ::parseUapis,
+        "https://get.geojs.io/v1/ip/geo.json" to ::parseGeojs,
         "https://api.ip.sb/geoip" to ::parseIpSb,
         "https://ipinfo.io/json" to ::parseIpInfo,
     )
+
+    /** The whole probe must answer within this budget, however many sources are slow. */
+    private const val PROBE_BUDGET_MS = 8_000L
+
+    /** How long the richest source may hold the answer before a fallback takes over. */
+    private const val PRIMARY_BUDGET_MS = 3_500L
 
     @Volatile
     private var cached: Info = Info()
@@ -64,6 +88,10 @@ object BboxEgress {
     /**
      * Probes the egress, through the mixed inbound unless [direct]. Returns the cached answer while it is fresh unless
      * [force]; a failure keeps the previous answer and reports the error through [onError].
+     *
+     * Every source is asked in parallel and the preferred one is waited for first, so the card answers as soon as the
+     * rich source replies and still gets an answer when that source is blocked — the old sequential loop spent up to
+     * 12 s per endpoint before giving up.
      */
     suspend fun probe(force: Boolean = false, direct: Boolean = false, onError: (String) -> Unit = {}): Info {
         val now = System.currentTimeMillis()
@@ -74,35 +102,78 @@ object BboxEgress {
         }
         if (!force && fresh) return cached(direct)
         val http = clientFor(direct) ?: return cached(direct)
-        var lastError: String? = null
-        for ((url, parse) in endpoints) {
-            try {
-                val request = Request.Builder().url(url).header("Accept", "application/json").build()
-                http.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) {
-                        lastError = "HTTP ${response.code}"
-                        return@use
-                    }
-                    val body = response.body?.string().orEmpty()
-                    val info = parse(JSONObject(body))
-                    if (!info.isEmpty) {
-                        if (direct) {
-                            cachedDirect = info
-                            cachedDirectAt = System.currentTimeMillis()
-                        } else {
-                            cached = info
-                            cachedAt = System.currentTimeMillis()
-                        }
-                        return info
-                    }
-                    lastError = "Empty answer"
+        val failure = AtomicReference<String?>(null)
+        try {
+            val answer = race(http, failure)
+            if (answer != null && !answer.isEmpty) {
+                if (direct) {
+                    cachedDirect = answer
+                    cachedDirectAt = System.currentTimeMillis()
+                } else {
+                    cached = answer
+                    cachedAt = System.currentTimeMillis()
                 }
-            } catch (e: Exception) {
-                lastError = e.message ?: e.javaClass.simpleName
+                return answer
             }
+            onError(failure.get() ?: "Unreachable")
+            return cached(direct)
+        } finally {
+            // One client per probe; without this its dispatcher threads and pooled sockets outlive the answer.
+            runCatching { http.dispatcher.executorService.shutdown() }
+            runCatching { http.connectionPool.evictAll() }
         }
-        onError(lastError ?: "Unreachable")
-        return cached(direct)
+    }
+
+    /**
+     * Asks every source at once. The preferred source gets [PRIMARY_BUDGET_MS] on its own; if it has not answered by
+     * then, the first fallback that did wins. Nothing may outlive [PROBE_BUDGET_MS].
+     */
+    private suspend fun race(http: OkHttpClient, failure: AtomicReference<String?>): Info? = coroutineScope {
+        val calls = CopyOnWriteArrayList<Call>()
+        try {
+            val (primaryUrl, primaryParse) = endpoints.first()
+            val primary = async { fetch(http, primaryUrl, primaryParse, calls, failure) }
+            val fallbacks = Channel<Info>(Channel.UNLIMITED)
+            val rest: List<Job> = endpoints.drop(1).map { (url, parse) ->
+                launch { fetch(http, url, parse, calls, failure)?.let { fallbacks.send(it) } }
+            }
+            val preferred = withTimeoutOrNull(PRIMARY_BUDGET_MS) { primary.await() }
+            if (preferred != null) return@coroutineScope preferred
+            val remaining = PROBE_BUDGET_MS - PRIMARY_BUDGET_MS
+            val fallback = withTimeoutOrNull(remaining) { fallbacks.receive() }
+            rest.forEach { it.cancel() }
+            fallback
+        } finally {
+            // Whatever is still in flight is no longer wanted: cancelling the calls unblocks the
+            // threads that a cancelled coroutine cannot interrupt on its own.
+            calls.forEach { runCatching { it.cancel() } }
+        }
+    }
+
+    /** One source's request. Records why it failed so a total failure can say what went wrong. */
+    private suspend fun fetch(
+        http: OkHttpClient,
+        url: String,
+        parse: (JSONObject) -> Info,
+        calls: MutableList<Call>,
+        failure: AtomicReference<String?>,
+    ): Info? = withContext(Dispatchers.IO) {
+        try {
+            val call = http.newCall(Request.Builder().url(url).header("Accept", "application/json").build())
+            calls += call
+            call.execute().use { response ->
+                if (!response.isSuccessful) {
+                    failure.set("HTTP ${response.code}")
+                    return@use null
+                }
+                val info = parse(JSONObject(response.body?.string().orEmpty()))
+                if (info.isEmpty) failure.set("Empty answer")
+                info.takeUnless { it.isEmpty }?.copy(source = url)
+            }
+        } catch (e: Exception) {
+            failure.set(e.message ?: e.javaClass.simpleName)
+            null
+        }
     }
 
     /** The client for one route; null when the tunnel is asked for but no inbound is configured yet. */
@@ -133,6 +204,38 @@ object BboxEgress {
         asn = json.optString("asn").takeIf { it.isNotBlank() },
         type = json.optString("type").takeIf { it.isNotBlank() } ?: "IPv4",
     )
+
+    /**
+     * uapis.cn answers a flat object with the region as one string ("中国 广东 广州"), the operator and the
+     * AS number. It carries no ISO country code, so the card shows the country name instead of a flag.
+     */
+    private fun parseUapis(json: JSONObject): Info {
+        val region = json.optString("region").split(' ', '　').filter { it.isNotBlank() }
+        return Info(
+            ip = json.optString("ip").takeIf { it.isNotBlank() },
+            countryName = region.getOrNull(0),
+            region = region.getOrNull(1),
+            city = region.getOrNull(2),
+            isp = json.optString("isp").takeIf { it.isNotBlank() },
+            organization = json.optString("llc").takeIf { it.isNotBlank() },
+            asn = json.optString("asn").takeIf { it.isNotBlank() },
+        )
+    }
+
+    /** geojs.io keys the AS number as a bare integer and repeats the operator in two fields. */
+    private fun parseGeojs(json: JSONObject): Info {
+        val asn = json.optString("asn").takeIf { it.isNotBlank() }?.let { if (it.startsWith("AS")) it else "AS$it" }
+        val organization = json.optString("organization_name").ifBlank { json.optString("organization") }
+        return Info(
+            ip = json.optString("ip").takeIf { it.isNotBlank() },
+            country = json.optString("country_code").takeIf { it.isNotBlank() },
+            countryName = json.optString("country").takeIf { it.isNotBlank() },
+            region = json.optString("region").takeIf { it.isNotBlank() },
+            city = json.optString("city").takeIf { it.isNotBlank() },
+            organization = organization.takeIf { it.isNotBlank() },
+            asn = asn,
+        )
+    }
 
     private fun parseIpInfo(json: JSONObject): Info {
         val org = json.optString("org").takeIf { it.isNotBlank() }

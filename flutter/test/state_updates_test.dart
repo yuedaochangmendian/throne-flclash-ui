@@ -118,4 +118,34 @@ void main() {
     expect(box.defaultLogLevel, 'Trace');
     box.dispose();
   });
+
+  test('the traffic window takes one sample a second and empties when the session ends', () async {
+    await box.initialize();
+    Future<void> emit(String type, Object value) async {
+      events.add({'type': type, 'value': value});
+      await Future<void>.delayed(Duration.zero);
+    }
+    await emit('dashboard', {'status': 'Started'});
+    await emit('rates', {'upload': 100, 'download': 200});
+    expect(box.uploadHistory, [100.0]);
+    expect(box.downloadHistory, [200.0]);
+    expect(box.sampleRevision, 1);
+    // The channel's tick and the FFI status feed can both report the same second; that is one
+    // sample, not two, or the half-minute window would only span fifteen seconds.
+    await emit('rates', {'upload': 110, 'download': 210});
+    expect(box.uploadHistory, [100.0]);
+    expect(box.sampleRevision, 1);
+    // The live figure still follows every push, even when the window does not grow.
+    expect(box.rates['upload'], 110);
+    await Future<void>.delayed(BoxController.trafficSampleGap);
+    await emit('rates', {'upload': 120, 'download': 220});
+    expect(box.uploadHistory, [100.0, 120.0]);
+    expect(box.downloadHistory, [200.0, 220.0]);
+    // Bettbox clears the window and the totals with the session, so the next start draws its own curve.
+    await emit('dashboard', {...box.dashboard, 'status': 'Stopped', 'uploadTotal': 0, 'downloadTotal': 0});
+    expect(box.uploadHistory, isEmpty);
+    expect(box.downloadHistory, isEmpty);
+    expect(box.rates, isEmpty);
+    box.dispose();
+  });
 }

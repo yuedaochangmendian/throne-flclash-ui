@@ -140,7 +140,7 @@ class _SpeedTile extends StatelessWidget {
         child: Stack(children: [
           Positioned(left: -2, right: -2, bottom: -2, height: chartHeight, child: LineChart(
             values: List.of(upload ? box.uploadHistory : box.downloadHistory), revision: box.sampleRevision,
-            capacity: 30, minScale: 8 * 1024, baselineRatio: 1,
+            capacity: BoxController.trafficWindow, minScale: 8 * 1024, baselineRatio: 1,
             color: upload ? Color.alphaBlend(colors.primary.withValues(alpha: .45), SurfaceLevel.card.colorOf(colors)) : colors.primary,
           )),
           Padding(padding: EdgeInsets.fromLTRB(16, 14, 16, chartHeight - 2 + 12), child: Column(

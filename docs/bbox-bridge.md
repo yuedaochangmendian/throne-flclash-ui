@@ -40,9 +40,9 @@ translation, not a set of adapters bolted onto each screen.
 | --- | --- |
 | `BboxBridge.kt` | Owns the single service connection and both repository listeners, mirrors everything into `BboxUiState`, debounces bursts of change notifications, ticks the run time and memory once a second. |
 | `BboxCatalog.kt` | Maps the catalog: a Throne group is a B-box group, its members are the nodes, the selected profile is the selection; a subscription group is also a B-box profile card with its quota and expiry. |
-| `BboxTrafficMeter.kt` | Turns `SpeedDisplayData` into the dashboard's rates, totals and the two 30 point sparklines. |
+| `BboxTrafficMeter.kt` | Turns `SpeedDisplayData` into the dashboard's rates, totals and the two 30 point sparklines; the window is one sample per second while the service runs, so it spans half a minute. |
 | `BboxMode.kt` | The outbound mode switch, implemented as a routing-profile rewrite (see below). |
-| `BboxEgress.kt` | The outbound IP, country and organisation, probed through the running mixed inbound. |
+| `BboxEgress.kt` | The outbound IP, country and organisation, probed through the running mixed inbound (or over the phone's own connection while stopped). Five sources are raced at once with an 8 s budget, the richest one preferred; the answer names the source that won. |
 | `BboxCommands.kt` | Every write: start/stop, mode, selection, tests, subscription refresh, delete, open URL. |
 | `BboxRuntime.kt` | Installs the bridge from `SagerNet.onCreate` in the main process and hands `CoreConfigs` the mode-aware routing input. |
 | `app/.../flutter/ThroneBoxBridge.kt` | The host of B-box's own channels: turns this state into the `dashboard` / `rates` / `profiles` / `groups` events and the actions into the calls the Flutter screens make. |
@@ -56,7 +56,7 @@ translation, not a set of adapters bolted onto each screen.
 | `dashboard.groups[]` | `GroupRepo.all()` + `ProfileManager.members(gid)` | `selected` is `DataStore.selectedProxy`. |
 | node `delay` / `testedAt` | `ProxyEntity.latency` / `latencyAt` | Seconds in the row, milliseconds in the model. |
 | `dashboard.profiles[]` | subscription groups (`ProxyGroup.isSubscription`) | `traffic` / `expiry` come from `SubUserInfo` (`groups.sub_metadata_json`). |
-| `dashboard.egress` | `BboxEgress` | IP, country, organisation, ASN and address family. |
+| `dashboard.egress` | `BboxEgress` | IP, country, organisation, ASN, address family, the endpoint that answered, and `direct` when no tunnel carried the request. |
 | `dashboard.memory` | `Runtime` + core's `/memory` (`BboxApi.memory`) | `core`/`rss` come from the core's `/memory` (`inuse`, falling back to `rss`); `app`/`heapInuse` is the host process's used heap. The roles can swap across sing-box builds, which is why both are on the wire. |
 | `dashboard.intranet` | `lanWire` / `lanSet` | The mixed inbound's "Allow LAN" and its port; the panel shows the active bindings. |
 
