@@ -72,6 +72,7 @@ translation, not a set of adapters bolted onto each screen.
 | `updateSubscription` | `SubscriptionQueue.refreshGroup(gid, showDiff = true)`. |
 | `deleteProfile` | `GroupRepo.delete` (its profiles go by the foreign key cascade). |
 | `openUrl` | `ACTION_VIEW` on the application context. |
+| `dns.resolve(domains)` | `DomainResolver` in `:bg` over the core's `ResolveDomains`, reached through `ICoreService.resolveDomains`. Lookups are pinned to the running box's `dns-direct` — the OS resolver is what a kill switch blocks, and a Tun answers it from fakeip — so 32 domains resolve 16 at a time at 5 s each, and no box up answers `running: false` instead of the phone's resolver pretending to be the tunnel. |
 
 ## Outbound mode
 
@@ -128,7 +129,9 @@ list needs no Shizuku grant.
 
 Wired since the earlier drafts of this file: the connections and logs screens (`BboxApi.connections`
 over the clash API, `BboxLogs` over `CoreLog`), profile import (`addProfile` and the scanner/file
-flows), and the per-node probe (`dashboard.probe.*` with `dashboard.qualityCache.*`).
+flows), the per-node probe (`dashboard.probe.*` with `dashboard.qualityCache.*`), and the
+domain-resolution tool (`dns.resolve`, whose `dnsResolve` capability is the one diagnostics entry
+that is on).
 
 File payloads the platform hands the app land here too: `files.open` takes a `content://` or
 `file://` Uri and answers either with the `backup` envelope of a `.thrbackup` (the same shape

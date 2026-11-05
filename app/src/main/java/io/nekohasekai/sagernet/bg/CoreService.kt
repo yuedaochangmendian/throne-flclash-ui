@@ -56,6 +56,9 @@ class CoreService : Service() {
         )
 
         override fun stopDiagnostics() = CoreDiagnostics.stop()
+
+        override fun resolveDomains(domains: Array<String>?): String =
+            DomainResolver.resolve(domains?.toList().orEmpty())
     }
 
     override fun onCreate() {

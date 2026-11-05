@@ -1,3 +1,16 @@
+#### 3.3.0-pre.1
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open.
+
+The first v3.3.0 capability is a diagnostics tool rather than a copied page: **domain resolution through the running tunnel**.
+
+* **Settings → Diagnostics → Domain resolution** resolves a list of names (one per line, commas or spaces work too) inside the core process, through the running box's `dns-direct` transport. That pinning is the point: a kill switch blocks the OS resolver, and a running Tun answers it from fakeip, so asking Android would report the tunnel's own fake address back as the answer
+* Without a running box the page says "connect first" instead of resolving against the phone's resolver and presenting that as the tunnel's answer. 32 domains per request, 16 at a time, 5 s each — the core's own limits
+* The new `dnsResolve` capability is the one diagnostics entry that is on; the vendored quality and STUN pages stay switched off
+* **Why not the "Network quality" page** the roadmap had queued: the pinned core (`36b6bc4`) and upstream `dev` (`a973efe`) both export only `StartURLTest` / `StartIPTest` / `StartSpeedTest` — there is no `NetworkQualityTest` to call, so the page's `quality.start` contract could only be answered by inventing numbers. The reconnaissance note in `docs/roadmap.md` is corrected, and the raw DNS editor that was the documented fallback already ships in the DNS settings page
+* No core change, no new permission, no schema asset: one AIDL method (`resolveDomains`), one `:bg` resolver, one bridge object, one page. `DomainResolverTest`, `domain_resolve_test.dart` and the navigation render pass cover the wire contract
+* This is the first preview of the 3.3.0 line and it carries everything from the 3.2.26 previews — the Bettbox runtime guards, the Flrone rename, and the Prism UI drift gate. The 3.2.26 previews were never promoted to a stable release, so 3.3.0 is the version that reaches users of 3.2.25
+
 #### 3.2.26-pre.4
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. No app code changed: this preview corrects the Prism UI baseline that pre.3 pinned to the wrong commit and tightens the gate that guards it, so the APKs are otherwise equivalent to pre.3.

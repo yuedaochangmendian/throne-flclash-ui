@@ -31,4 +31,8 @@ interface ICoreService {
   // attachmentPaths by its name and writes the zip to outputPath; returns "" or the error (see CoreDiagnostics).
   String captureDiagnostics(int durationMs, boolean contention, boolean trace, in String[] attachmentPaths, String outputPath);
   void stopDiagnostics();
+
+  // Resolves domains through the running box's dns-direct transport (16 at a time, 5 s each); blocks, so call it off
+  // the main thread. Returns JSON: {"running":bool,"results":[{"domain":…,"addresses":[…],"error":…}]} (see DomainResolver).
+  String resolveDomains(in String[] domains);
 }
