@@ -90,7 +90,8 @@ Deeplinks are also supported, read the [documentation](https://throneproj.github
 - **Specs**: `openspec/specs/` holds the governing specifications; changes go through `openspec/changes/`.
 - **Design documents**: [docs/bbox-bridge.md](docs/bbox-bridge.md) (the bridge layer),
   [docs/bbox-flutter.md](docs/bbox-flutter.md) (the Flutter module), [docs/device-checklist.md](docs/device-checklist.md)
-  (the pre-release device gate), [docs/roadmap.md](docs/roadmap.md) (where the project is heading).
+  (the pre-release device gate), [docs/prism-upstream.md](docs/prism-upstream.md) (the vendored Prism UI
+  baseline and drift policy), [docs/roadmap.md](docs/roadmap.md) (where the project is heading).
 - `Capabilities.kt` is the single source of truth for which B-box-only features exist; the bridge documents
   every method and event it serves.
 - **Contributing**: see [CONTRIBUTING.md](CONTRIBUTING.md) for the development environment, local verification

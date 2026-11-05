@@ -1,3 +1,14 @@
+#### 3.2.26-pre.4
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. No app code changed: this preview corrects the Prism UI baseline that pre.3 pinned to the wrong commit and tightens the gate that guards it, so the APKs are otherwise equivalent to pre.3.
+
+The pre.3 drift report measured the wrong thing, and this release fixes the measurement:
+
+* The vendored `flutter/lib/ui` matches `chen08209/prism_ui` @ `946af6d` (2026-11-01) file for file, except for one patch. pre.3 pinned `63450c0` — two commits later — so upstream's own progress was reported as our drift, and three files that are simply older than the tip were labelled "intentional forks". `prism_upstream.lock.json` now records the vendoring commit and the reviewed upstream tip as separate fields, which keeps "we patched this" and "we are behind" from collapsing into one number
+* Corrected, verified numbers: **144 identical / 1 patched / 18 local-only / 0 removed**. The one patch is `banner.dart`: a notice with no action no longer stands between a press and the page under it
+* The two upstream commits since the snapshot (`e93fec1` list/animation fixes, `63450c0` floating-sheet corners) touch four files and are deliberately **not** taken here. `docs/prism-upstream.md` lists each file, what upstream changed, and why the sync is queued — including the fact that the vendored `keyed_animated_list.dart` predates `scrollCacheExtent` forwarding, so `dashboard.dart`'s argument is currently dropped
+* The tool gains an `upstream` mode that compares a checkout against the baseline (deliberately kept out of CI, since it needs network and a clone), shader-key normalization so the vendored asset path stops counting as drift, and `--max-diverged`. CI now fails both on a dropped upstream file and on a second unrecorded patch, instead of only the former
+
 #### 3.2.26-pre.3
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This preview carries no app-code changes — it validates the new upstream-drift tooling and CI gate; the APKs are otherwise equivalent to pre.2.
