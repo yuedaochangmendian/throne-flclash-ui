@@ -1,3 +1,13 @@
+#### 3.2.26-pre.3
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This preview carries no app-code changes — it validates the new upstream-drift tooling and CI gate; the APKs are otherwise equivalent to pre.2.
+
+Prism UI is now tracked, not guessed:
+
+* `tools/diagnostics/prism_drift.py` measures the vendored `flutter/lib/ui` against a **pinned upstream baseline** (`chen08209/prism_ui` @ `63450c0`, one commit past `v0.1.2`). The committed baseline manifest and lock file let CI run the check fully offline; it reports 138 identical / 7 diverged / 18 added / 0 removed, and fails the build only if an upstream file is dropped locally (never intended)
+* `docs/prism-upstream.md` records *why* the kit is vendored instead of pulled from pub.dev, the disposition of every one of the 7 diverged files (4 intentional forks, 2 mechanical vendoring changes, 1 low-risk upstream fix — the `sheet.dart` floating-foot rounding — we have not taken), the 18 local-only extension files, and the sync policy (no auto-merge; re-baseline only on a deliberate pull)
+* CI runs the drift check on every push and uploads the report as an artifact, so future drift is visible the moment it appears
+
 #### 3.2.26-pre.2
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open.

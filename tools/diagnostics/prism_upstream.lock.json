@@ -1,0 +1,7 @@
+{
+  "repo": "https://github.com/chen08209/prism_ui.git",
+  "ref": "main@63450c0 (post v0.1.2)",
+  "commit": "63450c0ac0e8e1b2c0f3ed4ad7926dc94e083185",
+  "note": "Pinned upstream baseline for Prism UI drift detection. Regenerate the manifest with `prism_drift.py snapshot --upstream <checkout>` after verifying the commit below is what we intend to track.",
+  "manifest": "prism_upstream.manifest.json"
+}

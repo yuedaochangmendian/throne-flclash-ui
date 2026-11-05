@@ -42,6 +42,19 @@ jobs:
         uses: actions/checkout@v7
       - name: Channel contract audit
         run: python3 tools/diagnostics/channel_audit.py
+      # The vendored Prism UI copy is measured against a pinned upstream baseline
+      # so drift is visible on every push. It fails only if an upstream file was
+      # dropped locally (never intended); divergences are reviewed by hand.
+      - name: Prism UI drift check
+        run: |
+          python3 tools/diagnostics/prism_drift.py check --json prism_drift.json --fail-on removed
+      - name: Upload Prism UI drift report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: prism-ui-drift
+          path: prism_drift.json
+          if-no-files-found: warn
       - name: Bridge contract audits
         run: |
           python3 tools/diagnostics/symbol_audit.py
