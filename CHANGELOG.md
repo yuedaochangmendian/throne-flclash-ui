@@ -1,3 +1,8 @@
+#### 3.2.20
+
+* Rebuilds the package on the current `main`, so the installable APKs match the branch you ship from: this release carries every 3.2.19 fix and nothing else that changes behaviour
+* The only commit after 3.2.19 is a cleanup of the selection writes: `select()` and its awaitable twin carried the same body, so the "switch a running service to the new node" broadcast could drift between the two paths; both now call one `applySelection()` and one `postSelectionUpdate()`
+
 #### 3.2.19
 
 * Fixes the crash `type '_Map<Object?, Object?>' is not a subtype of type 'Map<String, dynamic>' in type cast`: `StandardMessageCodec` decodes native maps into `_Map<Object?, Object?>`, so every channel reply is now normalised recursively (`normalizePlatformValue` / `asStringKeyedMap`) instead of being cast, with `TypedData` payloads preserved
