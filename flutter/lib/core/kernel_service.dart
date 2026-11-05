@@ -15,6 +15,15 @@ import 'kernel_worker.dart';
 import 'platform_value.dart';
 import 'throne_kernel.dart';
 
+/// Drives the core through dart:ffi instead of the Android service.
+///
+/// Off: the bridge is the operator. `BaseService` starts `ProxyInstance` with
+/// gomobile, the channel reports its state and traffic, and every control call
+/// in [BoxApi] takes the channel branch. This is the path that kept the tunnel
+/// up; the FFI driver is kept intact behind this switch instead of deleted, so
+/// it can be brought back once its lifecycle is trusted on a real device.
+const bool kFfiDriverEnabled = false;
+
 class KernelService {
   KernelService(this.box);
 
@@ -54,6 +63,10 @@ class KernelService {
   // --- lifecycle ----------------------------------------------------------
 
   Future<void> initialize() async {
+    // Bridge mode: no FFI library is opened, no worker isolate is spawned, and
+    // the bridge is never told to stand aside. Everything below belongs to the
+    // FFI driver and must stay out of the way when it is switched off.
+    if (!kFfiDriverEnabled) return;
     if (_kernel != null || _initializing) return;
     _initializing = true;
     try {

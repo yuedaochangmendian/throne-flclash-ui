@@ -1,3 +1,10 @@
+#### 3.2.24
+
+* The bridge drives the core again. `KernelService` no longer claims the service on start-up (`ffi.mode` stays off), so `BaseService` runs `ProxyInstance` itself: this is the path that kept the tunnel up before the FFI rewrite, restored here without deleting the FFI driver — it stays behind `kFfiDriverEnabled` for a later, device-verified return
+* Nothing on the Dart side opens `libthrone.so` in bridge mode: the kernel log stream and the status events are no longer subscribed from the FFI message port, so the channel's `logs`/`rates` pushes are the only source and cannot be duplicated or raced by a second driver
+* The start/stop/reload calls fall back to their channel branches (`service.start`, `service.stop`, `service.reload`, `state.setMode`, profile/group selection), which is what the UI already used before the FFI path existed
+* The restart-loop fixes stay in place for the FFI path (alive probe, non-sticky error channel, bounded recovery) and the lifecycle breadcrumbs keep writing `[lifecycle]` / `[service]` lines, so a future switch back has the diagnostics it needs
+
 #### 3.2.23
 
 * The heartbeat stops killing a core that is running: a status read that failed was reported as an empty snapshot, which the driver read as "the kernel is gone" and answered by closing a tunnel that was carrying traffic. The read now answers an `alive` marker when it panics, and a new `throne_Instance_alive` asks the cheap question — is this box still started — before a miss is counted, so only a core that really stopped is restarted

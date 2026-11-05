@@ -280,14 +280,20 @@ class BoxController extends ChangeNotifier {
     _subscription = _events.listen(_onEvent, onError: report);
     // Dual path: when the rebuilt core is present, kernel logs stream in through
     // the FFI message port (throne_kernel) instead of the channel's 'logs' pushes.
+    // In bridge mode the channel keeps both streams, and libthrone.so is not
+    // opened from Dart at all.
     await _kernelSub?.cancel();
-    _kernelSub = ThroneKernel.ensure()?.logs.listen(_onKernelLog, onError: report);
+    _kernelSub = null;
     // The FFI path drives the core lifecycle itself; its status/events feed _onEvent
     // in the same wire shapes the channel uses.
     try {
       await kernel.initialize();
       await _kernelEvents?.cancel();
-      _kernelEvents = kernel.events.listen(_onEvent, onError: report);
+      _kernelEvents = null;
+      if (kernel.ffiMode) {
+        _kernelSub = ThroneKernel.ensure()?.logs.listen(_onKernelLog, onError: report);
+        _kernelEvents = kernel.events.listen(_onEvent, onError: report);
+      }
     } catch (error) {
       // The FFI worker failed to start. KernelService has already handed core
       // control back to the channel, so the UI stays usable and shows why the

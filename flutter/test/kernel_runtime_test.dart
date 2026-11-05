@@ -46,9 +46,9 @@ void main() {
 
       await service.initialize();
       expect(service.ffiMode, isFalse,
-          reason: 'ThroneKernel.isAvailable is false off-device');
-      expect(calls.where((name) => name == 'ffi.mode').length, 2,
-          reason: 'the flag is enabled then handed straight back to the channel');
+          reason: 'the bridge driver is the default again');
+      expect(calls.where((name) => name == 'ffi.mode'), isEmpty,
+          reason: 'bridge mode never asks the service to stand aside');
       expect(service.active, isFalse);
 
       service.dispose();

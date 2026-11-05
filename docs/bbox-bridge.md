@@ -96,7 +96,15 @@ The `:bg` process is untouched: it still builds configs, runs the core and persi
 in `:bg` when a config is built, from the same shared preference table, so a start triggered by the tile or a shortcut
 honours the mode as well.
 
-### The heartbeat is a liveness question, not a data question
+### The bridge runs the core; the FFI driver is switched off
+
+Since 3.2.24 the service owns the core again: `KernelService.initialize()` returns before it touches `ffi.mode`,
+`BaseService` starts `ProxyInstance` through gomobile, and every control call takes its channel branch. Nothing on the
+Dart side opens `libthrone.so`, so the channel is the only source of `logs` and `rates`. The FFI driver (worker isolate,
+`throne_*` lifecycle calls, `serviceReload` routing) is intact behind `kFfiDriverEnabled` in `kernel_service.dart`; flip
+it back only after the heartbeat below is verified on a device.
+
+### The heartbeat is a liveness question, not a data question (FFI driver only)
 
 `throne_status_snapshot` is polled once a second from the worker isolate. Reading the traffic counters can race a box
 that is closing, so the read is fenced; when it panics it answers `{"alive":1}` rather than an empty string. An empty
