@@ -1,3 +1,14 @@
+#### 3.3.1-pre.7
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one puts the memory card back on the arithmetic it started with.
+
+pre.5 made the headline the process RSS and pre.6 made `app` the process minus the core, so the card read 283.3 MB for an app whose own heap is 13.7 MB. RSS is the whole process — ART heap, native allocations, the graphics driver, the Go heap, shared pages — and none of that is "memory this app uses" to the reader.
+
+* The headline is `app + core` again: the ART heap plus the core's own heap
+* What pre.6 added stays: the core's figure comes from the driver's status feed, not from an HTTP call to an API that is off by default
+* The caption now says where the rest of the process goes, so a small total above a large RSS row reads as two different questions instead of a contradiction
+* A core that reports nothing still reads as unknown rather than 0 B
+
 #### 3.3.1-pre.6
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one is about where the core's memory figure comes from.
