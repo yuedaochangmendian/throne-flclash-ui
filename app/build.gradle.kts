@@ -90,7 +90,7 @@ dependencies {
     implementation("com.google.android.material:material:1.8.0")
     implementation("com.google.code.gson:gson:2.9.0")
 
-    implementation("com.github.jenly1314:zxing-lite:2.1.1")
+    implementation("com.github.jenly1314:zxing-lite:3.5.0")
     // 0.24.x now matches the host's Kotlin 2.2 toolchain, but still needs a separate editor regression pass.
     // Keep 0.23.7 and its stdlib exclusion until that optional U3 upgrade.
     implementation("io.github.rosemoe:editor:0.23.7") {
