@@ -584,14 +584,14 @@ class BaseService {
          */
         fun publishKernelStats(stats: io.nekohasekai.sagernet.aidl.SpeedDisplayData) {
             val context = this as Context
-            // The notification is built and posted on the main thread everywhere else; the
-            // status feed arrives once a second from the channel, so hop rather than assume.
+            // Both sinks are main-thread and suspending; the status feed arrives once a second
+            // from the channel, so hop rather than assume.
             runOnMainDispatcher {
                 data.notification?.apply {
                     if (listenPostSpeed) postNotificationSpeedUpdate(stats)
                 }
+                Widgets.pushSpeed(context, stats.txRateProxy, stats.rxRateProxy)
             }
-            Widgets.pushSpeed(context, stats.txRateProxy, stats.rxRateProxy)
         }
 
         /** Wi-Fi rules (route, DNS or rule-set ones) need location access and a fresh Wi-Fi state on roaming. */
