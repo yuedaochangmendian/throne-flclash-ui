@@ -1,3 +1,15 @@
+#### 3.3.1-pre.6
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one is about where the core's memory figure comes from.
+
+The core's share was read over HTTP, from the clash API. That API is off by default — `core_box_clash_api` starts at `-9090` — so the call spent a five-second timeout on an IO thread every two seconds and came back empty, which the panel then had to print as zero or unknown.
+
+The core has been reporting its own heap all along, in the status snapshot that already carries the rates, the totals and the goroutine count. In FFI mode the driver is the only side holding the instance handle, so the channel cannot ask it; Dart can, and now does:
+
+* `core` in the memory event is the driver's own figure, and `app` is the process minus it
+* The bridge no longer calls the clash API in FFI mode — it was asking a question the driver answers every second, more slowly
+* The HTTP path stays for the case without a driver, where there is nothing else to ask
+
 #### 3.3.1-pre.5
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one is about the memory panel's arithmetic.
