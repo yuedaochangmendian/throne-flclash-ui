@@ -127,6 +127,27 @@ class BoxController extends ChangeNotifier {
   final _dataOwners = <BoxData, Set<Object>>{};
   Listenable get stateChanges => _stateChanges;
   Json dashboard = {}, settings = {}, preferences = {}, rates = {};
+
+  /// Dashboard fields the FFI driver owns while it runs the core. In that mode the service
+  /// side has no box of its own: its meter has no TrafficUpdater and its status is the
+  /// service's, so both report zeros. Letting those land on the dashboard flipped every
+  /// figure between the two sources once a second.
+  static const driverOwnedDashboard = {
+    'status', 'startedAt', 'uploadTotal', 'downloadTotal', 'connections', 'memory', 'goroutines',
+  };
+
+  /// [incoming] with the driver's own fields kept from [current] when it owns the core.
+  /// Everything else — the mode, the selected profile, the system proxy — still comes from
+  /// the channel, which is the side that persists it.
+  static Json mergeDashboard(Json current, Json incoming, {required bool driverOwns}) {
+    if (!driverOwns) return incoming;
+    final merged = Map<String, dynamic>.of(incoming);
+    for (final key in driverOwnedDashboard) {
+      if (current.containsKey(key)) merged[key] = current[key];
+    }
+    return merged;
+  }
+
   BoxCapabilities capabilities = BoxCapabilities.empty;
   Json toolState = {}, stun = {}, quality = {}, inbox = {}, ping = {};
   Json terminal = {};
@@ -512,7 +533,7 @@ class BoxController extends ChangeNotifier {
         return;
       case 'browserComplete': eventBus.emit(BrowserCompleteEvent(json(value))); return;
       case 'dashboard':
-        final nextDashboard = json(value);
+        final nextDashboard = mergeDashboard(dashboard, json(value), driverOwns: kernel.active);
         if (const DeepCollectionEquality().equals(dashboard, nextDashboard)) return;
         const counters = {'memory', 'goroutines', 'uploadTotal', 'downloadTotal', 'connections'};
         Json state(Json data) => Map.fromEntries(data.entries.where((entry) => !counters.contains(entry.key)));
@@ -574,6 +595,10 @@ class BoxController extends ChangeNotifier {
         systemAccentColor = accent;
         aspects = const [BoxAspect.appearance];
       case 'rates':
+        // The driver's own status feed carries these numbers while it runs the core; the
+        // channel's copy is the service meter's, which has no TrafficUpdater in FFI mode and
+        // would alternate with the real rates once a second.
+        if (kernel.active) return;
         rates = json(value);
         // One point per second, whoever pushes it: the channel's tick and the FFI status feed can
         // both report the same second, and a doubled sample would halve the window's span. The

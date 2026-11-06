@@ -216,11 +216,15 @@ class ThroneBoxBridge(
         // sample per second (`tick1s`), so an idle tunnel scrolls to zero instead of freezing on
         // its last peak. A sample is pushed every second while the service runs, and not at all
         // while it is stopped — the window belongs to the session that produced it.
+        //
+        // In ffiMode this side owns no TrafficUpdater, so the meter stays at zero and a sample
+        // would only push those zeros: the FFI driver's status feed is the sparkline's source
+        // then, and the two would alternate on screen once a second.
         ratesTick?.cancel()
         ratesTick = scope.launch {
             while (isActive) {
                 delay(1_000)
-                if (DataStore.serviceState.connected) pushState(sampleRate = true)
+                if (!BboxKernel.ffiMode && DataStore.serviceState.connected) pushState(sampleRate = true)
             }
         }
     }

@@ -253,4 +253,24 @@ void main() {
       expect(await ended, [[], [], [], []]);
     });
   });
+
+  test('the service dashboard never overwrites the driver\'s numbers', () {
+    final driver = <String, dynamic>{
+      'status': 'Started', 'startedAt': 1000, 'uploadTotal': 4096, 'downloadTotal': 8192,
+      'connections': 7, 'memory': 64, 'goroutines': 12, 'mode': 'rule', 'selectedProfileName': 'A',
+    };
+    final service = <String, dynamic>{
+      'status': 'Stopped', 'startedAt': 0, 'uploadTotal': 0, 'downloadTotal': 0,
+      'connections': 0, 'memory': 0, 'goroutines': 0, 'mode': 'global', 'selectedProfileName': 'B',
+    };
+    final merged = BoxController.mergeDashboard(driver, service, driverOwns: true);
+    expect(merged['status'], 'Started');
+    expect(merged['uploadTotal'], 4096);
+    expect(merged['connections'], 7);
+    // The channel still owns what it persists: the mode and the selected profile.
+    expect(merged['mode'], 'global');
+    expect(merged['selectedProfileName'], 'B');
+    // Without the driver the service is the only source, and nothing is copied.
+    expect(BoxController.mergeDashboard(driver, service, driverOwns: false), same(service));
+  });
 }
