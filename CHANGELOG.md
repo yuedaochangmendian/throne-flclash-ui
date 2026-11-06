@@ -1,3 +1,15 @@
+#### 3.3.1-pre.10
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one lands the code review's fixes — the failed start, the hand-over timing and the blocking DNS lookup — with tests for the parts that had none.
+
+A review of `main..feat/ffi` found two problems worth blocking on and six worth fixing. A failed core start left the notification claiming a tunnel that was not there, and one domain lookup could freeze the driver's one-second heartbeat for up to ten seconds. Both are fixed, along with the handshake timing around them and the loose ends the review listed.
+
+* A failed core start now stops the foreground service too, and a hand-over that cannot become ready is rolled back to the bridge — no more "Connected" with nothing behind it
+* Domain lookups run on their own short-lived isolate instead of the heartbeat, capped at one batch; status snapshots, loss detection and reloads no longer queue behind a slow name
+* The hand-over polls a read-only service state instead of guessing one second, a refused VPN fails fast rather than waiting for a slow config build, and overlapping rate pushes are dropped
+* The speed-test screen labels the cleartext lookup source and the two options that currently fall back; an operator name without an AS number is no longer truncated
+* Tests cover the whole handshake path (8 Dart) and the new IP parsers (10 Kotlin). 326 Flutter tests, every CI audit and `flutter analyze` are green
+
 #### 3.3.1-pre.9
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one stops computing memory and asks Android, and fixes two things behind the slow IP card.
