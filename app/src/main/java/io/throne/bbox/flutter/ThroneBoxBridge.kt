@@ -18,6 +18,7 @@ import android.os.Build
 import android.os.Debug
 import io.nekohasekai.sagernet.Key
 import io.nekohasekai.sagernet.database.DataStore
+import io.nekohasekai.sagernet.database.SagerDatabase
 import io.nekohasekai.sagernet.utils.CrashStore
 import io.nekohasekai.sagernet.database.DnsServerHistory
 import io.nekohasekai.sagernet.database.GroupRepo
@@ -869,6 +870,18 @@ class ThroneBoxBridge(
 
                 // --- the FFI path's slim surface (BboxKernel): Dart drives the kernel
                 // directly over dart:ffi and only DB/build work crosses here. ---
+                // The one platform fact Dart cannot derive: where Room keeps its file.
+                // `/data/data/<pkg>/databases` needs the package name, which the Dart side
+                // has no way to learn, so it asks once at startup and then opens the file
+                // itself. This is the last data-plane call on the channel.
+                "data.path" -> {
+                    val file = activity.getDatabasePath(Key.DB_PROFILE)
+                    // Reading `version` forces Room to open (and migrate) the file, which is
+                    // what makes the answer trustworthy: the annotation could disagree with
+                    // the file after a downgrade, and Dart would then map columns by position.
+                    val version = SagerDatabase.instance.openHelper.readableDatabase.version
+                    result.success(mapOf("path" to file.absolutePath, "version" to version))
+                }
                 "ffi.mode" -> {
                     val enabled = call.argument<Boolean>("enabled") == true
                     BboxKernel.ffiMode = enabled

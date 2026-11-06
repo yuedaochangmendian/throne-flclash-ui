@@ -63,6 +63,10 @@ jobs:
           python3 tools/diagnostics/settings_audit.py --summary
           python3 tools/diagnostics/ffi_regression_test.py
           python3 tools/diagnostics/generated_models_check.py
+          # Dart reads Room's file directly, so Room's schema version has a second
+          # copy in db.dart. A bump on one side alone still compiles and still
+          # queries — it just reads the wrong column.
+          python3 tools/diagnostics/schema_audit.py
           python3 tools/diagnostics/py_syntax_check.py tools/diagnostics/*.py tools/bindgen/*.py buildScript/*.py
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
