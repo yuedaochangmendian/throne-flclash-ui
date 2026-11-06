@@ -1160,7 +1160,11 @@ class ThroneBoxBridge(
     private fun memoryWire(): Map<String, Any?> {
         val runtime = Runtime.getRuntime()
         val heapUsed = runtime.totalMemory() - runtime.freeMemory()
-        val core = runCatching { BboxApi.memory() }.getOrNull() ?: 0L
+        // In ffiMode the core runs inside this process and publishes its own heap on the driver's
+        // status feed, which Dart folds in (it is the only side holding the instance handle). Asking
+        // the clash API here would be a second, slower answer to the same question — and the API is
+        // off by default, so the call spent a five-second timeout to come back empty.
+        val core = if (BboxKernel.ffiMode) 0L else runCatching { BboxApi.memory() }.getOrNull() ?: 0L
         val rss = processPss()
         return mapOf(
             "total" to runtime.maxMemory(),

@@ -535,7 +535,17 @@ class BoxController extends ChangeNotifier {
       case 'usbDevices': usbDevices = rows(value);
       case 'terminal': terminal = json(value);
       case 'memory':
-        final nextMemory = json(value);
+        final nextMemory = Map<String, dynamic>.of(json(value));
+        // In ffiMode the core lives in this process and reports its own heap on the driver's status
+        // feed — the same figure the clash API serves, without the HTTP call that cannot succeed
+        // while the API is off (it is off by default). The channel side has no instance handle, so
+        // the share is carved out of the process figure here.
+        final coreBytes = (dashboard['memory'] as num? ?? 0).toInt();
+        if (_driverActive && coreBytes > 0) {
+          final rss = (nextMemory['rss'] as num? ?? 0).toInt();
+          nextMemory['core'] = coreBytes;
+          nextMemory['app'] = rss > coreBytes ? rss - coreBytes : 0;
+        }
         if (const DeepCollectionEquality().equals(memory, nextMemory)) return;
         memory = nextMemory;
         aspects = const [BoxAspect.memory];
