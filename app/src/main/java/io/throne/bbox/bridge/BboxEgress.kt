@@ -63,11 +63,18 @@ object BboxEgress {
         "https://ipinfo.io/json" to ::parseIpInfo,
     )
 
-    /** The whole probe must answer within this budget, however many sources are slow. */
-    private const val PROBE_BUDGET_MS = 8_000L
+    /**
+     * The whole probe must answer within this budget, however many sources are slow.
+     */
+    private const val PROBE_BUDGET_MS = 5_000L
 
-    /** How long the richest source may hold the answer before a fallback takes over. */
-    private const val PRIMARY_BUDGET_MS = 3_500L
+    /**
+     * How long the richest source may hold the answer before a fallback takes over. The fallbacks
+     * are asked at the same time and usually answer in a few hundred milliseconds, so this is the
+     * card's worst case when the preferred source is blocked — it used to be 3.5 s, which is what
+     * "the IP takes a while to show up" meant on a network where ipwho.is does not answer.
+     */
+    private const val PRIMARY_BUDGET_MS = 1_200L
 
     @Volatile
     private var cached: Info = Info()
@@ -83,7 +90,11 @@ object BboxEgress {
     @Volatile
     private var cachedDirectAt = 0L
 
-    private const val TTL_MS = 30_000L
+    /**
+     * An exit address rarely changes within a session; a route change forces a fresh probe, so a
+     * long TTL only spares the card a needless round trip when it is reopened.
+     */
+    private const val TTL_MS = 300_000L
 
     // One probe at a time. The card asks on every state change, and a state that
     // flickers faster than the answer used to start a new five-source race per
