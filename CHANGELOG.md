@@ -1,3 +1,12 @@
+#### 3.3.1-pre.2
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one is about the home cards' figures.
+
+In FFI mode the service keeps running — it holds the tun and the notification — but it no longer owns a box. Its meter has no `TrafficUpdater`, so every number it reports is zero, and the bridge was still pushing that dashboard and a rate sample once a second. Dart's copy therefore alternated between the driver's snapshot and the service's zeros: every figure on the home cards flipped twice a second, and the sparkline sampled both values.
+
+* The dashboard keeps the driver's fields while it owns the core — status, started time, both totals, connections, memory and goroutines — and still takes the mode, the selected profile and the system proxy from the channel, which is what persists them. A dashboard that merges back to the same map no longer notifies the UI at all
+* The channel's rate sample is dropped while the driver runs, and the bridge no longer sends it in the first place
+
 #### 3.3.1-pre.1
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one starts moving the data plane off the channel.
