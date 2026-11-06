@@ -90,6 +90,7 @@ class DataDatabase implements Queryable {
   }
 
   /// Rows of [sql]. See [SqliteDatabase.query] for the value shapes.
+  @override
   List<SqlRow> query(String sql, [List<Object?> params = const []]) =>
       _db.query(sql, params);
 

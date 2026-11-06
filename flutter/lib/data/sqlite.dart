@@ -418,7 +418,7 @@ class Sqlite {
           : _openReadWrite | _openCreate | _openFullMutex;
       final rc = _open(name, out, flags, nullptr);
       if (rc != _ok) {
-        if (!out.value.isNull) _close(out.value);
+        if (out.value.address != 0) _close(out.value);
         return null;
       }
       // A writer that finds Room mid-transaction should wait rather than fail:
