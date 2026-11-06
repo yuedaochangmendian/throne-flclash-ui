@@ -1,3 +1,13 @@
+#### 3.3.1-pre.8
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one makes the memory card add up, and stops the IP card from waiting on a source that is not answering.
+
+The memory card read 327.2 MB total on a 286.1 MB process, with a 319.2 MB core. The core's figure is what the Go runtime has *mapped*, not what is resident — different quantities, and the mapped one can exceed RSS. Using it as a share of the process produced a part larger than the whole.
+
+* The process is the headline again, split into the app's heap, the core's share capped at what is left, and the rest (native allocations, graphics, shared pages). Every figure adds up, and no part can exceed the whole
+* The IP card waited 3.5 s for the preferred source before a fallback was allowed to win, even though the fallbacks had already replied — 3.5 s of skeleton on every connect. The preferred source now has 1.2 s, and the whole probe 5 s
+* A resolved address is cached for five minutes instead of thirty seconds. A route change still forces a fresh probe, so the previous exit's address is never shown
+
 #### 3.3.1-pre.7
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one puts the memory card back on the arithmetic it started with.
