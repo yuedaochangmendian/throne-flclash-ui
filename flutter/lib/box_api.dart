@@ -27,7 +27,21 @@ extension ProfilesApi on BoxController {
   Future<dynamic> profileAutoSelectorSave(dynamic id, Json value) => call('profiles.autoSelectorSave', {'id': id, 'value': value});
   Future<dynamic> profileAutoSelectorCreate(dynamic groupId) => call('profiles.autoSelectorCreate', {'groupId': groupId});
   Future<dynamic> profileConfig(dynamic id) => call('profiles.config', {'id': id});
-  Future<bool> profileUpdate(dynamic id) => act('profiles.update', {'id': id});
+  /// Subscription refreshes are network-bound: bounded retry with a per-attempt
+  /// timeout keeps a stalled download from hanging the UI indefinitely.
+  Future<bool> profileUpdate(dynamic id) async {
+    try {
+      await retryCall<dynamic>(
+        task: () => call('profiles.update', {'id': id}),
+        maxAttempts: 2,
+        timeout: const Duration(seconds: 60),
+      );
+      return true;
+    } catch (error) {
+      report(error);
+      return false;
+    }
+  }
   Future<dynamic> profileNodeLink(String group, String tag, dynamic nodeJson) => call('profiles.nodeLink', {'group': group, 'tag': tag, 'json': nodeJson});
   Future<dynamic> profileNodeDelete(dynamic id) => call('profiles.nodeDelete', {'id': id});
   Future<dynamic> profileNodeConfig(dynamic id) => call('profiles.nodeConfig', {'id': id});
@@ -62,6 +76,21 @@ extension ProfilesApi on BoxController {
   Future<bool> profileScanClose(dynamic session) => act('profiles.scan.close', {'session': session});
   Future<dynamic> profileScan(dynamic session, String text) => call('profiles.scan', {'session': session, 'text': text});
   Future<dynamic> profileWrite(dynamic id, String content, dynamic revision) => call('profiles.write', {'id': id, 'content': content, 'revision': revision});
+
+  /// Validated, rollback-protected config edit. Checks the JSON before it can
+  /// reach the core, keeps the previous content, and restores it if the bridge
+  /// rejects the write (Bettbox's patch-then-validate / prevProfileId pattern).
+  Future<dynamic> profileWriteGuarded(dynamic id, String content, dynamic revision) =>
+      guardedConfigWrite<dynamic>(
+        readPrevious: () async {
+          final value = json(await profileRead(id));
+          final current = value['content'] ?? value['config'] ?? value['text'];
+          return current is String ? current : '';
+        },
+        commit: (checked) => profileWrite(id, checked, revision),
+        restore: (previous) => profileWrite(id, previous, revision),
+        candidate: content,
+      );
 }
 
 extension RoutesApi on BoxController {
@@ -161,8 +190,23 @@ extension ConnectionsApi on BoxController {
   Future<bool> connectionsClose(dynamic id) => act('connections.close', {'id': id});
 }
 
+extension GroupCatalogApi on BoxController {
+  /// Asks for the node rows (true) or gives them back (false); `ready` and every other screen
+  /// carry counts only, because the rows are the largest payload the bridge builds.
+  Future<bool> groupsSetVisible(bool visible) => act('groups.visible', {'visible': visible});
+
+  /// The outbound picker's list: every node of every group, id and tag only.
+  Future<List<Json>> groupNodes() async => rows(json(await call('groups.nodes'))['nodes']);
+}
+
 extension UrlApi on BoxController {
   Future<bool> openUrl(String url) => act('url.open', {'url': url});
+}
+
+extension PermissionsApi on BoxController {
+  /// Asks the host for the camera permission; the scan screen calls this before starting the
+  /// scanner so a refusal comes back as `false` instead of a preview that never leaves black.
+  Future<bool> ensureCameraPermission() async => await call('permissions.camera') == true;
 }
 
 extension DocumentApi on BoxController {

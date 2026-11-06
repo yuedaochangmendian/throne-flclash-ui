@@ -138,7 +138,7 @@ class _GhosttySurfaceState extends State<GhosttySurface> {
     catch (error) { if (mounted) context.box.report(error); }
   }
   void _created(int id) {
-    _channel = MethodChannel('io.ericlee.bfa/terminal/$id')..setMethodCallHandler((call) async {
+    _channel = MethodChannel('io.flrone/terminal/$id')..setMethodCallHandler((call) async {
       if (!mounted) return null;
       switch (call.method) {
         case 'modifiers': setState(() => _modifiers = json(call.arguments)); return null;
@@ -162,7 +162,7 @@ class _GhosttySurfaceState extends State<GhosttySurface> {
   }
   @override void dispose() { _channel?.setMethodCallHandler(null); super.dispose(); }
   @override Widget build(BuildContext context) => Column(children: [
-    Expanded(child: AndroidView(viewType: 'io.ericlee.bfa/ghostty', creationParams: _parameters,
+    Expanded(child: AndroidView(viewType: 'io.flrone/ghostty', creationParams: _parameters,
       creationParamsCodec: const StandardMessageCodec(), onPlatformViewCreated: _created)),
     if (!widget.preview) SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
       for (final key in const ['Esc', 'Tab', 'Ctrl', 'Alt', '↑', '↓', '←', '→', 'Home', 'End', 'PgUp', 'PgDn', 'Paste', 'Keyboard'])

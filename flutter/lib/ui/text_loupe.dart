@@ -3,9 +3,9 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/physics.dart' show SpringDescription, SpringSimulation;
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/context.dart';
-import 'package:b_box_ui/ui/text_selection_controls.dart';
-import 'package:b_box_ui/ui/shape.dart';
+import 'package:flrone/ui/context.dart';
+import 'package:flrone/ui/text_selection_controls.dart';
+import 'package:flrone/ui/shape.dart';
 
 // Measured on iOS 27.
 const _loupeSize = Size(115, 85);

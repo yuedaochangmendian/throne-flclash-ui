@@ -2,11 +2,11 @@ import 'dart:math' as math;
 
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/common_button.dart';
-import 'package:b_box_ui/ui/context.dart';
-import 'package:b_box_ui/ui/metrics.dart';
-import 'package:b_box_ui/ui/theme_data.dart';
-import 'package:b_box_ui/ui/typography.dart';
+import 'package:flrone/ui/common_button.dart';
+import 'package:flrone/ui/context.dart';
+import 'package:flrone/ui/metrics.dart';
+import 'package:flrone/ui/theme_data.dart';
+import 'package:flrone/ui/typography.dart';
 
 enum ListRowAlignment { center, top }
 

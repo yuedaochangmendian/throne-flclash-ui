@@ -1,5 +1,5 @@
 import 'dart:ui' show BoxHeightStyle;
-import 'package:b_box_ui/components/code_editor.dart';
+import 'package:flrone/components/code_editor.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 

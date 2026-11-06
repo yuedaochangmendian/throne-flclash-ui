@@ -3,17 +3,17 @@ import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/context.dart';
-import 'package:b_box_ui/ui/divider.dart';
-import 'package:b_box_ui/ui/icons/icons.dart';
-import 'package:b_box_ui/ui/l10n.dart';
-import 'package:b_box_ui/ui/press_region.dart';
-import 'package:b_box_ui/ui/scroll_behavior.dart';
-import 'package:b_box_ui/ui/shape.dart';
-import 'package:b_box_ui/ui/surface.dart';
-import 'package:b_box_ui/ui/theme_data.dart';
-import 'package:b_box_ui/ui/tooltip.dart';
-import 'package:b_box_ui/ui/typography.dart';
+import 'package:flrone/ui/context.dart';
+import 'package:flrone/ui/divider.dart';
+import 'package:flrone/ui/icons/icons.dart';
+import 'package:flrone/ui/l10n.dart';
+import 'package:flrone/ui/press_region.dart';
+import 'package:flrone/ui/scroll_behavior.dart';
+import 'package:flrone/ui/shape.dart';
+import 'package:flrone/ui/surface.dart';
+import 'package:flrone/ui/theme_data.dart';
+import 'package:flrone/ui/tooltip.dart';
+import 'package:flrone/ui/typography.dart';
 
 const _compactWidth = 48.0;
 const _expandedWidth = 220.0;

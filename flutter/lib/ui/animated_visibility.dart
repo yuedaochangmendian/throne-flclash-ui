@@ -1,7 +1,7 @@
 import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/theme_data.dart';
+import 'package:flrone/ui/theme_data.dart';
 
 const _transitionDuration = Duration(milliseconds: 300);
 

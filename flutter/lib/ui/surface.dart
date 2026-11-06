@@ -1,9 +1,9 @@
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/typography.dart';
-import 'package:b_box_ui/ui/context.dart';
+import 'package:flrone/ui/typography.dart';
+import 'package:flrone/ui/context.dart';
 import 'package:flutter/rendering.dart';
-import 'package:b_box_ui/ui/theme_data.dart';
-import 'package:b_box_ui/ui/color.dart';
+import 'package:flrone/ui/theme_data.dart';
+import 'package:flrone/ui/color.dart';
 
 /// `.agents/surfaces.md` explains the levels and why dark mode never steps
 /// back down.

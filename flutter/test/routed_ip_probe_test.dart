@@ -1,7 +1,7 @@
 import 'dart:async';
-import 'package:b_box_ui/box.dart';
-import 'package:b_box_ui/common/ip_probe.dart';
-import 'package:b_box_ui/common/routed_ip_probe.dart';
+import 'package:flrone/box.dart';
+import 'package:flrone/common/ip_probe.dart';
+import 'package:flrone/common/routed_ip_probe.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 

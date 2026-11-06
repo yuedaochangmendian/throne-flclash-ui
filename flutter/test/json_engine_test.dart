@@ -6,9 +6,9 @@ import 'dart:convert' as convert;
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:b_box_ui/ui/json/engine/schema_completion.dart';
-import 'package:b_box_ui/ui/json/engine/schema_document.dart';
-import 'package:b_box_ui/ui/json/relaxations.dart';
+import 'package:flrone/ui/json/engine/schema_completion.dart';
+import 'package:flrone/ui/json/engine/schema_document.dart';
+import 'package:flrone/ui/json/relaxations.dart';
 
 SchemaDocument? _schema;
 

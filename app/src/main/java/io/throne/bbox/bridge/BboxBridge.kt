@@ -58,6 +58,14 @@ object BboxBridge : SagerConnection.Callback, GroupRepo.Listener, ProfileManager
     var catalog: BboxCatalog.Catalog = BboxCatalog.Catalog()
         private set
 
+    /**
+     * Moves every time the catalog is re-read. The bridge rebuilds the profile and node rows only
+     * when this moves, instead of on every one-second rates sample.
+     */
+    @Volatile
+    var catalogRevision: Long = 0L
+        private set
+
     private var connection: SagerConnection? = null
     private var appContext: Context? = null
     private var ticker: Job? = null
@@ -233,6 +241,7 @@ object BboxBridge : SagerConnection.Callback, GroupRepo.Listener, ProfileManager
             }
         }
         catalog = loaded
+        catalogRevision++
         _state.update { current ->
             current.copy(
                 profiles = loaded.profiles,

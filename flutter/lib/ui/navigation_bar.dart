@@ -1,9 +1,9 @@
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/context.dart';
-import 'package:b_box_ui/ui/press_region.dart';
-import 'package:b_box_ui/ui/shape.dart';
-import 'package:b_box_ui/ui/surface.dart';
-import 'package:b_box_ui/ui/typography.dart';
+import 'package:flrone/ui/context.dart';
+import 'package:flrone/ui/press_region.dart';
+import 'package:flrone/ui/shape.dart';
+import 'package:flrone/ui/surface.dart';
+import 'package:flrone/ui/typography.dart';
 
 class NavigationDestination {
   const NavigationDestination({required this.icon, required this.label});

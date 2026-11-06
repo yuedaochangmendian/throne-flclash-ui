@@ -5,8 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/context.dart';
-import 'package:b_box_ui/ui/metrics.dart';
+import 'package:flrone/ui/context.dart';
+import 'package:flrone/ui/metrics.dart';
 
 part 'focus_arrow_keys.dart';
 part 'focus_keyboard.dart';

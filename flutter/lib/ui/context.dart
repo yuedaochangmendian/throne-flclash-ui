@@ -1,12 +1,12 @@
 import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/color.dart';
-import 'package:b_box_ui/ui/inherited.dart';
-import 'package:b_box_ui/ui/metrics.dart';
-import 'package:b_box_ui/ui/theme_data.dart';
-import 'package:b_box_ui/ui/typography.dart';
-import 'package:b_box_ui/ui/view_scope.dart';
+import 'package:flrone/ui/color.dart';
+import 'package:flrone/ui/inherited.dart';
+import 'package:flrone/ui/metrics.dart';
+import 'package:flrone/ui/theme_data.dart';
+import 'package:flrone/ui/typography.dart';
+import 'package:flrone/ui/view_scope.dart';
 
 extension BuildContextExtension on BuildContext {
   bool get isMobileView => ViewScope.isMobileOf(this, listen: false);

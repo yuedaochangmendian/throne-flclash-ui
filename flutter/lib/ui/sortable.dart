@@ -5,15 +5,15 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/common_button.dart';
-import 'package:b_box_ui/ui/context.dart';
-import 'package:b_box_ui/ui/icons/icons.dart';
-import 'package:b_box_ui/ui/l10n.dart';
-import 'package:b_box_ui/ui/motion.dart';
-import 'package:b_box_ui/ui/shape.dart';
+import 'package:flrone/ui/common_button.dart';
+import 'package:flrone/ui/context.dart';
+import 'package:flrone/ui/icons/icons.dart';
+import 'package:flrone/ui/l10n.dart';
+import 'package:flrone/ui/motion.dart';
+import 'package:flrone/ui/shape.dart';
 
 import 'focus.dart';
-import 'package:b_box_ui/ui/theme_data.dart';
+import 'package:flrone/ui/theme_data.dart';
 
 const _directDragKinds = {PointerDeviceKind.mouse, PointerDeviceKind.trackpad};
 

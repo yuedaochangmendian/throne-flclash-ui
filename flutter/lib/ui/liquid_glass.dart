@@ -4,11 +4,11 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/color.dart';
-import 'package:b_box_ui/ui/common_button.dart';
-import 'package:b_box_ui/ui/context.dart';
-import 'package:b_box_ui/ui/shape.dart';
-import 'package:b_box_ui/ui/theme_data.dart';
+import 'package:flrone/ui/color.dart';
+import 'package:flrone/ui/common_button.dart';
+import 'package:flrone/ui/context.dart';
+import 'package:flrone/ui/shape.dart';
+import 'package:flrone/ui/theme_data.dart';
 
 part 'liquid_glass_capture.dart';
 

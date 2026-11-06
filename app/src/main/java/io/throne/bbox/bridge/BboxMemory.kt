@@ -1,6 +1,8 @@
 package io.throne.bbox.bridge
 
+import android.content.ComponentCallbacks2
 import android.os.Build
+import java.util.concurrent.CopyOnWriteArrayList
 
 /**
  * System-level memory trimming on Android — the platform half of Bettbox's background-GC strategy.
@@ -14,8 +16,35 @@ import android.os.Build
  * ART [dalvik.system.VMRuntime.trimHeap] this invokes serves the same purpose — it releases the heap
  * the runtime holds onto after a burst of traffic — and is stable since API 21, hidden only from the
  * SDK surface.
+ *
+ * Neither call reaches the Dart heap: the Flutter engine owns that one, so the decoded-image cache
+ * and the UI's own objects survive a trim unless the UI is told. [observeTrim] is that channel.
  */
 object BboxMemory {
+
+    private val trims = CopyOnWriteArrayList<(Int) -> Unit>()
+
+    /** Registers a listener told about every trim level; call the returned function to unregister. */
+    fun observeTrim(listener: (Int) -> Unit): () -> Unit {
+        trims += listener
+        return { trims -= listener }
+    }
+
+    /**
+     * The whole reaction to `Application.onTrimMemory`: tell the UI first (it can drop decoded
+     * images immediately), then hand the hint to ART. The order matters — a trim that reaches the
+     * UI after the process has already been killed is not a trim.
+     */
+    fun onTrim(level: Int) {
+        for (listener in trims) runCatching { listener(level) }
+        when {
+            level >= ComponentCallbacks2.TRIM_MEMORY_COMPLETE -> {
+                gc()
+                purgeMemory()
+            }
+            level >= ComponentCallbacks2.TRIM_MEMORY_MODERATE -> gc()
+        }
+    }
 
     /** A soft hint: ART decides when it actually collects. */
     fun gc() {

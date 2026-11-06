@@ -82,6 +82,8 @@ outbound mode, profile/group selection, WARP registration (`Mobile.warpRegister`
 → `rates`/`dashboard` events). The `:bg` process is gone — Flutter engine,
 Kotlin and the Go core share one process.
 
+> 注（中文）：上面关于 `:bg` 进程消失的描述是 bindgen（Dart FFI 直连内核）方案的假设／历史描述，并非当前 bridge 模式的实况。当前 bridge 模式下 `:bg` 仍保留（见 `docs/bbox-bridge.md` Lifecycle 段："The `:bg` process is untouched"），以该文档为准。
+
 Still on the channel (next batches): the test sessions and auto-selectors
 (their orchestration owns DB persistence — they move with the storage
 migration's end state), the connections screen (the core's HTTP control API via

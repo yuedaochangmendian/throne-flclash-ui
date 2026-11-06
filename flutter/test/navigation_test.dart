@@ -2,14 +2,15 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/rendering.dart';
-import 'package:b_box_ui/main.dart';
-import 'package:b_box_ui/widgets.dart';
-import 'package:b_box_ui/pages/connections.dart';
-import 'package:b_box_ui/pages/logs.dart';
-import 'package:b_box_ui/pages/settings.dart';
-import 'package:b_box_ui/pages/diagnostics.dart';
-import 'package:b_box_ui/pages/reports.dart';
-import 'package:b_box_ui/pages/profiles.dart';
+import 'package:flrone/main.dart';
+import 'package:flrone/widgets.dart';
+import 'package:flrone/pages/connections.dart';
+import 'package:flrone/pages/logs.dart';
+import 'package:flrone/pages/settings.dart';
+import 'package:flrone/pages/diagnostics.dart';
+import 'package:flrone/pages/resolve.dart';
+import 'package:flrone/pages/reports.dart';
+import 'package:flrone/pages/profiles.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -105,6 +106,7 @@ void main() {
         ('General', const GeneralPage()), ('Core', const CorePage()),
         ('Remote', const RemotePage()), ('Backup', const BackupPage()),
         ('Quality', const DiagnosticsPage(quality: true)), ('STUN', const DiagnosticsPage(quality: false)),
+        ('Resolve', const ResolvePage()),
         ('Reports', const ReportsPage(kind: 'crash')), ('About', const AboutPage()),
       ]) {
         final closed = openPage(rootContext, page);

@@ -1,9 +1,9 @@
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/context.dart';
-import 'package:b_box_ui/ui/fade_through.dart';
-import 'package:b_box_ui/ui/loading.dart';
-import 'package:b_box_ui/ui/metrics.dart';
-import 'package:b_box_ui/ui/theme_data.dart';
+import 'package:flrone/ui/context.dart';
+import 'package:flrone/ui/fade_through.dart';
+import 'package:flrone/ui/loading.dart';
+import 'package:flrone/ui/metrics.dart';
+import 'package:flrone/ui/theme_data.dart';
 
 class FadeBox extends StatelessWidget {
   final Widget child;

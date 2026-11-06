@@ -2,8 +2,8 @@ import 'dart:ui' as ui show Image;
 
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/context.dart';
-import 'package:b_box_ui/ui/theme_data.dart';
+import 'package:flrone/ui/context.dart';
+import 'package:flrone/ui/theme_data.dart';
 
 /// Switches the theme in one frame and fades the frame before it out on top,
 /// instead of lerping [ThemeData] and rebuilding every dependent each frame.

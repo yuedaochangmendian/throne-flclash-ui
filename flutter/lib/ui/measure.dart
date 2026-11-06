@@ -1,8 +1,8 @@
 import 'dart:math';
 
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/metrics.dart';
-import 'package:b_box_ui/ui/typography.dart';
+import 'package:flrone/ui/metrics.dart';
+import 'package:flrone/ui/typography.dart';
 
 typedef _TextMeasureKey = (String?, TextStyle?, int?, TextDirection?, double?);
 

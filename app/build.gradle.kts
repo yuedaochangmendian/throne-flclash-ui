@@ -72,7 +72,7 @@ dependencies {
     // Every variant links the release AAR, not just release builds. The debug one ships the JIT engine plus Dart as
     // interpreted kernel, which costs ~150 MB of APK and buys hot reload — something this host never exercises,
     // because the Dart lives in the Flutter module and is developed there on its own.
-    implementation("io.ericlee.bbox_ui:flutter_release:1.0")
+    implementation("io.flrone.ui:flutter_release:1.0")
 
     implementation(fileTree("libs"))
 

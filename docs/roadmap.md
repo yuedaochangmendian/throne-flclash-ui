@@ -1,6 +1,6 @@
 # throne-flclash-ui 未来发展规划（AI Agent 执行文档）
 
-> 版本：v1.0（2026-11-03 定稿）。基线：`main` @ `364cda9`（**v3.0.11**，VERSION_CODE 124），CI 全绿，`releases/latest` = v3.0.11。
+> 版本：v1.0（2026-11-03 定稿）。基线：`main` @ `364cda9`（**v3.0.11**，VERSION_CODE 124），CI 全绿，`releases/latest` = v3.0.11。【注：以上为 2026-11-03 的**历史基线快照**，仅记录当时的仓库状态，勿作为当前版本依据；当前版本请以 `nb4a.properties` 的 `VERSION_NAME` 与 `CHANGELOG.md` 首段为准（截至本次文档整理时为 3.2.25）。】
 > 用途：全功能迁移（bbox-full-parity）已于 2026-11-01 完成、旧 UI 退役并归档（`openspec/history/bbox-full-parity.md`），本文档是**后迁移时代的接续规划**，任何 agent 接手时以本文为任务来源。执行前先 `git fetch`（代理断连用 `git -c http.proxy= fetch`）确认基线之后的提交；若前提已变，先做增量审计再动手。
 > 姊妹文档：仓库内 `docs/bbox-full-parity-plan.md`（已完成的迁移规划，其 §2 硬性规则全部沿用）。
 > 执行状态（2026-11-03）：W1/v3.0.12 ✅、v3.0.13 ✅、批次 M 的 M1/M2/M5 ✅、批次 N 的 N1–N4 ✅、工具链 U1/U2 ✅；本文档随仓库分发，批次 O 及里程碑表以 §4 为准。
@@ -24,10 +24,10 @@
 | 1 | ~~依赖链 force 降级与元数据跳过~~：U2 已升 Kotlin 2.4.10 并删除全套 force 和 `-Xskip-metadata-version-check`；`scan_aar_apis.py` 以新版宿主依赖为基线继续守门 | `app/build.gradle.kts` | ✅ U1/U2；rosemoe 解钉仍属 U3 |
 | 2 | ~~CameraX 1.5.3 钉死~~：U1 已升 AGP 8.12.3 / Gradle 8.13，CameraX 1.6.1 自然解析；compileSdk 36 仍是 Flutter AAR 的独立要求 | `app/build.gradle.kts` | ✅ U1 |
 | 3 | analyze 存量 167 条 info（多为 test 的 curly_braces / unnecessary_import） | `flutter analyze` | M |
-| 4 | README 仍是上游 Throne 原文（捐赠链接指 throneproj、文档指 throneproj.github.io、命名混乱：仓库名 flclash / 应用名 Flrone / 包名 com.throneflclash） | `README.md` | M |
+| 4 | ~~README 仍是上游 Throne 原文~~：已重写为 Flrone；命名统一在 `opt/flrone-naming` 完成——Flutter 包名、AAR 坐标、通道、rootProject、APK/artifact 前缀全部改为 Flrone；**applicationId `com.throneflclash` 与仓库名按决策保留**，以免现有用户无法覆盖安装 | `README.md` | ✅ 已解决 |
 | 5 | docs 失实风险：`bbox-bridge.md`/`bbox-flutter.md` 在 0.5 修过一轮，3.0.x 又漂移了十余轮 | docs/ | M |
 | 6 | 核心侧日志噪音：TUN lazy 握手下本地 app 提前 RST → `connection: report handshake success: go: connection reset by peer`（ERROR 级，reF1nd/sing-tun `stack_go_conn.go:51` errGoReset；核心 pin 上游不可修） | 本会话已定性 | N |
-| 7 | 并行会话互踩：2026-11-03 两个 agent 会话同时改本仓库，一方 commit 落进另一方新建的分支 | AGENTS.md 已录教训 | 治理 |
+| 7 | 并行会话互踩：2026-11-03 两个 agent 会话同时改本仓库，一方 commit 落进另一方新建的分支 | 该教训记录于本表（§1.2 第 7 项）；AGENTS.md 未随仓库分发 | 治理 |
 | 8 | 验证盲区：所有发布只经 CI（单测/构建/lint），**真机从未系统走查**（TV 焦点、VPN 升级安装、备份恢复跨版本） | 无真机测试记录 | N |
 
 ---
@@ -73,23 +73,45 @@
 
 ### W4 · 批次 O：首个 B-box 独有能力（v3.3.0，二选一）
 
-按价值/风险/核心依赖三轴评估后**只做一项**：
+按价值/风险/核心依赖三轴评估后**只做一项**（下表是 11-03 的初评，结论已被下方 11-05 复核推翻）：
 
 | 候选 | 价值 | 依赖 | 建议 |
 |---|---|---|---|
-| `quality` 网络质量采样页 | 直观展示各节点长期质量 | 核心 clash API 数据已有（`BboxApi`）；主要是采样存储 + 图表 | **首选**——复用 `line_chart.dart` 与测速面板经验，无新安全面 |
-| `capture` HTTP 捕获改写 | 高级调试利器 | 依赖 libbox 私有引擎，Throne 核心是否暴露**未证实** | 先做可行性侦察（grep Throne 核心 aar/api），证实前不立项 |
-| `dnsObject` 裸 DNS 编辑器 | 高级用户刚需 | 纯 JSON 引擎已就绪（批次 E），加 schema 即可 | 备选——若 quality 侦察失败则上此项 |
+| `quality` 网络质量采样页 | 直观展示各节点长期质量 | 核心 clash API 数据已有（`BboxApi`）；主要是采样存储 + 图表 | 初评首选 → **复核后撤销** |
+| `capture` HTTP 捕获改写 | 高级调试利器 | 依赖 libbox 私有引擎，Throne 核心是否暴露**未证实** | 侦察失败 → **不立项** |
+| `dnsObject` 裸 DNS 编辑器 | 高级用户刚需 | 纯 JSON 引擎已就绪（批次 E），加 schema 即可 | 备选 → **已由 DNS 设置页实现** |
 
-**侦察结论（2026-11-03，quality 立项通过，实现留待下一轮）：**
+**侦察结论（2026-11-05 复核，quality 立项撤销）：**
 
-- 核心 API 在：throneproj/Throne 的 libbox 暴露完整的 `NetworkQualityTest` 族（`experimental/libbox/networkquality.go`、`CommandClient.StartNetworkQualityTest(configURL, outboundTag, serial, maxRuntimeSeconds, http3, handler)`），与 B-box 用法逐参一致
-- 参考实现齐：B-box 的 `NetworkQualityViewModel.kt`（状态机 + toWire 线格式：phase/idleLatencyMs/downloadCapacity/uploadCapacity/RPM+accuracy/isRunning/configURL/serial/http3/maxRuntime）与 `BoxTools.kt` 的 `quality.start` 分支（validate url → selectOutbound → setSerial → setHttp3 → setMaxRuntime → start）可直接翻译
-- vendored 页面现成：`flutter/lib/pages/diagnostics.dart`（quality=true 分支）已消费 `quality` 事件流与 `quality.start/stop/confirm/dismiss`
-- **实现路径（下一轮照此执行）**：quality 的取样必须跑在 :bg 进程（box 所在处）——照 `TestSessionClient` 模式：`ICoreService` 加 `startNetworkQuality(config, callback)` AIDL 方法 + bg 侧 libbox 会话 + 回调 marshal 到主进程 → `BboxQuality` 状态机（移植 ViewModel）→ ThroneBoxBridge 四个 when 分支转发并 `emit("quality", wire)` → `Capabilities.kt` `"quality" to true` → diagnostics 页从设置/工具页入口可达 → 通道审计自动覆盖新契约
-- 工作量估计：AIDL + bg 实现 + 桥接 + 状态机移植 ≈ 一个完整批次（半天），含测试与评审
+2026-11-03 写的「核心暴露 NetworkQualityTest 族」经不起复核。逐项核对如下：
 
-流程：openspec 提案（proposal + tasks + spec delta）→ 桥接层 → Flutter 页 → `Capabilities.kt` 置 true → 设备清单过 N3。其余 false 项（terminal/taildrop/endpoints/remote/stun/perAppManaged/rootQuery）**明确不做**（重依赖或低价值），除非用户点名。
+| 检查项 | 事实 |
+|---|---|
+| 固定核心 `THRONE_CORE_REF=36b6bc4` | `core/mobile` 只导出 `StartURLTest` / `StartIPTest` / `StartSpeedTest`；全仓 `grep -i networkquality` 零命中 |
+| 上游 `dev` @ `a973efe`（2026-11-05 拉取） | 同上，仍无 quality 相关导出 |
+| `capture` 前置条件 | 同样不成立：`core/mobile` 没有请求捕获/改写入口，`CaptureDiagnostics` 只是性能采样 zip，与 HTTP 捕获无关 |
+| `dnsObject` 备选 | **已经实现**：`useDnsObject` + `SettingJson('DNS object')` 在 DNS 设置页（`pages/throne.dart`），`SettingsSchema` 以 `Apply.Reload` 落地；`Capabilities.dnsObject` 只控制一个并不存在的 B-box 独立页 |
+
+即：三个候选里两个没有核心支撑、一个已经做完。**v3.3.0 必须重新立项**，不要照上表执行。
+
+替代方向（筛选标准：核心已具备、宿主尚未接入）：
+
+| 候选 | 核心入口 | 价值 |
+|---|---|---|
+| 域名解析预览 | `ResolveDomains(current, platform, request)`，宿主未用 | 排障时看清某域名在选定 outbound 下解析到什么，与 DNS 设置页配套 |
+| Xray 配置校验 | `CheckXrayConfig`，宿主未用 | typed 表单保存前拦住非法 Xray 配置 |
+| WireGuard 密钥生成 | `GenerateWireGuardKeyPair`，宿主未用 | 端点/自建 WG 配置不必外部生成密钥 |
+
+quality 页若一定要做，只能改成**应用侧自研采样**（TUN 下普通 HTTP 即走隧道）：可以落地，但 Dart 侧无法指定出口，`outbound` 选择器只能去掉，口径也与 B-box 的核心采样不同，必须在页面上标注差异——不适合当作"独有能力"宣传。
+
+**落地记录（2026-11-05，v3.3.0 = 域名解析预览）：**
+
+- 链路：`dns.resolve`（Dart）→ `BboxResolve` → `ICoreService.resolveDomains` → `DomainResolver`（:bg）→ `Mobile.resolveDomains`，结果按请求顺序回 `{domain, addresses, error}`
+- 语义按核心的实际约束写死：解析固定走运行中实例的 `dns-direct`（杀开关会挡系统解析器，Tun 的 fakeip 会把系统答案换成本地假地址），**未连接时返回 `running=false`**，不用手机解析器的结果冒充隧道答案；32 个域名、16 并发、单条 5 s
+- UI：`pages/resolve.dart` 挂在「设置 → 诊断」，`Capabilities.dnsResolve` 为 true 才出现；这是诊断菜单里目前唯一可用的入口（quality/stun 仍为 false）
+- 覆盖：`DomainResolverTest`（wire 契约 + 容错）、`domain_resolve_test.dart`（含 codec 形状）、`navigation_test` 增加该页在 3 种视口/主题下的渲染
+
+流程：重新立项后仍走 openspec 提案（proposal + tasks + spec delta）→ 桥接层 → Flutter 页 → `Capabilities.kt` 置 true → 设备清单过 N3。其余 false 项（terminal/taildrop/endpoints/remote/stun/perAppManaged/rootQuery）**明确不做**（重依赖或低价值），除非用户点名。
 
 ### W5 · 上游跟踪（常驻，不占版本号）
 
@@ -118,10 +140,10 @@
 |---|---|---|---|
 | **v3.0.12** | ✅ W1 日志轮收尾（2026-11-03 发，commit `41636a9`） | — | 已发，latest 已指向 |
 | **v3.1.0** | ✅ 批次 M + N 合并发版（含 analyze 清零、README/docs、通道审计、噪音折叠、崩溃存储、设备清单、更新拒绝测试；双 agent 评审 18 项） | — | 已发，latest 已指向 |
-| **v3.2.4** | ✅ 体积与运行时过一遍：R8 精确 keep + full mode、Twemoji 删除/字体子集/图标 WebP、`useLegacyPackaging=false`、GC debug-only、Jetifier 关闭 | — | 见 `openspec/changes/2026-11-03-size-pass/` |
+| **v3.2.4** | ✅ 体积与运行时过一遍：R8 精确 keep + full mode、Twemoji 删除/字体子集/图标 WebP、~~`useLegacyPackaging=false`~~（3.2.4 尝试后回退，`app/build.gradle.kts` 现为 `useLegacyPackaging = true`）、GC debug-only、Jetifier 关闭 | — | 见 `openspec/changes/2026-11-03-size-pass/` |
 | **v3.2.15** | ✅ 冗余代码清理批 R1+R2.1+R4（旧偏好 UI 层 16 xml/6 类/3 支撑类 + proguard keep 收窄、12 个死 Kotlin 整文件、2 个 Dart 孤儿 + `flutter_localizations` 降为传递依赖）；R2.2/R4.3 经复核为误判未执行，R3 资源瘦身待 lint UnusedResources 前置复核 | 计划复核 | 单独 patch 发版 |
 | ~~v3.2.0~~ | 并入 v3.1.0（N 批次随 M 同轮落地） | — | — |
-| **v3.3.0** | 批次 O（quality 或 dnsObject，二选一） | 可行性侦察结论 | 同上 |
+| **v3.3.0** | ✅ 批次 O 改为**域名解析预览**（`dns.resolve`，原 quality/dnsObject 两个候选经复核不可行，见 W4）；`dnsResolve` 能力置 true | 核心 `ResolveDomains`（已具备） | 单独发版 |
 | **v3.4.0** | 工具链解钉（`docs/toolchain-upgrade.md` U1→U2，U3 可随附） | U1/U2 前置链 | 单独评审轮 + N3 设备清单 |
 | **v4.0.0** | 核心大版本跟随 + targetSdk 36 + 上游 schema 适配 | 上游 release 节奏 | 单独评审轮 |
 | 常驻 | W5 上游 pin 升级（每个安全修复） | 无 | patch 版 |

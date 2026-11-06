@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'package:b_box_ui/main.dart';
-import 'package:b_box_ui/pages/proxies.dart';
-import 'package:b_box_ui/widgets.dart';
-import 'package:b_box_ui/components/proxy_card.dart';
-import 'package:b_box_ui/components/proxy_list.dart';
+import 'package:flrone/main.dart';
+import 'package:flrone/pages/proxies.dart';
+import 'package:flrone/widgets.dart';
+import 'package:flrone/components/proxy_card.dart';
+import 'package:flrone/components/proxy_list.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'support/errors.dart';

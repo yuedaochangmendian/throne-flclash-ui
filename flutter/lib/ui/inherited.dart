@@ -1,8 +1,8 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/item_position.dart';
-import 'package:b_box_ui/ui/scroll_behavior.dart';
-import 'package:b_box_ui/ui/sheet.dart';
+import 'package:flrone/ui/item_position.dart';
+import 'package:flrone/ui/scroll_behavior.dart';
+import 'package:flrone/ui/sheet.dart';
 
 class PageActivityScope extends InheritedWidget {
   final bool isActive;

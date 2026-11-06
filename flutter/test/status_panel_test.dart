@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:ui' as ui;
-import 'package:b_box_ui/main.dart';
-import 'package:b_box_ui/widgets.dart';
-import 'package:b_box_ui/components/status_panel.dart';
-import 'package:b_box_ui/components/shape_badge.dart';
+import 'package:flrone/main.dart';
+import 'package:flrone/widgets.dart';
+import 'package:flrone/components/status_panel.dart';
+import 'package:flrone/components/shape_badge.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';

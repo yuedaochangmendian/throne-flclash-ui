@@ -1,4 +1,51 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!--
+Lint baseline notes. Do not bulk-delete the issue entries below: this file is
+inherited from the upstream sagernet / FlClash Android lint baseline and kept
+intact after the UI moved to a Flutter module that the Kotlin engine hosts as an
+AAR. Removing the suppressions at once would surface many historical warnings
+and break the build, so each rule is triaged one at a time. This list is the
+working checklist for that triage: fix the code, drop the matching issue entry,
+and mark the line here.
+
+[HOST] Flutter module / AAR host constraints: structural false positives or
+warnings owned by upstream or generated code, out of scope for this repo's
+Dart and Kotlin changes, kept for now.
+  UnusedAttribute            manifest attributes look unused after AAR manifest merge
+  UnknownNullness            third-party and generated APIs carry no nullness annotations
+  DiscouragedPrivateApi      engine and core reflection is not ours to change
+  PrivateResource            references to library-private resources
+  InvalidPackage             package layout inside the built AAR
+  RestrictedApi              AndroidX / Flutter restricted APIs used by the host
+  UnusedResources (warning)  resources referenced from Dart / assets, invisible to lint
+  Typos                      wording lives in upstream resources
+  Untranslatable             strings owned by upstream resources
+  PluralsCandidate           quantity strings owned by upstream resources
+  TypographyQuotes           string typography owned by upstream resources
+  DuplicateStrings           duplicated strings owned by upstream resources
+  ImpliedQuantity            quantity strings owned by upstream resources
+  MissingQuantity            quantity strings owned by upstream resources
+  MissingTranslation         translations owned by upstream resources
+  ExtraTranslation           translations owned by upstream resources
+  ContentDescription         native layouts are mostly superseded by the Flutter UI
+  RtlSymmetry                native layouts superseded by the Flutter UI
+  RtlHardcoded               native layouts superseded by the Flutter UI
+  SelectableText             native text views superseded by the Flutter UI
+  VectorRaster               upstream / generated drawables
+
+[DEBT] Genuine warnings kept suppressed only to avoid breaking CI, scheduled
+for per-rule convergence (fix, then remove the issue entry and this line).
+  InsecureBaseConfiguration  cleartext / base config; recheck as plaintext endpoints are retired
+  TrustAllX509TrustManager   proxy / VPN core TLS handling; pending a security review
+  HardcodedText              hardcoded text in inherited native layouts
+  SetTextI18n                number formatting in inherited native layouts
+  UselessParent              redundant native layout nesting
+  UselessLeaf                redundant native leaf views
+  UnusedIds                  unused ids in inherited native layouts
+  ConvertToWebp              upstream / generated drawable formats
+  SyntheticAccessor          generated / upstream Kotlin accessors
+  NotifyDataSetChanged       inherited adapter refresh calls
+-->
 <lint>
     <issue id="UnusedAttribute" severity="ignore" />
     <issue id="UnknownNullness" severity="ignore" />

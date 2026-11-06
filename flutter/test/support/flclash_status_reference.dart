@@ -5,7 +5,7 @@
 // Keep independent of B-box's adapted dashboard components.
 
 import 'dart:math' as math;
-import 'package:b_box_ui/widgets.dart';
+import 'package:flrone/widgets.dart';
 import 'package:material_new_shapes/material_new_shapes.dart';
 
 const _ipMask = '*****';

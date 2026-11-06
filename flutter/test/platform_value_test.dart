@@ -1,7 +1,7 @@
 import 'dart:async';
 
-import 'package:b_box_ui/box.dart';
-import 'package:b_box_ui/core/platform_value.dart';
+import 'package:flrone/box.dart';
+import 'package:flrone/core/platform_value.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -173,6 +173,34 @@ void main() {
       expect(box.toolState, isA<Map<String, dynamic>>());
       expect(box.toolState['nested'], isA<Map<String, dynamic>>());
       expect((box.toolState['nested'] as Map<String, dynamic>)['ok'], 1);
+    });
+  });
+
+  group('payload helpers', () {
+    // Both boundaries normalize, so json()/rows() only cast. Re-normalizing there used to copy
+    // the entire startup catalog a second time; these guard the copy from coming back.
+    test('an already-normalized map is returned as is', () {
+      final map = <String, dynamic>{'a': 1};
+      expect(identical(json(map), map), isTrue);
+    });
+
+    test('a map that skipped the boundary is still normalized', () {
+      final raw = <Object?, Object?>{'a': 1, 'nested': <Object?, Object?>{'b': 2}};
+      final value = json(raw);
+      expect(value, isA<Map<String, dynamic>>());
+      expect(value['nested'], isA<Map<String, dynamic>>());
+    });
+
+    test('rows keeps normalized rows and normalizes stragglers', () {
+      final row = <String, dynamic>{'id': 1};
+      final out = rows(<Object?>[row, 'not a map', <Object?, Object?>{'id': 2}]);
+      expect(identical(out.first, row), isTrue);
+      expect(out.map((item) => item['id']), [1, 2]);
+    });
+
+    test('a missing list is an empty result, not an exception', () {
+      expect(rows(null), isEmpty);
+      expect(json('text'), isEmpty);
     });
   });
 }

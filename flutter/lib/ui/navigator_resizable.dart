@@ -29,7 +29,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/drag_back.dart';
+import 'package:flrone/ui/drag_back.dart';
 
 /// Sizes itself to the content of the current route of the [Navigator] below
 /// it, and follows the routes' transitions from one size to the next.

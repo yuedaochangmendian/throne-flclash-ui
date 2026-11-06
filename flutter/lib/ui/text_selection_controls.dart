@@ -2,8 +2,8 @@ import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/color_scheme.dart';
-import 'package:b_box_ui/ui/context.dart';
+import 'package:flrone/ui/color_scheme.dart';
+import 'package:flrone/ui/context.dart';
 
 const _knobDiameter = 16.5;
 const _knobOverlap = 3.0;

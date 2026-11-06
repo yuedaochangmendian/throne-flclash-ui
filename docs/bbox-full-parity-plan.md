@@ -1,5 +1,7 @@
 # throne-bbox-ui 全功能迁移执行规划（AI Agent 执行文档）
 
+> **历史文档，标识按迁移当时记录，勿作为当前配置依据。** `opt/flrone-naming` 之后，Flutter 包名为 `flrone`、AAR 坐标为 `io.flrone.ui:flutter_release:1.0`、通道为 `io.flrone/box` 与 `io.flrone/events`；当前值以 `docs/bbox-flutter.md`、`docs/bbox-bridge.md` 与 `flutter/pubspec.yaml` 为准。applicationId 与仓库名保持不变。
+
 > 版本：v1.1（2026-11-01 增量审计修订）。基线：`main` @ `478c2ab6`（"Fix the audited defects and finish the route, DNS and restart gaps"），CI 全绿。
 > 用途：任何 AI agent 接手执行迁移时，以本文档为唯一任务来源。执行前先 `git fetch` 确认基线之后的提交，若规划前提已变化（见 §6 各批「前置」），先做增量审计再动手。
 >

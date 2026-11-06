@@ -1,12 +1,12 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
-import 'package:b_box_ui/main.dart';
-import 'package:b_box_ui/widgets.dart';
-import 'package:b_box_ui/pages/requests.dart';
-import 'package:b_box_ui/pages/request_settings.dart';
-import 'package:b_box_ui/pages/capture_domains.dart';
-import 'package:b_box_ui/components/captured_body.dart';
+import 'package:flrone/main.dart';
+import 'package:flrone/widgets.dart';
+import 'package:flrone/pages/requests.dart';
+import 'package:flrone/pages/request_settings.dart';
+import 'package:flrone/pages/capture_domains.dart';
+import 'package:flrone/components/captured_body.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';

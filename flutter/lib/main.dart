@@ -1,5 +1,6 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart' show LicenseRegistry, LicenseEntryWithLineBreaks, defaultTargetPlatform;
+import 'dart:ui' show PlatformDispatcher;
+import 'package:flutter/foundation.dart' show FlutterError, LicenseRegistry, LicenseEntryWithLineBreaks, defaultTargetPlatform;
 import 'package:flutter/services.dart';
 import 'package:material_ui/material_ui.dart' as material;
 import 'widgets.dart';
@@ -20,7 +21,21 @@ void main() {
       yield LicenseEntryWithLineBreaks([entry.key], await rootBundle.loadString('assets/licenses/${entry.value}'));
     }
   });
-  runApp(BoxApp(controller: BoxController()));
+  // Cap the decoded-image cache so a long session cannot grow it without bound.
+  imageCache.maximumSizeBytes = 50 << 20;
+  final controller = BoxController();
+  // Framework and engine errors reach the same banner the bridge uses, instead
+  // of only going to logcat where the user never sees them.
+  FlutterError.onError = (details) {
+    FlutterError.presentError(details);
+    controller.report(details.exception);
+  };
+  PlatformDispatcher.instance.onError = (error, stack) {
+    controller.report(error);
+    return true;
+  };
+  controller.refreshGate.start();
+  runApp(BoxApp(controller: controller));
 }
 
 class BoxApp extends StatefulWidget {
@@ -72,6 +87,18 @@ class _BoxAppState extends State<BoxApp> with WidgetsBindingObserver {
   final _themes = <String, ({material.ThemeData material, ThemeData prism})>{};
 
   @override void didChangeLocales(List<Locale>? locales) => setState(_themes.clear);
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    // Backgrounded: keep ingesting bridge events but hold their rebuilds until
+    // the user returns. This is the mobile form of Bettbox's active-window gate.
+    if (state == AppLifecycleState.resumed) {
+      widget.controller.resumeRefreshes();
+    } else {
+      widget.controller.suspendRefreshes();
+    }
+  }
 
   /// Both layers the app draws with: Material's, for the widgets it still
   /// carries (forms, snackbars, dialogs), and prism's, which every page and

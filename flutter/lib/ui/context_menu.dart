@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/l10n.dart';
+import 'package:flrone/ui/l10n.dart';
 
 import 'focus.dart';
 import 'popup.dart';

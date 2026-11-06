@@ -4,7 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'capabilities.dart';
+import 'common/config_guard.dart';
 import 'common/ip_quality_cache.dart';
+import 'common/refresh_gate.dart';
+import 'common/throttle.dart';
 import 'core/kernel_service.dart';
 import 'core/platform_value.dart';
 import 'core/throne_kernel.dart';
@@ -13,17 +16,34 @@ part 'box_api.dart';
 
 typedef Json = Map<String, dynamic>;
 
-/// StandardMessageCodec yields `_Map<Object?, Object?>` for native maps, and
-/// nested maps keep that shape. Normalize the whole tree, not just the top
-/// level: `as Json` on a nested value used to throw on startup.
+/// StandardMessageCodec yields `_Map<Object?, Object?>` for native maps, and nested maps keep
+/// that shape, so the two boundaries (`call` and the event stream) normalize the whole tree.
+/// Everything downstream is already normalized, which is why [json] and [rows] only cast: doing
+/// it again here copied the entire startup payload a second time.
 Json json(Object? value) {
-  final normalized = normalizePlatformValue(value);
-  return normalized is Json ? normalized : <String, dynamic>{};
+  if (value is Json) return value;
+  // A map from somewhere that did not go through the boundary (a test, a raw channel reply):
+  // normalize rather than drop it.
+  if (value is Map) {
+    final normalized = normalizePlatformValue(value);
+    if (normalized is Json) return normalized;
+  }
+  return <String, dynamic>{};
 }
 
+/// The rows of a channel list, with the same one-copy rule as [json].
 List<Json> rows(Object? value) {
-  final normalized = normalizePlatformValue(value);
-  return normalized is List ? normalized.whereType<Json>().toList() : <Json>[];
+  if (value is! List) return <Json>[];
+  final out = <Json>[];
+  for (final item in value) {
+    if (item is Json) {
+      out.add(item);
+    } else if (item is Map) {
+      final normalized = normalizePlatformValue(item);
+      if (normalized is Json) out.add(normalized);
+    }
+  }
+  return out;
 }
 
 enum BoxAspect { state, appearance, traffic, memory, connections, logs, logcat, testSession }
@@ -78,10 +98,10 @@ class BoxEventBus {
 
 class BoxController extends ChangeNotifier {
   BoxController({MethodChannel? channel, Stream<dynamic>? events})
-      : _channel = channel ?? const MethodChannel('io.ericlee.bfa/box'),
+      : _channel = channel ?? const MethodChannel('io.flrone/box'),
         // EventChannel uses the same codec as MethodChannel, so its payloads
         // arrive as `_Map<Object?, Object?>` too.
-        _events = (events ?? const EventChannel('io.ericlee.bfa/events').receiveBroadcastStream())
+        _events = (events ?? const EventChannel('io.flrone/events').receiveBroadcastStream())
             .map<dynamic>(normalizePlatformValue);
 
   final MethodChannel _channel;
@@ -160,6 +180,45 @@ class BoxController extends ChangeNotifier {
   final _pendingAspects = <BoxAspect>{};
   Timer? _batchTimer;
 
+  /// Coalesces repeated bridge round-trips (visibility toggles, refreshes) and
+  /// gates high-frequency rebuilds while the app is backgrounded. Both are the
+  /// pure-Dart parts of Bettbox's refresh/performance work; neither changes the
+  /// data the Kotlin side pushes, only when the UI reacts to it.
+  final Debouncer debouncer = Debouncer();
+  final Throttler throttler = Throttler();
+  final RefreshGate refreshGate = RefreshGate();
+  static const _deferrableAspects = <BoxAspect>{
+    BoxAspect.traffic, BoxAspect.connections, BoxAspect.logs,
+    BoxAspect.logcat, BoxAspect.memory, BoxAspect.testSession,
+  };
+  final _deferredAspects = <BoxAspect>{};
+
+  /// Replays aspects that arrived while the app was hidden. Called on resume so
+  /// the first frame back shows current data instead of a stale dashboard.
+  void resumeRefreshes() {
+    refreshGate.setForeground(true);
+    if (_deferredAspects.isEmpty) return;
+    final aspects = _deferredAspects.toList();
+    _deferredAspects.clear();
+    _notify(aspects);
+  }
+
+  /// Stops tick-driven rebuilds while hidden. Data still lands in the fields.
+  void suspendRefreshes() => refreshGate.setForeground(false);
+
+  /// Routes an event's aspects through the visibility gate.
+  void _dispatch(Iterable<BoxAspect> aspects, bool batched) {
+    if (!refreshGate.shouldRebuild && aspects.every(_deferrableAspects.contains)) {
+      _deferredAspects.addAll(aspects);
+      return;
+    }
+    if (batched) {
+      _notifyBatched(aspects);
+    } else {
+      _notify(aspects);
+    }
+  }
+
   void _notify(Iterable<BoxAspect> aspects) {
     if (_disposed) return;
     for (final aspect in aspects) { _revisions[aspect.index]++; }
@@ -195,6 +254,10 @@ class BoxController extends ChangeNotifier {
   }
 
   void _syncData(BoxData data) {
+    // Must stay synchronous: BoxDataSubscription's demand contract expects one
+    // bridge call per visibility change, and its tests assert the exact order.
+    // The debouncer is for user-driven bursts (see BoxController.debouncer),
+    // not for this negotiated subscription state.
     unawaited(act(switch (data) {
       BoxData.memory => 'dashboard.memory.visible',
       BoxData.logcat => 'logs.logcat.visible',
@@ -318,6 +381,8 @@ class BoxController extends ChangeNotifier {
       quality = json(diagnostics['quality']);
       final intent = result['intent'] as String?;
       if (intent != null) pendingIntents.add(intent);
+      // A low-RAM device gets a smaller decoded-image budget than the desktop-sized default.
+      imageCache.maximumSizeBytes = (result['lowRam'] == true ? 24 : 50) << 20;
       // An AppRestart-level write or reset from before this attach; a reload does not clear it.
       applyRequired = result['applyRequired'] as String?;
       ready = true;
@@ -434,6 +499,12 @@ class BoxController extends ChangeNotifier {
         memory = nextMemory;
         aspects = const [BoxAspect.memory];
       case 'lan': lan = json(value);
+      // The system is short of memory: ART's gc/trimHeap cannot touch the Dart heap, so the
+      // decoded images (the largest thing the UI keeps) are dropped here instead.
+      case 'memoryTrim':
+        imageCache.clear();
+        imageCache.clearLiveImages();
+        return;
       case 'browserComplete': eventBus.emit(BrowserCompleteEvent(json(value))); return;
       case 'dashboard':
         final nextDashboard = json(value);
@@ -535,12 +606,9 @@ class BoxController extends ChangeNotifier {
         return;
       default: return;
     }
-    // A burst of list events shares one rebuild; everything else notifies as it lands.
-    if (_batchedTypes.contains(item['type'])) {
-      _notifyBatched(aspects);
-    } else {
-      _notify(aspects);
-    }
+    // A burst of list events shares one rebuild; everything else notifies as it
+    // lands. While hidden, high-frequency aspects are held for the resume flush.
+    _dispatch(aspects, _batchedTypes.contains(item['type']));
   }
 
   /// Kernel logs arriving through the FFI message port (dual path: only when
@@ -564,6 +632,9 @@ class BoxController extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     _batchTimer?.cancel();
+    debouncer.cancelAll();
+    throttler.clear();
+    refreshGate.dispose();
     _subscription?.cancel();
     _kernelSub?.cancel();
     _kernelEvents?.cancel();

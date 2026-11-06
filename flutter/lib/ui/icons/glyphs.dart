@@ -3,7 +3,7 @@ import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/icons/glyph.dart';
+import 'package:flrone/ui/icons/glyph.dart';
 
 /// The glyphs the components of this package draw themselves.
 abstract final class Glyphs {

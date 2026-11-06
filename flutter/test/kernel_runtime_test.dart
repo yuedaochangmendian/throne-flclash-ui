@@ -1,6 +1,6 @@
-import 'package:b_box_ui/box.dart';
-import 'package:b_box_ui/core/kernel_service.dart';
-import 'package:b_box_ui/core/throne_ffi.dart';
+import 'package:flrone/box.dart';
+import 'package:flrone/core/kernel_service.dart';
+import 'package:flrone/core/throne_ffi.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 

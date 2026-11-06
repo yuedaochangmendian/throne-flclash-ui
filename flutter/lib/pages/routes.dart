@@ -661,7 +661,13 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
             title: Text(context.tr(isEndpoint ? 'Preferred endpoint' : 'Outbound')),
             trailing: Text(_outboundName(outboundId)),
             onTap: () async {
-              final picked = await showDialog<int>(context: context, builder: _outboundDialog);
+              // The catalog the UI holds is counts-only; the picker asks for the names it shows.
+              final nodes = await context.box.groupNodes();
+              if (!context.mounted) return;
+              final picked = await showDialog<int>(
+                context: context,
+                builder: (context) => _outboundDialog(context, nodes),
+              );
               if (picked != null) _set('outbound_id', picked);
             },
           ),
@@ -880,12 +886,7 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
     _ => 'Proxy',
   };
 
-  Widget _outboundDialog(BuildContext context) {
-    final nodes = <Json>[];
-    for (final group in context.box.groups) {
-      final items = group['items'];
-      if (items is List) nodes.addAll(items.map(json));
-    }
+  Widget _outboundDialog(BuildContext context, List<Json> nodes) {
     return SimpleDialog(
       title: Text(context.tr('Outbound')),
       children: [

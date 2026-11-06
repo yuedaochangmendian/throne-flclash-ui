@@ -21,6 +21,32 @@ Run from the repository root:
     uv run tools/diagnostics/channel_audit.py [--verbose]
 
 Exit code 0 when every call has a handler and every event a consumer, 1 otherwise.
+
+Assumptions and maintenance
+---------------------------
+This is a deliberately shallow, regex-based cross-check, not a parser. Two
+hand-maintained assumptions keep it working; both are fragile and are the first
+things to suspect when the audit reports a false positive or a false negative:
+
+  1. DYNAMIC_SITES is a manual allowlist of dispatch sites whose method name is
+     not a string literal (ternaries, switch arms, widget-driven calls), keyed by
+     source file, with exact names or dot-terminated prefixes. It is not derived
+     from the Dart AST. Adding a new dynamic dispatch site anywhere else makes the
+     audit fail until that site and the names it can produce are declared here;
+     every declared name must also have a Kotlin handler. When the UI changes,
+     review this table and keep the declared names in sync with the code.
+  2. kotlin_handlers() bounds the `when (call.method)` block by the next member
+     function, which it assumes sits at exactly four spaces of indentation (a
+     normal Kotlin class-body `fun`). A nested `fun` at that same depth, or a
+     class reformatted to a different indent, truncates the slice. The failure is
+     deliberately fail-closed: handlers after such a boundary surface as missing,
+     never silently excused. See the arm_indent note in kotlin_handlers() for the
+     related column assumption on the `when` arms.
+
+Both assumptions are documented rather than generalised here on purpose: the
+audit is a CI gate, so rewriting the parsing logic in place would risk weakening
+it. If either assumption stops matching the code, fix the assumption and the
+table explicitly, then re-run the audit.
 """
 
 from __future__ import annotations
@@ -57,7 +83,9 @@ KOTLIN_METHOD_RE = re.compile(r'"([a-zA-Z][a-zA-Z0-9_.:]*)"\s*->')
 EMIT_RE = re.compile(r'\bemit\(\s*"([a-zA-Z][a-zA-Z0-9_]*)"')
 DART_CASE_RE = re.compile(r"case\s+'([a-zA-Z][a-zA-Z0-9_.:]*)'")
 DART_CHANNEL_RE = re.compile(r"(?:Method|Event)Channel\(\s*'([^']+)'")
-KOTLIN_CHANNEL_RE = re.compile(r'"(io\.ericlee[^"]*)"')
+# Read channel names from the constructors on both ends rather than hard-coding
+# an organisation prefix: renaming the bridge namespace must not break this gate.
+KOTLIN_CHANNEL_RE = re.compile(r'(?:Method|Event)Channel\([^)]*?"([^"]+)"')
 CAPABILITY_RE = re.compile(r'"([a-zA-Z]+)"\s+to\s+(true|false)')
 
 # Handlers are dotted (`word.word…`) with the single historical exception of
@@ -147,6 +175,13 @@ def kotlin_handlers() -> set[str]:
     # that column keeps a nested `when (state) { "dotted" -> … }` from counting as
     # a handler of the outer dispatch.
     when_line = text[:start].rsplit("\n", 1)[-1]
+    # arm_indent applies only to this one, conventionally formatted Kotlin block:
+    # the `when` line sits at N spaces and its arms at N + 4 (four-space class
+    # indentation). Tabs, a different indent width, or arms on the `when` line
+    # shift the column matched below and make handlers look missing (fail-closed,
+    # as the bounding comment above describes). This is the documented assumption,
+    # not a general Kotlin parser; keep the two assumptions in the module docstring
+    # in mind before changing this arithmetic.
     arm_indent = len(when_line) - len(when_line.lstrip()) + 4
     arms = re.finditer(rf"^ {{{arm_indent}}}\"([a-zA-Z][a-zA-Z0-9_.:]*)\"\s*->", text[start:end], flags=re.M)
     return {name for name in (match.group(1) for match in arms) if METHOD_NAME_RE.match(name)}

@@ -1,6 +1,6 @@
 import 'dart:async';
-import 'package:b_box_ui/components/data_subscription.dart';
-import 'package:b_box_ui/widgets.dart';
+import 'package:flrone/components/data_subscription.dart';
+import 'package:flrone/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 

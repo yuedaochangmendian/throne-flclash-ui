@@ -2,9 +2,9 @@ import 'dart:math' as math;
 
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/sliver_list/super_sliver_list.dart';
+import 'package:flrone/ui/sliver_list/super_sliver_list.dart';
 
-export 'package:b_box_ui/ui/sliver_list/super_sliver_list.dart'
+export 'package:flrone/ui/sliver_list/super_sliver_list.dart'
     show ListController;
 
 /// The app's lazily built list. A far jump, such as dragging the scrollbar,

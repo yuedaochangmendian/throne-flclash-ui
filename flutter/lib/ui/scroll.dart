@@ -6,12 +6,12 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/context.dart';
-import 'package:b_box_ui/ui/scroll_behavior.dart';
-import 'package:b_box_ui/ui/shape.dart';
-import 'package:b_box_ui/ui/surface.dart';
-import 'package:b_box_ui/ui/theme_data.dart';
-import 'package:b_box_ui/ui/typography.dart';
+import 'package:flrone/ui/context.dart';
+import 'package:flrone/ui/scroll_behavior.dart';
+import 'package:flrone/ui/shape.dart';
+import 'package:flrone/ui/surface.dart';
+import 'package:flrone/ui/theme_data.dart';
+import 'package:flrone/ui/typography.dart';
 
 import 'inherited.dart';
 

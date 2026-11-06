@@ -1,4 +1,4 @@
-import 'package:b_box_ui/common/log_payload.dart';
+import 'package:flrone/common/log_payload.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {

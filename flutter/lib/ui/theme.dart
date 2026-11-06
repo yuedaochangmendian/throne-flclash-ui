@@ -1,7 +1,7 @@
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/common_button.dart';
-import 'package:b_box_ui/ui/metrics.dart';
-import 'package:b_box_ui/ui/theme_data.dart';
+import 'package:flrone/ui/common_button.dart';
+import 'package:flrone/ui/metrics.dart';
+import 'package:flrone/ui/theme_data.dart';
 
 class MinFilledButtonTheme extends StatelessWidget {
   final Widget child;

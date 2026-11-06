@@ -28,6 +28,9 @@ import java.util.Date
  */
 object BboxCatalog {
 
+    /** `Custom : Outbound("custom")`: the one type whose label depends on the row's own config. */
+    private const val CUSTOM_TYPE = "custom"
+
     data class Catalog(
         val groups: List<UiGroup> = emptyList(),
         val profiles: List<ProfileInfo> = emptyList(),
@@ -37,6 +40,32 @@ object BboxCatalog {
         val selectedGroupId: Long = 0L,
     )
 
+    /**
+     * Resolves a profile's type label once per type.
+     *
+     * `ProxyEntity.displayType()` reads the row's outbound JSON (`outbound.displayType().ifEmpty { type }`),
+     * and the label is a property of the outbound class, which `type` selects — so one row per type answers
+     * for all of them. `custom` is the exception: its label comes from the config's own subtype and `type`,
+     * so it is resolved per row.
+     */
+    internal class TypeLabels {
+        private val labels = HashMap<String, String>()
+
+        /** Outbound JSON reads this instance asked for; one per type, one per custom row. */
+        var parses = 0
+            private set
+
+        fun of(type: String, resolve: () -> String): String {
+            if (type == CUSTOM_TYPE) {
+                parses++
+                return resolve()
+            }
+            labels[type]?.let { return it }
+            parses++
+            return resolve().also { labels[type] = it }
+        }
+    }
+
     /** Blocking; call from an IO dispatcher. */
     fun load(): Catalog {
         val selected = DataStore.selectedProxy
@@ -45,6 +74,7 @@ object BboxCatalog {
         for (group in groups) {
             entities += group to runCatching { ProfileManager.members(group.id) }.getOrDefault(emptyList())
         }
+        val labels = TypeLabels()
         val uiGroups = entities.map { (group, members) ->
             val selectedName = members.firstOrNull { it.id == selected }?.displayName().orEmpty()
             UiGroup(
@@ -53,7 +83,7 @@ object BboxCatalog {
                 type = if (group.isSubscription) "subscription" else "group",
                 selected = selectedName,
                 selectable = true,
-                nodes = members.map(::node),
+                nodes = members.map { node(it, labels) },
             )
         }
         // Every selectable group needs a profile card: B-box derives "can start" from selectedProfile, so a local
@@ -84,10 +114,19 @@ object BboxCatalog {
         )
     }
 
-    private fun node(profile: ProxyEntity) = ProxyNode(
+    /**
+     * One row of the catalog. The name comes from the column, not from `displayName()`, because the
+     * latter parses the outbound JSON to answer a question the column already answers; the parse is
+     * kept for the rare row whose name is empty, where the address is the only label there is.
+     */
+    private fun node(profile: ProxyEntity, labels: TypeLabels) = ProxyNode(
         id = profile.id,
-        tag = profile.displayName(),
-        type = profile.displayType(),
+        tag = profile.name?.takeIf { it.isNotEmpty() }
+            ?: runCatching { profile.displayName() }.getOrDefault(""),
+        // A row whose outbound cannot be parsed still renders, with its stored type as the label:
+        // one bad row must not cost the whole catalog (the caller turns a throw into an empty list).
+        type = runCatching { labels.of(profile.type) { profile.displayType() } }
+            .getOrDefault(profile.type),
         delay = profile.latency,
         testedAt = profile.latencyAt * 1000L,
         isSelector = profile.type == AutoSelectorProfiles.TYPE,

@@ -1,10 +1,10 @@
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/card_surface.dart';
-import 'package:b_box_ui/ui/context.dart';
-import 'package:b_box_ui/ui/press_surface.dart';
-import 'package:b_box_ui/ui/shape.dart';
-import 'package:b_box_ui/ui/surface.dart';
-import 'package:b_box_ui/ui/typography.dart';
+import 'package:flrone/ui/card_surface.dart';
+import 'package:flrone/ui/context.dart';
+import 'package:flrone/ui/press_surface.dart';
+import 'package:flrone/ui/shape.dart';
+import 'package:flrone/ui/surface.dart';
+import 'package:flrone/ui/typography.dart';
 
 class SegmentedControl<T> extends StatelessWidget {
   const SegmentedControl({

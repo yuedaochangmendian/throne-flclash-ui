@@ -1,7 +1,7 @@
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/context.dart';
-import 'package:b_box_ui/ui/icons/icons.dart';
-import 'package:b_box_ui/ui/shape.dart';
+import 'package:flrone/ui/context.dart';
+import 'package:flrone/ui/icons/icons.dart';
+import 'package:flrone/ui/shape.dart';
 
 class SelectionCheck extends StatelessWidget {
   const SelectionCheck({super.key});

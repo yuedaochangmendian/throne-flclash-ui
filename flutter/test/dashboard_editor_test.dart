@@ -1,9 +1,9 @@
 import 'dart:async';
-import 'package:b_box_ui/main.dart';
-import 'package:b_box_ui/widgets.dart';
-import 'package:b_box_ui/components/dashboard_editor.dart';
-import 'package:b_box_ui/components/status_panel.dart';
-import 'package:b_box_ui/pages/tools.dart';
+import 'package:flrone/main.dart';
+import 'package:flrone/widgets.dart';
+import 'package:flrone/components/dashboard_editor.dart';
+import 'package:flrone/components/status_panel.dart';
+import 'package:flrone/pages/tools.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'support/errors.dart';

@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/context.dart';
-import 'package:b_box_ui/ui/shape.dart';
+import 'package:flrone/ui/context.dart';
+import 'package:flrone/ui/shape.dart';
 
 /// A pill that fills with [value], or runs two lines along itself while [value]
 /// is null.

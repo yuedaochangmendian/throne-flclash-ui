@@ -2,9 +2,9 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/context.dart';
-import 'package:b_box_ui/ui/icons/icons.dart';
-import 'package:b_box_ui/ui/null_status.dart';
+import 'package:flrone/ui/context.dart';
+import 'package:flrone/ui/icons/icons.dart';
+import 'package:flrone/ui/null_status.dart';
 
 /// Hands a switcher's transition to an [ActivityIndicator.page] inside it, so
 /// the shapes shrink away while the switcher takes the page away.

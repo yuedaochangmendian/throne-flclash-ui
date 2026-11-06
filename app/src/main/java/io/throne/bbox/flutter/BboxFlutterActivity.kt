@@ -1,13 +1,18 @@
 package io.throne.bbox.flutter
 
+import android.Manifest
 import android.app.ActivityManager
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.view.KeyEvent
+import androidx.core.content.ContextCompat
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.preference.PreferenceDataStore
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.nekohasekai.sagernet.Key
 import io.nekohasekai.sagernet.SagerNet
 import io.nekohasekai.sagernet.database.DataStore
@@ -48,6 +53,35 @@ class BboxFlutterActivity : FlutterFragmentActivity(), OnPreferenceDataStoreChan
 
     private var openHandler: ((Uri?) -> Unit)? = null
     private var saveHandler: ((Uri?) -> Unit)? = null
+
+    /** The one camera-permission request in flight; the scan screen awaits it before it starts the camera. */
+    private var cameraHandler: ((Boolean) -> Unit)? = null
+
+    private val cameraPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        cameraHandler?.invoke(granted)
+        cameraHandler = null
+    }
+
+    // Registered at construction (before CREATED), as the framework requires. Two separate launchers keep the
+    // open-document and create-document results apart, the same distinction the old request codes made; each
+    // callback owns its single handler slot and clears it after delivery.
+    private val openDocumentLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val uri = result.data?.data?.takeIf { result.resultCode == RESULT_OK }
+        openHandler?.invoke(uri)
+        openHandler = null
+    }
+
+    private val createDocumentLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val uri = result.data?.data?.takeIf { result.resultCode == RESULT_OK }
+        saveHandler?.invoke(uri)
+        saveHandler = null
+    }
 
     // The first-start prompts and the Wi-Fi walk-through register their launchers at construction,
     // which is what the framework requires; the old UI keeps them as MainActivity fields the same way.
@@ -113,10 +147,29 @@ class BboxFlutterActivity : FlutterFragmentActivity(), OnPreferenceDataStoreChan
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        registerScannerPlugin(flutterEngine)
         bridge = ThroneBoxBridge(this, flutterEngine.dartExecutor.binaryMessenger).also { it.attach() }
         // The UI really came up: give the next crash its full restart budget back, so a
         // startup crash that always recurs cannot restart the app forever.
         CrashHandler.noteStarted()
+    }
+
+    /**
+     * Registers mobile_scanner explicitly, on top of the automatic registration.
+     *
+     * Flutter finds the module AAR's `GeneratedPluginRegistrant` by reflection and **swallows the
+     * failure** (it logs a warning and carries on), so a registrant that cannot be loaded shows up
+     * much later as `MissingPluginException` on the scanner channel — the camera preview then never
+     * appears. Adding the plugin here is a no-op when it is already registered (the engine's registry
+     * keys plugins by class) and, when the class is absent from the APK, logs the reason instead of
+     * leaving a silent black screen.
+     */
+    private fun registerScannerPlugin(engine: FlutterEngine) {
+        val name = "dev.steenbakker.mobile_scanner.MobileScannerPlugin"
+        runCatching {
+            val plugin = Class.forName(name).getDeclaredConstructor().newInstance() as FlutterPlugin
+            engine.plugins.add(plugin)
+        }.onFailure { Logs.w("scanner: $name is not in this build: ${it.message}") }
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
@@ -137,12 +190,10 @@ class BboxFlutterActivity : FlutterFragmentActivity(), OnPreferenceDataStoreChan
         openHandler = { uri -> if (continuation.isActive) continuation.resume(uri) }
         continuation.invokeOnCancellation { openHandler = null }
         runCatching {
-            @Suppress("DEPRECATION")
-            startActivityForResult(
+            openDocumentLauncher.launch(
                 Intent(Intent.ACTION_OPEN_DOCUMENT)
                     .addCategory(Intent.CATEGORY_OPENABLE)
                     .setType("*/*"),
-                REQUEST_OPEN,
             )
         }.onFailure { openHandler = null; continuation.resume(null) }
     }
@@ -156,13 +207,11 @@ class BboxFlutterActivity : FlutterFragmentActivity(), OnPreferenceDataStoreChan
         saveHandler = { uri -> if (continuation.isActive) continuation.resume(uri) }
         continuation.invokeOnCancellation { saveHandler = null }
         runCatching {
-            @Suppress("DEPRECATION")
-            startActivityForResult(
+            createDocumentLauncher.launch(
                 Intent(Intent.ACTION_CREATE_DOCUMENT)
                     .addCategory(Intent.CATEGORY_OPENABLE)
                     .setType(mime)
                     .putExtra(Intent.EXTRA_TITLE, name),
-                REQUEST_SAVE,
             )
         }.onFailure { saveHandler = null; continuation.resume(null) }
     }
@@ -192,16 +241,28 @@ class BboxFlutterActivity : FlutterFragmentActivity(), OnPreferenceDataStoreChan
         }
     }
 
-    @Deprecated("Deprecated in Java")
-    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
-        val uri = data?.data?.takeIf { resultCode == RESULT_OK }
-        when (requestCode) {
-            REQUEST_OPEN -> openHandler?.invoke(uri)
-            REQUEST_SAVE -> saveHandler?.invoke(uri)
-            else -> super.onActivityResult(requestCode, resultCode, data)
+    /**
+     * Asks for the camera permission before the scanner starts.
+     *
+     * mobile_scanner requests it itself, but that request runs through the plugin's own listener and a
+     * host that never answers it leaves the scanner waiting on a black preview with no error to show.
+     * Asking here first means the plugin finds the permission already granted and starts the camera
+     * immediately; a refusal comes back as `false` so the screen can say what to do about it.
+     */
+    suspend fun ensureCameraPermission(): Boolean {
+        val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
+            PackageManager.PERMISSION_GRANTED
+        if (granted) return true
+        if (cameraHandler != null) return false
+        return suspendCancellableCoroutine { continuation ->
+            cameraHandler = { result -> if (continuation.isActive) continuation.resume(result) }
+            continuation.invokeOnCancellation { cameraHandler = null }
+            runCatching { cameraPermission.launch(Manifest.permission.CAMERA) }
+                .onFailure {
+                    cameraHandler = null
+                    if (continuation.isActive) continuation.resume(false)
+                }
         }
-        if (requestCode == REQUEST_OPEN) openHandler = null
-        if (requestCode == REQUEST_SAVE) saveHandler = null
     }
 
     /**
@@ -229,10 +290,5 @@ class BboxFlutterActivity : FlutterFragmentActivity(), OnPreferenceDataStoreChan
             return true
         }
         return super.dispatchKeyEvent(event)
-    }
-
-    private companion object {
-        const val REQUEST_OPEN = 4711
-        const val REQUEST_SAVE = 4712
     }
 }

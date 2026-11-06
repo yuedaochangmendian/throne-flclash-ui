@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import android.app.*
 import android.content.ClipData
 import android.content.ClipboardManager
-import android.content.ComponentCallbacks2
 import android.content.Context
 import android.content.Intent
 import android.content.res.Configuration
@@ -127,13 +126,9 @@ class SagerNet : Application(),
      */
     override fun onTrimMemory(level: Int) {
         super.onTrimMemory(level)
-        when {
-            level >= ComponentCallbacks2.TRIM_MEMORY_COMPLETE -> {
-                BboxMemory.gc()
-                BboxMemory.purgeMemory()
-            }
-            level >= ComponentCallbacks2.TRIM_MEMORY_MODERATE -> BboxMemory.gc()
-        }
+        // The UI hears about it first (it can drop decoded images), then ART gets the hint; the
+        // policy itself lives in BboxMemory so the bridge and the application cannot drift apart.
+        BboxMemory.onTrim(level)
     }
 
     override fun onLowMemory() {

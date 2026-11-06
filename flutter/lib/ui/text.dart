@@ -1,7 +1,7 @@
 import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/tooltip.dart';
+import 'package:flrone/ui/tooltip.dart';
 
 /// [text], with a tooltip of its whole string once it is cut short.
 class TooltipText extends StatefulWidget {

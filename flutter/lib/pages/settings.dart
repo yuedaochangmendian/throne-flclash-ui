@@ -3,6 +3,7 @@ import 'access.dart';
 import 'appearance.dart';
 import 'backup.dart';
 import 'diagnostics.dart';
+import 'resolve.dart';
 
 export 'appearance.dart';
 export 'access.dart';
@@ -42,7 +43,7 @@ List<ListItem> settingsEntries(BuildContext context) {
     ListItem.open(leading: const GlyphIcon(AppGlyphs.speed), title: Text(context.tr('Testing')), widget: const TestingPage()),
     ListItem.open(leading: const GlyphIcon(AppGlyphs.profiles), title: Text(context.tr('Subscriptions')), widget: const SubscriptionPage()),
     ListItem.open(leading: const GlyphIcon(AppGlyphs.cpu), title: Text(context.tr('Core')), widget: const CorePage()),
-    if (caps.of('quality') || caps.of('stun'))
+    if (caps.of('quality') || caps.of('stun') || caps.of('dnsResolve'))
       ListItem.open(leading: const GlyphIcon(AppGlyphs.target), title: Text(context.tr('Diagnostics')), widget: const DiagnosticsSettingsPage()),
     ListItem.open(leading: const GlyphIcon(AppGlyphs.appsList), title: Text(context.tr('Access control')), widget: const AccessPage()),
     ListItem.open(leading: const GlyphIcon(AppGlyphs.cloudSync), title: Text(context.tr('Backup and restore')), widget: const BackupPage()),
@@ -61,6 +62,8 @@ class DiagnosticsSettingsPage extends StatelessWidget {
           ListItem.open(leading: const GlyphIcon(AppGlyphs.target), title: Text(context.tr('Network quality')), widget: const DiagnosticsPage(quality: true)),
         if (caps.of('stun'))
           ListItem.open(leading: const GlyphIcon(AppGlyphs.connections), title: Text(context.tr('STUN test')), widget: const DiagnosticsPage(quality: false)),
+        if (caps.of('dnsResolve'))
+          ListItem.open(leading: const GlyphIcon(AppGlyphs.dns), title: Text(context.tr('Domain resolution')), widget: const ResolvePage()),
       ]),
     ]);
   }

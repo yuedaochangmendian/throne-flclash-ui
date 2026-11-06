@@ -1,8 +1,29 @@
-SagerNet was originally created in late 2021, by
-nekohasekai <contact-sagernet@sekai.icu>.
+# AUTHORS · 作者与致谢
 
-Here is an inevitably incomplete list of MUCH-APPRECIATED CONTRIBUTORS --
-people who have submitted patches, fixed bugs, added translations, and
-generally made SagerNet that much better:
+## 本发行版
 
-https://github.com/SagerNet/SagerNet/graphs/contributors
+本仓库 **yuedaochangmendian/throne-flclash-ui**（应用名 Flrone）是
+[throneproj/ThroneForAndroid](https://github.com/throneproj/ThroneForAndroid) 的**下游发行版**，由 **yuedaochangmendian** 维护。
+
+本发行版的工作集中在 Flutter 界面、桥接层与发布线；核心按 `nb4a.properties` 中的 `THRONE_CORE_REF` 固定并跟随上游。
+本文件仅说明维护与致谢关系：**本仓库维护者不主张对上游代码拥有著作权**，上游代码的著作权归各自作者与贡献者所有，并遵循其各自许可；本仓库整体以 GPL-3.0 发布（见 `LICENSE`）。
+
+## 上游项目与作者致谢
+
+以下项目与作者均在根目录 `README.md`（开头介绍与 Credits 段）中真实出现，构成本项目的来源与基础：
+
+- **Throne / throneproj/ThroneForAndroid**：引擎与数据模型来源（sing-box + Xray 的协议与配置面）；上游文档与捐赠请参考上游仓库。
+- **NekoBox for Android / MatsuriDayo/NekoBoxForAndroid** 与 **SagerNet / SagerNet/SagerNet**：早期 Android GUI 血统（本项目最初 fork 自 NekoBox for Android）。
+- **shadowsocks-android / shadowsocks/shadowsocks-android**：Android GUI 相关参考。
+- **FlClash**：prism UI 层（dev 分支）的来源，本项目的 Flutter 界面在此基础上重建与适配。
+- **B-box / giturass/B-box**：本 UI 所改编自的界面实现。
+- **sing-box**：内核基础（上游 fork 为 throneproj/sing-box，源自 SagerNet/sing-box）。
+- **Xray-core**：与 sing-box 配合的核心（上游 fork 为 throneproj/Xray-core，源自 XTLS/Xray-core）。
+
+各项目的链接与说明见 `README.md` 的 **Credits** 段。
+
+## 对上游贡献者的致谢
+
+谨向上述所有上游项目的作者与贡献者致谢——包括提交补丁、修复缺陷、补充翻译与维护文档的所有人。各项目的完整贡献者名单请见其各自仓库的 contributors 页面；本文件不复制、不改写该名单，也不代表本仓库拥有这些贡献。
+
+同时感谢通过 GitHub Issues 反馈问题的用户，以及参与本仓库历次变更（记录于 `openspec/` 与 `CHANGELOG.md`）的所有人。

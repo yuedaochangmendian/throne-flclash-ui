@@ -39,6 +39,13 @@ fail_with_artifacts() {
     exit 1
 }
 
+# Preview builds stay off releases/latest: the in-app updater follows that
+# alias, and a preview must never displace the current stable update manifest.
+PRERELEASE_FLAG=()
+if [ "${PRERELEASE:-false}" = "true" ]; then
+    PRERELEASE_FLAG=(--prerelease)
+fi
+
 if gh release view "$TAG" --json id > /dev/null 2>&1; then
     echo "release $TAG already exists: uploading assets instead of recreating the tag"
     retry gh release upload "$TAG" dist/* --clobber || fail_with_artifacts
@@ -48,10 +55,11 @@ if gh release view "$TAG" --json id > /dev/null 2>&1; then
 else
     if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
         # The tag already exists in the repository; do not pass --target.
-        retry gh release create "$TAG" dist/* --title "$TAG" --notes-file "$NOTES" || fail_with_artifacts
+        retry gh release create "$TAG" dist/* --title "$TAG" --notes-file "$NOTES" \
+            "${PRERELEASE_FLAG[@]}" || fail_with_artifacts
     else
         retry gh release create "$TAG" dist/* --target "$GITHUB_SHA" \
-            --title "$TAG" --notes-file "$NOTES" || fail_with_artifacts
+            --title "$TAG" --notes-file "$NOTES" "${PRERELEASE_FLAG[@]}" || fail_with_artifacts
     fi
 fi
 

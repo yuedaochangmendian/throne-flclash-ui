@@ -4,7 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import 'package:b_box_ui/ui/press_sparkle.dart';
+import 'package:flrone/ui/press_sparkle.dart';
 
 /// How a surface shows that it is held down.
 enum PressLook {

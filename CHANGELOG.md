@@ -1,3 +1,147 @@
+#### 3.3.0-pre.13
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one is about the memory panel's numbers.
+
+The memory panel was printing four figures that were not what their labels said:
+
+* `rss` carried the core's `inuse`, so "Process RSS" showed the core's few megabytes instead of the process's resident size. It now comes from `Debug.MemoryInfo.totalPss`, which counts a shared page once
+* The details page divided the ART heap figures by the core's `inuse`, printing 1600% and 4000%. Those rows moved to the App section, where they belong, and the Core section now shows the one number the core actually reports
+* `heapIdle` was `maxMemory - totalMemory` — headroom never allocated — not the idle part of the heap
+* `stack`, `runtimeOther` and `goroutines` were hard-coded zeros with no source behind them, and are gone
+* `running` and `remote` were never sent, so the release-memory button could not appear at all
+
+The headline figure is now `app + core`, the memory the process holds, instead of the ART heap ceiling reading as if it were current use.
+
+#### 3.3.0-pre.6
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. Scanner plugin registration.
+
+`MissingPluginException(No implementation found for method state on channel dev.steenbakker.mobile_scanner/scanner/method)` is what the scan screen reported on a device. The channel only exists after `MobileScannerPlugin.onAttachedToActivity`, so the plugin has to be on the engine **and** attached to the activity; Flutter finds the module AAR's `GeneratedPluginRegistrant` by reflection and swallows a failure there (one warning, then nothing), which is why the screen showed a black preview instead of an error.
+
+* The activity now registers the scanner plugin explicitly after `super.configureFlutterEngine`. The engine keys plugins by class, so this is a no-op when the registrant already ran, and it is what creates the channel when it did not
+* If the plugin class is missing from the build at all, one line is logged (`scanner: … is not in this build`) instead of the failure disappearing into a warning
+* Release builds keep `io.flutter.plugins.**` and the plugin's package, so shrinking cannot remove either side of that reflection
+* The permission-first start and the on-screen reason from pre.5 stay: with the channel present, a denied permission now says so instead of leaving a black rectangle
+
+Both AARs were checked locally: the module POM lists `dev.steenbakker.mobile_scanner:mobile_scanner_release:1.0`, the plugin AAR contains `MobileScannerPlugin.class` and the module AAR contains `io/flutter/plugins/GeneratedPluginRegistrant.class` — so packaging is right and the missing piece was registration at runtime.
+
+#### 3.3.0-pre.5
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one is about the black camera preview.
+
+The scan screen no longer sits on a black rectangle without saying why:
+
+* The camera is started by the screen itself, **after the host has answered the camera permission** (`permissions.camera`, a `RequestPermission` launcher on the activity). mobile_scanner asks too, but its request only completes when the host forwards the permission result — a request that is never answered leaves `MobileScanner` on its black placeholder with `error == null`, which is exactly the "scan does nothing" symptom
+* The preview area now reports state: a spinner while the camera starts, the plugin's own exception or the denial message when it fails, and after five seconds a hint to check the camera permission in the system settings plus a retry button
+* A denied permission says so instead of leaving a black box
+
+If the preview is still black after this, the message on screen names the cause (permission, or the plugin's exception text), which is the same thing `adb logcat | grep -iE "mobile_scanner|CameraX"` would tell us.
+
+#### 3.3.0-pre.4
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one fixes QR import.
+
+Scan import could hang forever on a code whose text is not a URL, a JSON object or a share link:
+
+* The scan screen assembles the frames of one QR and asks the bridge when the payload is complete. That decision only recognised a handful of prefixes — `http(s)://`, `{`, `sing-box://`, a share link — so a **base64 subscription** or a YAML document never completed: the screen sat at "0 / 1" while the camera's repeated frames were appended to the buffer over and over
+* The assembly now also treats "this frame added nothing" as completion — a symbol that stopped changing is complete, whatever its text looks like — and a frame the buffer already holds is not appended again (the camera's A,B,A,B cycle used to build "ABAB")
+* A payload that fails to import is no longer retried on every camera frame, which only flashed the same error; the same code retries after a short pause, a different one immediately
+
+`BboxScanChunksTest` covers the link and URL shapes, the base64 case, multi-frame order and the session reset. If a **share link or subscription URL** still fails to import after this, the cause is the camera rather than the assembly — `adb logcat | grep -iE "mobile_scanner|CameraX"` says which.
+
+#### 3.3.0-pre.3
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. No screen changes: the catalog stops parsing every node's outbound JSON.
+
+* `ProxyEntity.displayType()` reads a row's outbound JSON to name its type, and the catalog called it once per node — a 3000-node subscription parsed 3000 configs on every catalog rebuild, which happens at startup and after every subscription refresh. The label is a property of the outbound class, and the stored `type` selects that class, so one row per type now answers for all of them. `custom` is the exception (its label comes from its own subtype and config type) and is still resolved per row
+* The display name now comes from the name column instead of `displayName()`, which parsed the JSON to answer what the column already holds. The parse stays for the rare row with an empty name, where the address is the only label
+* A row whose outbound cannot be parsed now renders with its stored type. Before, one malformed row threw out of the mapping and the caller turned that into an **empty catalog** — every group disappeared
+* `BboxCatalogTypeLabelsTest` pins the per-type cache and the `custom` exception
+
+#### 3.3.0-pre.2
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. No screen gains a feature here: this is the memory pass over the bridge and the package cache.
+
+Startup no longer carries the node catalog, and the one-second sample no longer rebuilds it:
+
+* `ready` answers with **group counts** (`nodeCount`, and `timeouts` for the dashboard chip) instead of every node row. The Proxies screen asks for the rows with `groups.visible` and gives them back on close; the rule editor's outbound picker asks `groups.nodes` for names (id + tag) only. The rows cost **134 B per node** on the wire — 391 KiB at 3000 nodes, 652 KiB at 5000, 2.6 MiB at 20000 — and three copies were alive while they were built (Kotlin model, wire maps, Dart decode)
+* The first event-pump emission repeated exactly what `ready` had just returned, so the first frame built and decoded the whole catalog twice. The pump now stays silent until `ready` answers, and seeds its comparison baselines from that answer
+* The 1 Hz rates sample used to rebuild `profilesWire` + `groupsWire` and structurally compare them with the previous copy — once a second, for nothing. The catalog half now rebuilds only when `BboxBridge.catalogRevision` moves (a repository change, or a visibility toggle), and `wireKey` compares that revision instead of hashing every node
+* `json()` / `rows()` no longer re-normalize what the channel boundary already normalized: arrival deep-copied the startup payload a second time
+* Memory pressure now reaches Dart. `onTrimMemory` emits `memoryTrim` and the UI clears its decoded-image cache — ART's `gc`/`trimHeap` cannot collect Dart objects — and a low-RAM device gets a 24 MiB image budget instead of 50 MiB
+* `PackageCache` builds its listing on first use instead of during `Application.onCreate`, and no longer asks for `GET_META_DATA` (nothing reads an app's meta-data bundle)
+
+**Not in this pass:** the per-node wire compaction (tuple encoding or a typed Dart node model) and the catalog's per-node `displayType()` parse. Both only affect the Proxies screen now that the rows are lazy, and the parse cannot be dropped without changing the type labels the UI renders (`AnyTLS`, `Auto Selector`, `Chain Proxy`, a custom config's subtype).
+
+Tests: `BboxGroupsWireTest` pins both payload shapes and the picker list, `platform_value_test` gains the no-second-copy guards, and the Flutter suite is 298 tests.
+
+#### 3.3.0-pre.1
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open.
+
+The first v3.3.0 capability is a diagnostics tool rather than a copied page: **domain resolution through the running tunnel**.
+
+* **Settings → Diagnostics → Domain resolution** resolves a list of names (one per line, commas or spaces work too) inside the core process, through the running box's `dns-direct` transport. That pinning is the point: a kill switch blocks the OS resolver, and a running Tun answers it from fakeip, so asking Android would report the tunnel's own fake address back as the answer
+* Without a running box the page says "connect first" instead of resolving against the phone's resolver and presenting that as the tunnel's answer. 32 domains per request, 16 at a time, 5 s each — the core's own limits
+* The new `dnsResolve` capability is the one diagnostics entry that is on; the vendored quality and STUN pages stay switched off
+* **Why not the "Network quality" page** the roadmap had queued: the pinned core (`36b6bc4`) and upstream `dev` (`a973efe`) both export only `StartURLTest` / `StartIPTest` / `StartSpeedTest` — there is no `NetworkQualityTest` to call, so the page's `quality.start` contract could only be answered by inventing numbers. The reconnaissance note in `docs/roadmap.md` is corrected, and the raw DNS editor that was the documented fallback already ships in the DNS settings page
+* No core change, no new permission, no schema asset: one AIDL method (`resolveDomains`), one `:bg` resolver, one bridge object, one page. `DomainResolverTest`, `domain_resolve_test.dart` and the navigation render pass cover the wire contract
+* This is the first preview of the 3.3.0 line and it carries everything from the 3.2.26 previews — the Bettbox runtime guards, the Flrone rename, and the Prism UI drift gate. The 3.2.26 previews were never promoted to a stable release, so 3.3.0 is the version that reaches users of 3.2.25
+
+#### 3.2.26-pre.4
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. No app code changed: this preview corrects the Prism UI baseline that pre.3 pinned to the wrong commit and tightens the gate that guards it, so the APKs are otherwise equivalent to pre.3.
+
+The pre.3 drift report measured the wrong thing, and this release fixes the measurement:
+
+* The vendored `flutter/lib/ui` matches `chen08209/prism_ui` @ `946af6d` (2026-11-01) file for file, except for one patch. pre.3 pinned `63450c0` — two commits later — so upstream's own progress was reported as our drift, and three files that are simply older than the tip were labelled "intentional forks". `prism_upstream.lock.json` now records the vendoring commit and the reviewed upstream tip as separate fields, which keeps "we patched this" and "we are behind" from collapsing into one number
+* Corrected, verified numbers: **144 identical / 1 patched / 18 local-only / 0 removed**. The one patch is `banner.dart`: a notice with no action no longer stands between a press and the page under it
+* The two upstream commits since the snapshot (`e93fec1` list/animation fixes, `63450c0` floating-sheet corners) touch four files and are deliberately **not** taken here. `docs/prism-upstream.md` lists each file, what upstream changed, and why the sync is queued — including the fact that the vendored `keyed_animated_list.dart` predates `scrollCacheExtent` forwarding, so `dashboard.dart`'s argument is currently dropped
+* The tool gains an `upstream` mode that compares a checkout against the baseline (deliberately kept out of CI, since it needs network and a clone), shader-key normalization so the vendored asset path stops counting as drift, and `--max-diverged`. CI now fails both on a dropped upstream file and on a second unrecorded patch, instead of only the former
+
+#### 3.2.26-pre.3
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This preview carries no app-code changes — it validates the new upstream-drift tooling and CI gate; the APKs are otherwise equivalent to pre.2.
+
+Prism UI is now tracked, not guessed:
+
+* `tools/diagnostics/prism_drift.py` measures the vendored `flutter/lib/ui` against a **pinned upstream baseline** (`chen08209/prism_ui` @ `63450c0`, one commit past `v0.1.2`). The committed baseline manifest and lock file let CI run the check fully offline; it reports 138 identical / 7 diverged / 18 added / 0 removed, and fails the build only if an upstream file is dropped locally (never intended)
+* `docs/prism-upstream.md` records *why* the kit is vendored instead of pulled from pub.dev, the disposition of every one of the 7 diverged files (4 intentional forks, 2 mechanical vendoring changes, 1 low-risk upstream fix — the `sheet.dart` floating-foot rounding — we have not taken), the 18 local-only extension files, and the sync policy (no auto-merge; re-baseline only on a deliberate pull)
+* CI runs the drift check on every push and uploads the report as an artifact, so future drift is visible the moment it appears
+
+#### 3.2.26-pre.2
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open.
+
+Naming unification: the project is now consistently **Flrone**.
+
+* The Flutter module package `b_box_ui` becomes `flrone` (all Dart imports), its Android package and AAR coordinate `io.ericlee.bbox_ui` become `io.flrone.ui`, and the two bridge channels become `io.flrone/box` / `io.flrone/events` — both ends, the design docs and the contract audit stay in sync.
+* Gradle's `rootProject.name`, APK filename prefixes and CI artifact names are now `Flrone-*` instead of `Throne-*`; the log-export header, READMEs and governance documents use Flrone alone.
+* **Deliberately unchanged**: `applicationId` stays `com.throneflclash`, so this preview still installs over 3.2.x and keeps subscriptions and backups. The GitHub repository name and all URLs are unchanged. Upstream package names (`io.nekohasekai.sagernet.*`, `moe.matsuri.nb4a.*`), Kotlin class names, translated strings that name upstream formats (`Throne-Link`, `.thrbackup`, "Throne-only"), historical CHANGELOG sections and vendored manifests are not rewritten.
+* Historical planning documents keep their original identifiers and now carry a note pointing at the current values.
+
+#### 3.2.26-pre.1
+
+> **Preview build for testing only.** It is published as a GitHub prerelease and deliberately does not write `throne-update.json`, so the in-app updater keeps offering 3.2.25. Install it manually from Releases; do not use it as a daily driver. It has passed CI but has not gone through the full physical-device checklist (`docs/device-checklist.md`).
+
+Runtime work ported from Bettbox, all confined to the Dart layer:
+
+* A tag-scoped `Debouncer` / `Throttler` now coalesces repeated bridge round-trips; subscription refreshes get bounded retry with a per-attempt timeout
+* A visibility gate holds high-frequency rebuilds while the app is backgrounded and replays their aspects once on resume, instead of rebuilding the dashboard for every push the Kotlin side delivers off-screen
+* Config edits have a validated path (`profileWriteGuarded`): JSON is checked before it reaches the core, the previous content is retained, and a rejected write rolls back. An `AtomicFileWriter` provides tmp-file/validate/rename semantics for future Dart-side file writes
+* Startup/framework errors now surface in the same banner the bridge uses, and the decoded-image cache is capped at 50 MiB
+* New unit and performance-budget tests cover the debounce, throttle, retry, refresh gate, validation, atomic write, rollback and large-payload normalization
+
+Release plumbing, needed before a preview can be published safely:
+
+* `release.yml` derives the `preview` channel and GitHub prerelease flag from a `-pre.<n>` version, feeds the matching build number into `android-build`, and refuses a tag whose base version disagrees with `nb4a.properties`
+* `publish_release.sh` marks preview releases with `--prerelease`, keeping them off `releases/latest` and out of the self-update channel
+* Preview builds keep the normal package name, so they can be installed alongside the stable build only if you uninstall first; the signature is unchanged from 3.2.x
+
+Repository governance: multi-language README index, `SIGNING-POLICY.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, PR template, Dependabot config, issue-template config, rewritten `AUTHORS`, CI coverage and generated-model guards, and fixes to stale version/packaging claims in the planning docs.
+
+Not included in this batch (deliberately): the application-id rename, removal of the dormant FFI subtree, `QUERY_ALL_PACKAGES` / targetSdk changes, telemetry, and the physical-device verification pass.
+
 #### 3.2.25
 
 * Local restore asks for the file instead of replaying whatever this process created last: `backup.open` opens the system picker, reads the selection, and accepts both the JSON envelope the local "Backup" entry writes and a `.thrbackup` container. Before, the local entry only returned a backup still held in memory, so after a restart it answered "No backup to restore" and the file the user saved could never be chosen
