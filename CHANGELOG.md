@@ -1,3 +1,15 @@
+#### 3.3.0
+
+The first stable release since 3.2.25. Previews pre.1–pre.13 were the test bed; the code here is the same, with the release notes written for people who do not read commit logs.
+
+* **DNS resolves through the tunnel.** `dns.resolve` asks the running core instead of the system resolver, so a domain is answered the way the proxy would answer it
+* **Scanning works again.** The camera preview no longer sits on a black rectangle: the host asks for the permission first, the screen says why a start failed, a payload that stops changing is completed instead of hanging, and the scanner plugin is registered on the engine so its channel exists at all
+* **Startup is lighter.** The node catalog is no longer shipped and rebuilt on every start, and a type is named once instead of once per node
+* **The memory panel tells the truth.** Process RSS is the process's own PSS; the ART heap rows moved out of the Core section, where they were being divided by the core's few megabytes and printing 1600%; the headline is what the process holds, not the heap ceiling
+* Prism UI drift detection, the Flrone identifier unification and the Bettbox runtime guards that shipped through the previews are all included
+
+3.2.x installs receive this through the in-app updater: `throne-update.json` is published alongside the APKs.
+
 #### 3.3.0-pre.13
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one is about the memory panel's numbers.
