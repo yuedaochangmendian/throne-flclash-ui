@@ -1,3 +1,12 @@
+#### 3.3.1-pre.3
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one corrects pre.2.
+
+pre.2 stopped the service's zeros from overwriting the driver's figures, but it did so for every dashboard event — including the driver's own. Both feeds reach the same handler, so the merge kept the *previous* values and, once connected, nothing on the home cards moved again: no start time, no totals, no rates.
+
+* The two feeds are told apart where they are subscribed: events from the kernel service are marked as the driver's and applied as-is, and only the channel's copy is merged
+* A regression test drives both feeds through the same handler — the driver's numbers land, the service's zeros do not, and the mode still comes from the channel
+
 #### 3.3.1-pre.2
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one is about the home cards' figures.
