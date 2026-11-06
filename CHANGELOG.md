@@ -1,3 +1,13 @@
+#### 3.3.1-pre.9
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one stops computing memory and asks Android, and fixes two things behind the slow IP card.
+
+The memory card went through three arithmetics, and each one was wrong for the same reason: the core's figure is the heap the Go runtime has *mapped*, not a share of what the process has resident. On a 286 MB process it read 319 MB, so any sum built on it produced a part larger than the whole.
+
+* The panel now shows what `Debug.MemoryInfo` reports and does no arithmetic of its own: the process total, and its split by allocator — the app's heap, native allocations (the core runs there), and the rest. The four add up because the platform produced them
+* The IP card was held for 48 seconds by one source whose name did not resolve: `Dns.SYSTEM` blocks inside `getaddrinfo` and nothing can interrupt it, while the probe waits for its children. Lookups now have a two-second deadline
+* "Lookup provider" in the speed-test screen was written to `exit_lookup_provider` and read by nobody. The chosen provider now goes to the front of the race; ip-api, ipapi.co and freeipapi gained parsers
+
 #### 3.3.1-pre.8
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one makes the memory card add up, and stops the IP card from waiting on a source that is not answering.
