@@ -1,3 +1,26 @@
+#### 3.3.1-pre.1
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one starts moving the data plane off the channel.
+
+The bridge was the only way Dart could reach the database. The first table no longer needs it:
+
+* **`groups` is read over `dart:ffi`.** `sager_net.db` is already opened `WRITE_AHEAD_LOGGING` — the app says so, and names the reason: a reader in one process running while the other writes. A connection in the Dart isolate therefore reads the same file without inventing a protocol between the two sides. The library is the platform's own `libsqlite3.so`, not sqflite, because this module's AAR cannot register a plugin: `registerScannerPlugin` exists precisely because the generated registrant is loaded by reflection and a failure there is swallowed
+* **`data.path` is the one call left on the channel.** Dart cannot derive `/data/data/<pkg>/databases` without a package name it does not have. The host answers with the path and the schema version Room actually opened at, read from the file rather than the annotation — a downgrade makes those two disagree
+* **`schema_audit.py` runs on every push.** A version bump on one side alone still compiles and still queries; it just reads the wrong column, silently
+* **Every failure falls back.** `DataLayer.attach` returns null when the library, the path or the schema is not what it expects, and the screen keeps using the channel instead of going blank
+
+The driver also regained what the service used to do while it owned the core:
+
+* Running-config facts (`runningProfiles` / `runningRouteId`). Without them a node a running chain still uses could be deleted, and a group's routing change never triggered the reload that applies it
+* Domain resolution for the diagnostics page, which had been answering "not running" on a live tunnel because it read a field only the gomobile start path fills
+* The Wi-Fi monitor and its `wifi.state` events, so a rule that only applies on one SSID takes effect when the network changes
+* The notification speed line, which `TrafficLooper` never filled in FFI mode
+* The service-first race: a `START_STICKY` service that came up before Dart had already built a box of its own, and two boxes on one tun fight over the descriptor
+
+The auto-selector panel now says the kernel holds the runtime instead of reporting "not running", and the widget speed is pushed from the same main-thread coroutine as the notification.
+
+Writes and the other five tables stay on the channel until a device agrees with this one.
+
 #### 3.3.0
 
 The first stable release since 3.2.25. Previews pre.1–pre.13 were the test bed; the code here is the same, with the release notes written for people who do not read commit logs.
