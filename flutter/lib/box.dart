@@ -390,6 +390,11 @@ class BoxController extends ChangeNotifier {
     } catch (error) {
       startupError = describe(error);
     }
+    // The service may have started its own box before Dart attached (START_STICKY,
+    // always-on VPN); the bridge stopped it to avoid two boxes on one tun. Rebuild it
+    // here, now that the channel can answer config.build, instead of leaving the
+    // tunnel down until the user taps connect again.
+    if (ready && kernel.handoverPending) unawaited(kernel.adoptService());
     notifyListeners();
   }
 
@@ -585,6 +590,11 @@ class BoxController extends ChangeNotifier {
       case 'serviceReload':
         // A widget/tile/notification reload reached the FFI driver (BboxKernel.onReloadWanted).
         unawaited(kernel.reloadService(reason: 'widget/tile/notification reload'));
+        return;
+      case 'wifi.state':
+        // The Android monitor saw the SSID/BSSID change (BboxKernel.onWifiChanged); the core
+        // that owns the routing rules is Dart's, so the re-read happens here.
+        unawaited(kernel.updateWifiState());
         return;
       case 'subscriptionReport':
         // Errors and untitled status lines are snackbars; a popup report opens the change window

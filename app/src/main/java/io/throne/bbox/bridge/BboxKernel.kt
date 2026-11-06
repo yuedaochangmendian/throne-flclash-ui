@@ -30,6 +30,14 @@ object BboxKernel {
     var onReloadWanted: (() -> Unit)? = null
 
     /**
+     * How an SSID/BSSID change reaches Dart in ffiMode. The monitor has to live on the Android
+     * side (it owns the ConnectivityManager callback), but the core that must re-read the state
+     * is Dart's, so the change is announced rather than applied here.
+     */
+    @Volatile
+    var onWifiChanged: (() -> Unit)? = null
+
+    /**
      * Builds the StartOptions payload for the selected profile exactly as the
      * service start path does (BoxInstance.init) — including the Xray asset fetch
      * and dashboard install — but without creating a gobind Instance: the caller
@@ -46,6 +54,44 @@ object BboxKernel {
         } finally {
             capture.close()
         }
+    }
+
+    /**
+     * The running-config facts the service used to write right after `proxy.init()`
+     * (`runningProfiles` and `runningRouteId`). They are not decoration: `ProfileManager.runningUses`
+     * reads the first to refuse deleting a node a running chain still uses, and
+     * `RouteManager.runningRouteId` reads the second to decide whether a group's routing change
+     * needs a reload. Dart owns the core now, so it reports them here once the start actually
+     * succeeded — writing them in [buildStartOptions] would leave stale values behind whenever the
+     * core refuses to come up.
+     */
+    fun markRunning(involvedProfileIds: List<Long>, routeId: Long) {
+        DataStore.runningProfiles = involvedProfileIds.map { it.toString() }
+        DataStore.runningRouteId = routeId
+    }
+
+    /** The stop half of [markRunning]: nothing is running, so nothing may look like it is. */
+    fun clearRunning() {
+        DataStore.runningProfiles = emptyList()
+        DataStore.runningRouteId = 0L
+    }
+
+    /**
+     * Hands the control plane over when the service came up first (START_STICKY, always-on VPN, a
+     * widget): its `startProxy` ran with [ffiMode] still false and built a ProxyInstance. Two boxes
+     * on one tun fight over the same descriptor, so the service-side one is stopped and the service
+     * restarted in place — with [ffiMode] now true, that start keeps the notification and leaves the
+     * core to Dart.
+     *
+     * @return true when a service-side box was actually stopped, so the caller knows the tunnel is
+     *   down and has to be rebuilt.
+     */
+    fun handOver(): Boolean {
+        val service = DataStore.baseService ?: return false
+        if (!DataStore.serviceState.canStop) return false
+        val hadCore = service.data.proxy != null
+        service.stopRunner(restart = true)
+        return hadCore
     }
 
     /** The mode switch's persist half; Dart reloads the core itself (FFI). */

@@ -50,6 +50,11 @@ class KernelService {
   bool _disposed = false;
   bool _initializing = false;
 
+  /// Set when the bridge stopped a service-side box to hand the control plane over
+  /// (the service came up before Dart did). [adoptService] rebuilds the core once the
+  /// channel is ready; until then the tunnel is deliberately down rather than doubled.
+  bool handoverPending = false;
+
   /// Automatic restarts spent on the current incident; reset by a run that holds.
   int _recoveryAttempts = 0;
 
@@ -78,10 +83,12 @@ class KernelService {
     _initializing = true;
     try {
       // Tell the bridge the FFI path drives the core from now on, then open the ABI.
-      await box.call('ffi.mode', {'enabled': true});
+      // The reply says whether a service-side box had to be stopped to get here.
+      final reply = await box.call('ffi.mode', {'enabled': true});
+      handoverPending = reply is Map && reply['handedOver'] == true;
       final kernel = ThroneKernel.ensure();
       if (kernel == null) {
-        await box.call('ffi.mode', {'enabled': false});
+        await _rollbackToBridge();
         return;
       }
       _kernel = kernel;
@@ -110,12 +117,42 @@ class KernelService {
           }
         }
         // Hand control back to the channel path so the app is still usable.
-        await box.call('ffi.mode', {'enabled': false});
+        await _rollbackToBridge();
         rethrow;
       }
     } finally {
       _initializing = false;
     }
+  }
+
+  /// Gives the core back to the service after the FFI driver failed to come up. A
+  /// hand-over has already stopped the service-side box, so the service is asked to
+  /// build one again — otherwise the app would sit "connected" with nothing running.
+  Future<void> _rollbackToBridge() async {
+    final rebuild = handoverPending;
+    handoverPending = false;
+    try {
+      await box.call('ffi.mode', {'enabled': false});
+      if (rebuild) await box.call('service.reload');
+    } catch (error) {
+      note('hand-over rollback: $error');
+    }
+  }
+
+  /// Rebuilds the core after the bridge handed the control plane over: the service had
+  /// started its own box before Dart attached and stopped it to avoid two on one tun.
+  /// That close runs on the service's coroutine, so this waits for it to release the
+  /// tun before opening the same one again.
+  Future<void> adoptService() async {
+    if (!handoverPending) return;
+    handoverPending = false;
+    if (_kernel == null) return;
+    await Future<void>.delayed(const Duration(seconds: 1));
+    if (_disposed || _kernel == null) return;
+    note('adopt: the service came up before the driver, rebuilding its core');
+    await box.call('service.start'); // foreground only in ffiMode
+    _recoveryAttempts = 0;
+    await _startCore();
   }
 
   /// Starts the foreground service (Android duty) and then the core itself.
@@ -142,8 +179,64 @@ class KernelService {
   Future<void> reloadService({String reason = 'reload'}) async {
     if (_kernel == null || !active) return;
     note('reload: $reason');
-    await _stopCore();
+    await _stopCore(clearRunning: false);
     await _startCore();
+  }
+
+  /// Persists the running-config facts for the code that reads them off the store
+  /// (`ProfileManager.runningUses`, `RouteManager.runningRouteId`). The values come
+  /// straight from `config.build`, so this never re-derives what the native side
+  /// already computed. A failure is a breadcrumb, not a failed start: the tunnel
+  /// works without them, the two guards above just go quiet.
+  Future<void> _markRunning(Map<String, dynamic> built) async {
+    final raw = built['involvedProfileIds'];
+    final ids = raw is List
+        ? raw.whereType<num>().map((value) => value.toInt()).toList()
+        : <int>[];
+    final routeId = (built['routeId'] as num?)?.toInt() ?? 0;
+    try {
+      await box.call('state.markRunning', {'involvedProfileIds': ids, 'routeId': routeId});
+    } catch (error) {
+      note('running state: $error');
+    }
+  }
+
+  Future<void> _clearRunning() async {
+    try {
+      await box.call('state.clearRunning');
+    } catch (error) {
+      note('running state: $error');
+    }
+  }
+
+  /// Asks the core whether the running config needs Wi-Fi state, and turns the Android
+  /// monitor on or off accordingly. Both halves matter: an unnecessary monitor keeps a
+  /// ConnectivityManager callback alive, and a missing one silently drops every rule
+  /// scoped to an SSID.
+  Future<void> _watchWifiRules(KernelWorker worker) async {
+    var needed = false;
+    try {
+      needed = await worker.needWifiState();
+    } catch (error) {
+      note('wifi rules: $error');
+    }
+    try {
+      await box.call('wifi.watch', {'enabled': needed});
+    } catch (error) {
+      note('wifi rules: $error');
+    }
+  }
+
+  /// An SSID/BSSID change announced by the Android monitor; the core re-reads the
+  /// platform's state through the same `CorePlatform` implementation as always.
+  Future<void> updateWifiState() async {
+    final worker = _worker;
+    if (worker == null || !active) return;
+    try {
+      await worker.updateWifiState();
+    } catch (error) {
+      note('wifi state: $error');
+    }
   }
 
   Future<void> _startCore() async {
@@ -168,9 +261,18 @@ class KernelService {
       _instanceHandle = handle;
       await worker.start();
       await worker.setHeartbeat(true);
+      // What the service used to write right after proxy.init(). Running a chain is not only the
+      // box's business: ProfileManager.runningUses refuses to delete a node a running config still
+      // uses, and RouteManager.runningRouteId decides whether a group's routing change needs a
+      // reload. Both read the store, so the facts are reported here once the start held.
+      await _markRunning(built);
       _startedAt = DateTime.now();
       note('core started in ${DateTime.now().difference(beganAt).inMilliseconds}ms');
       _emitDashboard('Started');
+      // Wi-Fi-scoped routes, DNS and rule sets need the core re-read whenever the SSID
+      // changes. The monitor is Android's (it owns the callback); whether one is needed at
+      // all is the core's answer, so ask the box that just started.
+      await _watchWifiRules(worker);
     } catch (error) {
       note('core start FAILED: $error');
       report(error);
@@ -178,16 +280,31 @@ class KernelService {
       // createInstance does not silently orphan it inside the worker isolate.
       try { await worker.stop(); } catch (_) { /* Already stopped or never started. */ }
       _instanceHandle = null;
+      // A failed start leaves nothing running, and a reload that kept the old facts
+      // would otherwise describe a core that is not there.
+      await _clearRunning();
       _emitDashboard('Stopped');
     } finally {
       _starting = false;
     }
   }
 
-  Future<void> _stopCore() async {
+  Future<void> _stopCore({bool clearRunning = true}) async {
     final handle = _instanceHandle;
     _instanceHandle = null;
     _startedAt = null;
+    // Cleared before the box closes, so nothing reads "still running" while it shuts down. A
+    // reload keeps the facts: the next start writes them again a moment later, and the gap is
+    // not a stop the user asked for. The Wi-Fi monitor follows the same rule — it is useless
+    // without a box, and rebuilding it on every reload would drop a change that lands between.
+    if (clearRunning) {
+      await _clearRunning();
+      try {
+        await box.call('wifi.watch', {'enabled': false});
+      } catch (error) {
+        note('wifi rules: $error');
+      }
+    }
     final worker = _worker;
     if (handle == null || worker == null) return;
     _stopping = true;
@@ -238,6 +355,17 @@ class KernelService {
     });
   }
 
+  /// Domain resolution through the box Dart owns. In FFI mode the service never
+  /// creates a `ProxyInstance`, so `dns.resolve` could only answer "not running";
+  /// the C ABI's `Mobile.resolveDomains` takes the handle this driver already holds.
+  Future<Map<String, dynamic>> resolveDomains(List<String> domains) async {
+    final worker = _worker;
+    if (worker == null || !active) {
+      return <String, dynamic>{'running': false, 'results': const <Object?>[]};
+    }
+    return worker.resolveDomains(domains);
+  }
+
   // --- events --------------------------------------------------------------
 
   void _onKernelStatus(BridgeEvent event) {
@@ -249,6 +377,27 @@ class KernelService {
       if (value != null) snapshot[entry.key.toString()] = value;
     }
     _emitStatus(snapshot);
+    _publishStats(snapshot);
+  }
+
+  /// The notification's speed line and the widget read the service's own counters, and in
+  /// FFI mode nothing on that side polls the core — `TrafficLooper` needs a ProxyInstance.
+  /// Push the same snapshot it would have produced; the screen-off rule is already handled
+  /// on the Kotlin side by `listenPostSpeed`.
+  void _publishStats(Map<String, int> snapshot) {
+    if (_disposed) return;
+    unawaited(() async {
+      try {
+        await box.call('state.stats', {
+          'txRate': snapshot['uplink'] ?? 0,
+          'rxRate': snapshot['downlink'] ?? 0,
+          'txTotal': snapshot['uplinkTotal'] ?? 0,
+          'rxTotal': snapshot['downlinkTotal'] ?? 0,
+        });
+      } catch (_) {
+        // A notification that cannot be updated is not a reason to lose the status stream.
+      }
+    }());
   }
 
   void _onWorkerEvent(WorkerEvent event) {

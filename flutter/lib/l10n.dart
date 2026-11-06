@@ -89,6 +89,7 @@ const _zh = <String, String>{
   'Dashboard': '仪表盘', 'Proxies': '代理', 'Profiles': '配置', 'Tools': '工具',
   'Connections': '连接', 'Logs': '日志', 'Settings': '设置', 'Status': '状态',
   'Running': '运行中', 'Not running': '未运行', 'Starting': '启动中', 'Stopping': '停止中',
+  'The kernel runs this selector directly; live ranking is not reported here': '内核直接管理该选择器，此处不显示实时排名',
   'Start': '启动', 'Stop': '停止', 'Restart': '重启', 'Reload': '重新加载',
   'Network speed': '网络速度', 'Upload': '上传', 'Download': '下载', 'Total': '累计',
   'Outbound mode': '出站模式', 'Rule': '规则', 'Global': '全局', 'Direct': '直连',

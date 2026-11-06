@@ -33,7 +33,7 @@ class _ResolvePageState extends State<ResolvePage> {
     if (domains.isEmpty || _busy) return;
     setState(() { _busy = true; _failure = null; });
     try {
-      final reply = DomainResolveReply.parse(await context.box.call('dns.resolve', {'domains': domains}));
+      final reply = DomainResolveReply.parse(await context.box.dnsResolve(domains));
       if (!mounted) return;
       setState(() { _reply = reply; _busy = false; });
     } catch (error) {

@@ -111,6 +111,33 @@ checked before `ffi.mode` is touched, so an AAR without the patch leaves `BaseSe
 through gomobile and every control call on its channel branch. `kFfiDriverEnabled` in `kernel_service.dart` is the
 single switch for the whole path; turning it off restores the pre-3.3.0 operator without deleting the driver.
 
+### What the driver has to report back (FFI driver only)
+
+Four things the service used to do while it owned the core are now the driver's job, because they are answers only
+the running box can give:
+
+- **Running-config facts.** `state.markRunning` / `state.clearRunning` keep `DataStore.runningProfiles` and
+  `runningRouteId` in step with the box. `ProfileManager.runningUses` refuses to delete a node a running chain still
+  uses, and `RouteManager.runningRouteId` decides whether a group's routing change needs a reload; both read the
+  store, so a driver that never writes it silently disables two guards. The values come straight from `config.build`,
+  and they are written after `worker.start()` held — not when the config was built, which would leave stale facts
+  behind whenever the core refuses to come up.
+- **Domain resolution.** `dns.resolve` used to answer `running = false` because it reads `CoreRuntime.running`, which
+  only the gomobile start path fills. The driver calls `Mobile.resolveDomains` on the handle it already holds and
+  answers in the same wire shape, so the diagnostics page works either way. Subscription filtering never needed this:
+  its request carries a full test config, so the core builds a probe box when no instance is passed.
+- **Wi-Fi rules.** The monitor has to live on the Android side (it owns the ConnectivityManager callback), but the
+  core that re-reads the SSID is Dart's. `wifi.watch` starts the monitor when the box says it needs Wi-Fi state;
+  each change comes back as a `wifi.state` event and the driver calls `Instance.updateWIFIState()`.
+- **Notification speed.** `TrafficLooper` needs a `ProxyInstance` for its `TrafficUpdater`, so in ffiMode it never
+  starts and the notification's speed line stays at zero. The driver pushes its status snapshot through
+  `state.stats` instead, which lands in the same `SpeedDisplayData` the looper would have produced.
+
+A service that comes up before Dart (START_STICKY, always-on VPN, a widget) has already built its own box by the time
+`ffi.mode` arrives. Two boxes on one tun fight over the same descriptor, so `BboxKernel.handOver()` stops the
+service-side one and restarts the service in place; the ffiMode branch keeps the notification and leaves the core to
+Dart, which rebuilds it from `KernelService.adoptService()` once the channel can answer `config.build`.
+
 ### The heartbeat is a liveness question, not a data question (FFI driver only)
 
 `throne_status_snapshot` is polled once a second from the worker isolate. Reading the traffic counters can race a box

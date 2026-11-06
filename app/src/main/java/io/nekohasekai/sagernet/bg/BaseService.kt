@@ -576,6 +576,24 @@ class BaseService {
             data.notification?.postConnected()
         }
 
+        /**
+         * The FFI driver's status snapshot, published where [TrafficLooper] would have put it: the
+         * notification's speed line and the widget. In ffiMode nothing on this side owns a
+         * TrafficUpdater — that needs a ProxyInstance — so Dart pushes the numbers it already reads
+         * from the core's aggregate status instead of the notification sitting at zero.
+         */
+        fun publishKernelStats(stats: io.nekohasekai.sagernet.aidl.SpeedDisplayData) {
+            val context = this as Context
+            // The notification is built and posted on the main thread everywhere else; the
+            // status feed arrives once a second from the channel, so hop rather than assume.
+            runOnMainDispatcher {
+                data.notification?.apply {
+                    if (listenPostSpeed) postNotificationSpeedUpdate(stats)
+                }
+            }
+            Widgets.pushSpeed(context, stats.txRateProxy, stats.rxRateProxy)
+        }
+
         /** Wi-Fi rules (route, DNS or rule-set ones) need location access and a fresh Wi-Fi state on roaming. */
         fun watchWifiRules(proxy: ProxyInstance) {
             this as Context
@@ -585,6 +603,37 @@ class BaseService {
                 return
             }
             data.wifiMonitor = WifiStateAccess.Monitor(this) { box.updateWIFIState() }.also { it.start() }
+            if (WifiStateAccess.status(this) == WifiStateAccess.Status.OK) {
+                PlatformNotifications.cancelWifiRulesInactive(this)
+            } else {
+                PlatformNotifications.wifiRulesInactive(this)
+            }
+        }
+
+        /**
+         * The same monitor without a [ProxyInstance]: in FFI mode the box belongs to Dart, so the
+         * caller asks the core whether the config needs Wi-Fi state and passes the answer here.
+         * Only the monitor lives on this side — it owns the Android callback — and every change is
+         * reported back to Dart, which asks the core to re-read the platform's SSID/BSSID
+         * (`BboxCorePlatform.readWifiState` is still the reader).
+         */
+        fun watchWifiRules(enabled: Boolean) {
+            this as Context
+            if (!enabled) {
+                data.wifiMonitor?.stop()
+                data.wifiMonitor = null
+                PlatformNotifications.cancelWifiRulesInactive(this)
+                return
+            }
+            // A reload asks again for a monitor that is already watching: rebuilding it would
+            // drop a change that lands between unregister and register.
+            if (data.wifiMonitor != null) return
+            data.wifiMonitor = WifiStateAccess.Monitor(this) {
+                io.throne.bbox.bridge.BboxKernel.onWifiChanged?.invoke()
+                if (WifiStateAccess.status(this) == WifiStateAccess.Status.OK) {
+                    PlatformNotifications.cancelWifiRulesInactive(this)
+                }
+            }.also { it.start() }
             if (WifiStateAccess.status(this) == WifiStateAccess.Status.OK) {
                 PlatformNotifications.cancelWifiRulesInactive(this)
             } else {

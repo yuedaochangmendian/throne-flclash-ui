@@ -25,6 +25,9 @@ enum KernelCommand {
   stop,
   setHeartbeat,
   warpRegister,
+  resolveDomains,
+  needWifiState,
+  updateWifiState,
   dispose,
 }
 
@@ -96,6 +99,21 @@ class KernelWorker {
 
   Future<void> setHeartbeat(bool enabled) =>
       _call(KernelCommand.setHeartbeat, enabled);
+
+  /// Resolves names through the running box's `dns-direct` transport — the same
+  /// lookup `dns.resolve` performs on the service side, which has no box in FFI mode.
+  Future<Map<String, dynamic>> resolveDomains(List<String> domains) async {
+    final result = await _call(KernelCommand.resolveDomains, domains);
+    return asStringKeyedMap(result, context: 'dns.resolve result');
+  }
+
+  /// Whether the running config asks for Wi-Fi state at all (a Wi-Fi-scoped route,
+  /// DNS or rule set). Asked after the start, when there is an instance to ask.
+  Future<bool> needWifiState() async =>
+      (await _call(KernelCommand.needWifiState)) == true;
+
+  /// Tells the core to re-read the platform's SSID/BSSID (the Kotlin side reads it).
+  Future<void> updateWifiState() => _call(KernelCommand.updateWifiState);
 
   Future<Map<String, dynamic>> warpRegister(
     String tunnelType,
@@ -230,6 +248,17 @@ void _workerMain(List<Object> init) {
             data['tunnelType'] as String,
             asStringKeyedMap(data['params'], context: 'warp params'),
           ));
+        case KernelCommand.resolveDomains:
+          final domains = (payload as List? ?? const [])
+              .map((value) => value.toString())
+              .toList();
+          reply.send(_resolveDomains(ffi, instance, domains));
+        case KernelCommand.needWifiState:
+          final current = instance;
+          reply.send(current != null && current.needWIFIState());
+        case KernelCommand.updateWifiState:
+          instance?.updateWIFIState();
+          reply.send(null);
         case KernelCommand.dispose:
           heartbeatEnabled = false;
           heartbeat?.cancel();
@@ -271,6 +300,77 @@ ThroneStartOptions _startOptions(ThroneFFI ffi, Map<String, dynamic> built) {
     options.setXrayFullIdleSeconds(0);
   }
   return options;
+}
+
+/// How many names one lookup may carry: the core resolves 16 at a time at 5 s each,
+/// so 32 keeps the worst case near ten seconds (`DomainResolver.MAX_DOMAINS`).
+const _maxResolveDomains = 32;
+
+/// The `dns.resolve` reply, assembled from the core's own `ResolveDomains` RPC.
+///
+/// Same wire shape as `BboxResolve.parse` so the diagnostics page reads either path:
+/// `{running, results: [{domain, addresses, error}]}`. `running` is false when no box
+/// is up or nothing was asked — the page then says "connect first" instead of showing
+/// the phone's resolver as the tunnel's answer.
+Map<String, dynamic> _resolveDomains(
+  ThroneFFI ffi,
+  ThroneInstance? instance,
+  List<String> domains,
+) {
+  final wanted = <String>[];
+  for (final raw in domains) {
+    final domain = raw.trim();
+    if (domain.isEmpty || wanted.contains(domain)) continue;
+    wanted.add(domain);
+    if (wanted.length == _maxResolveDomains) break;
+  }
+  if (wanted.isEmpty || instance == null) {
+    return <String, dynamic>{'running': false, 'results': const <Object?>[]};
+  }
+  final request = ThroneResolveRequest.create(ffi);
+  ThroneResolvedDomainIterator? iterator;
+  try {
+    for (final domain in wanted) {
+      request.addDomain(domain);
+    }
+    iterator = ThroneMobile.resolveDomains(ffi, instance.handle, request.handle);
+    if (iterator == null) {
+      return <String, dynamic>{'running': false, 'results': const <Object?>[]};
+    }
+    final rows = <Map<String, dynamic>>[];
+    while (iterator.hasNext()) {
+      final item = iterator.next();
+      if (item == null) break;
+      try {
+        final addresses = item.addresses()?.toList() ?? <String>[];
+        rows.add(<String, dynamic>{
+          'domain': item.getDomain(),
+          'addresses': addresses,
+          'error': item.getError(),
+        });
+      } finally {
+        item.release();
+      }
+    }
+    return <String, dynamic>{'running': true, 'results': rows};
+  } catch (error) {
+    // A refused lookup is one row's error, not a failed screen: every requested
+    // domain answers with the reason so the page can show it next to the name.
+    return <String, dynamic>{
+      'running': true,
+      'results': [
+        for (final domain in wanted)
+          <String, dynamic>{
+            'domain': domain,
+            'addresses': const <String>[],
+            'error': error.toString(),
+          },
+      ],
+    };
+  } finally {
+    iterator?.release();
+    request.release();
+  }
 }
 
 Map<String, dynamic> _warpRegister(

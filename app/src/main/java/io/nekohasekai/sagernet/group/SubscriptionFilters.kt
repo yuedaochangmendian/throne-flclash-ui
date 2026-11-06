@@ -201,7 +201,15 @@ internal object SubscriptionFilters {
             coreConfig = probe.coreConfig
             domains.forEach(::addDomain)
         }
-        val results = Mobile.resolveDomains(CoreRuntime.running?.instance, CoreRuntime.platform, request)
+        // The request already carries a full test config, so a null instance still resolves:
+        // the core builds a probe box from it. That is the normal path under the FFI driver,
+        // where the running core lives in Dart and this process holds no Instance — worth a
+        // line in the log, because the probe has its own DNS cache and no tunnel to share.
+        val running = CoreRuntime.running?.instance
+        if (running == null) {
+            Logs.i("subscription filters: no local box, resolving through the test config's probe box")
+        }
+        val results = Mobile.resolveDomains(running, CoreRuntime.platform, request)
         val resolved = HashMap<String, String>()
         while (results.hasNext()) {
             val result = results.next()

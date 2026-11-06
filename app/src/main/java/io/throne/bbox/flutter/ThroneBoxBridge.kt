@@ -870,13 +870,33 @@ class ThroneBoxBridge(
                 // --- the FFI path's slim surface (BboxKernel): Dart drives the kernel
                 // directly over dart:ffi and only DB/build work crosses here. ---
                 "ffi.mode" -> {
-                    BboxKernel.ffiMode = call.argument<Boolean>("enabled") == true
+                    val enabled = call.argument<Boolean>("enabled") == true
+                    BboxKernel.ffiMode = enabled
                     // Non-Dart reloads (widget/tile/notification) reach the FFI driver as events.
                     BboxKernel.onReloadWanted = if (BboxKernel.ffiMode) {
                         { emit("serviceReload", true) }
                     } else {
                         null
                     }
+                    // A service that came up before Dart (START_STICKY, always-on VPN) already
+                    // built its own box. Two boxes on one tun fight over the same descriptor,
+                    // so the service-side one is stopped and the service restarted in place:
+                    // with ffiMode now true, that start keeps the notification and leaves the
+                    // core to Dart, which rebuilds it from the dashboard state it finds.
+                    val handedOver = if (enabled) BboxKernel.handOver() else false
+                    result.success(mapOf("handedOver" to handedOver))
+                }
+                // Wi-Fi rules in ffiMode: Dart asks the core whether the config needs Wi-Fi
+                // state and enables the monitor here. Only the Android callback stays on this
+                // side; every change is announced so the core re-reads the SSID/BSSID.
+                "wifi.watch" -> {
+                    val enabled = call.argument<Boolean>("enabled") == true
+                    BboxKernel.onWifiChanged = if (enabled) {
+                        { emit("wifi.state", true) }
+                    } else {
+                        null
+                    }
+                    DataStore.baseService?.watchWifiRules(enabled)
                     result.success(null)
                 }
                 // Lifecycle breadcrumbs from the FFI driver, written into the same core.log the
@@ -900,6 +920,32 @@ class ThroneBoxBridge(
                 )
                 "state.setMode" -> {
                     BboxKernel.setMode(call.argument<String>("mode") ?: error("Missing mode"))
+                    result.success(null)
+                }
+                // The service used to write these two right after proxy.init(); the FFI driver
+                // owns the start now, so it reports them once the core is actually up.
+                "state.markRunning" -> {
+                    val ids = (call.argument<List<*>>("involvedProfileIds") ?: emptyList<Any?>())
+                        .mapNotNull { (it as? Number)?.toLong() }
+                    BboxKernel.markRunning(ids, (call.argument<Number>("routeId"))?.toLong() ?: 0L)
+                    result.success(null)
+                }
+                "state.clearRunning" -> {
+                    BboxKernel.clearRunning()
+                    result.success(null)
+                }
+                // The FFI driver's status snapshot, where TrafficLooper would have written it.
+                // Nothing on the service side polls the core in ffiMode, so without this the
+                // notification's speed line and the widget stay at zero all session.
+                "state.stats" -> {
+                    DataStore.baseService?.publishKernelStats(
+                        io.nekohasekai.sagernet.aidl.SpeedDisplayData(
+                            txRateProxy = (call.argument<Number>("txRate"))?.toLong() ?: 0L,
+                            rxRateProxy = (call.argument<Number>("rxRate"))?.toLong() ?: 0L,
+                            txTotal = (call.argument<Number>("txTotal"))?.toLong() ?: 0L,
+                            rxTotal = (call.argument<Number>("rxTotal"))?.toLong() ?: 0L,
+                        ),
+                    )
                     result.success(null)
                 }
                 "state.saveWarpKeys" -> result.respond {

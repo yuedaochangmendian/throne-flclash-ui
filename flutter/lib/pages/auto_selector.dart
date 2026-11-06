@@ -250,8 +250,16 @@ class _AutoSelectorPageState extends State<AutoSelectorPage> with WidgetsBinding
     final autoNote = context.tr('Refreshes every few seconds while this page is open.');
     final phase = _status['phase']?.toString() ?? 'idle';
     if (phase == 'idle') {
+      // The FFI driver owns the core, so this runtime has no live view of it: say that
+      // instead of reporting "not running" for a selector the kernel is ranking.
+      final external = _status['driver'] == 'ffi';
       return [generateSection(items: [
-        ListItem(title: Text(context.tr('Status')), subtitle: Text(context.tr('Not running'))),
+        ListItem(
+          title: Text(context.tr('Status')),
+          subtitle: Text(context.tr(external
+              ? 'The kernel runs this selector directly; live ranking is not reported here'
+              : 'Not running')),
+        ),
       ], footer: autoNote)];
     }
     final members = (_status['members'] as List? ?? const []).map((e) => json(e)).toList();

@@ -291,6 +291,12 @@ extension MiscApi on BoxController {
   }
   Future<dynamic> filesOpen(String uri) => call('files.open', {'uri': uri});
   Future<dynamic> dnsSuggestions() => call('dns.suggestions');
+  /// Lookups run through the running box's `dns-direct` transport. In FFI mode the
+  /// box is Dart's, so the same RPC is called over the C ABI instead of the service.
+  Future<dynamic> dnsResolve(List<String> domains) async {
+    if (kernel.ffiMode) return kernel.resolveDomains(domains);
+    return call('dns.resolve', {'domains': domains});
+  }
   Future<bool> batteryOpen() => act('battery.open');
   Future<dynamic> configCheck(String content) => call('config.check', {'content': content});
   Future<dynamic> warpRegister(String tunnelType) => kernel.ffiMode
