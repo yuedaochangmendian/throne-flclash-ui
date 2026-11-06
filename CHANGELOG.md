@@ -1,3 +1,17 @@
+#### 3.3.0-pre.13
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one is about the memory panel's numbers.
+
+The memory panel was printing four figures that were not what their labels said:
+
+* `rss` carried the core's `inuse`, so "Process RSS" showed the core's few megabytes instead of the process's resident size. It now comes from `Debug.MemoryInfo.totalPss`, which counts a shared page once
+* The details page divided the ART heap figures by the core's `inuse`, printing 1600% and 4000%. Those rows moved to the App section, where they belong, and the Core section now shows the one number the core actually reports
+* `heapIdle` was `maxMemory - totalMemory` — headroom never allocated — not the idle part of the heap
+* `stack`, `runtimeOther` and `goroutines` were hard-coded zeros with no source behind them, and are gone
+* `running` and `remote` were never sent, so the release-memory button could not appear at all
+
+The headline figure is now `app + core`, the memory the process holds, instead of the ART heap ceiling reading as if it were current use.
+
 #### 3.3.0-pre.6
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.2.25. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. Scanner plugin registration.
