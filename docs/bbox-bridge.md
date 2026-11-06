@@ -99,13 +99,17 @@ The `:bg` process is untouched: it still builds configs, runs the core and persi
 in `:bg` when a config is built, from the same shared preference table, so a start triggered by the tile or a shortcut
 honours the mode as well.
 
-### The bridge runs the core; the FFI driver is switched off
+### The FFI driver runs the core; the bridge steps aside for the control plane
 
-Since 3.2.24 the service owns the core again: `KernelService.initialize()` returns before it touches `ffi.mode`,
-`BaseService` starts `ProxyInstance` through gomobile, and every control call takes its channel branch. Nothing on the
-Dart side opens `libthrone.so`, so the channel is the only source of `logs` and `rates`. The FFI driver (worker isolate,
-`throne_*` lifecycle calls, `serviceReload` routing) is intact behind `kFfiDriverEnabled` in `kernel_service.dart`; flip
-it back only after the heartbeat below is verified on a device.
+Since 3.3.0 the Dart driver owns the core again: `KernelService.initialize()` tells the bridge to stand aside
+(`ffi.mode`), opens `libthrone.so` in the worker isolate and drives start/stop/reload plus the status snapshot over
+the `throne_*` C ABI. The channel keeps the data plane — profile storage, `config.build`, subscriptions, test
+sessions — and Android duties (VpnService, notifications, the platform databases), exactly as ADR 0001 splits them.
+
+The driver still yields on its own when the rebuilt core is absent from the build: `ThroneKernel.isAvailable` is
+checked before `ffi.mode` is touched, so an AAR without the patch leaves `BaseService` starting `ProxyInstance`
+through gomobile and every control call on its channel branch. `kFfiDriverEnabled` in `kernel_service.dart` is the
+single switch for the whole path; turning it off restores the pre-3.3.0 operator without deleting the driver.
 
 ### The heartbeat is a liveness question, not a data question (FFI driver only)
 

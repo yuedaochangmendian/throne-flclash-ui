@@ -17,12 +17,16 @@ import 'throne_kernel.dart';
 
 /// Drives the core through dart:ffi instead of the Android service.
 ///
-/// Off: the bridge is the operator. `BaseService` starts `ProxyInstance` with
-/// gomobile, the channel reports its state and traffic, and every control call
-/// in [BoxApi] takes the channel branch. This is the path that kept the tunnel
-/// up; the FFI driver is kept intact behind this switch instead of deleted, so
-/// it can be brought back once its lifecycle is trusted on a real device.
-const bool kFfiDriverEnabled = false;
+/// On: Dart opens `libthrone.so` and owns the Instance lifecycle — start, stop,
+/// reload and the status snapshot all cross the C ABI directly, and the bridge
+/// is told to stand aside for the control plane only.
+///
+/// The driver still stands down on its own when the rebuilt core is absent from
+/// the build (`ThroneKernel.isAvailable == false`): it returns before it asks
+/// the bridge to yield, so `BaseService` keeps starting `ProxyInstance` through
+/// gomobile and every control call takes its channel branch. Flipping this off
+/// hands the core back to the service without deleting the driver.
+const bool kFfiDriverEnabled = true;
 
 class KernelService {
   KernelService(this.box);
@@ -68,6 +72,9 @@ class KernelService {
     // FFI driver and must stay out of the way when it is switched off.
     if (!kFfiDriverEnabled) return;
     if (_kernel != null || _initializing) return;
+    // Nothing to drive when the rebuilt core is absent: leave the bridge in
+    // charge rather than ask it to stand aside for a library that is not there.
+    if (!ThroneKernel.isAvailable) return;
     _initializing = true;
     try {
       // Tell the bridge the FFI path drives the core from now on, then open the ABI.
