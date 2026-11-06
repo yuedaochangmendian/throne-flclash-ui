@@ -1160,12 +1160,18 @@ class ThroneBoxBridge(
     private fun memoryWire(): Map<String, Any?> {
         val runtime = Runtime.getRuntime()
         val heapUsed = runtime.totalMemory() - runtime.freeMemory()
-        val core = runCatching { BboxApi.memory() }.getOrNull()
+        val core = runCatching { BboxApi.memory() }.getOrNull() ?: 0L
+        val rss = processPss()
         return mapOf(
             "total" to runtime.maxMemory(),
-            "app" to heapUsed,
-            "core" to (core ?: 0L),
-            "rss" to processPss(),
+            // The process is the container and the core runs inside it, so the core's share is
+            // carved out of RSS rather than added to it: `app + core == rss` has to hold, or the
+            // panel prints a total that disagrees with the RSS row directly below it. Reporting the
+            // ART heap here made a 283 MB process read as 13.7 MB, because the heap is a fraction
+            // of what the process holds — the rest is native, the Go runtime and shared pages.
+            "app" to (rss - core).coerceAtLeast(0L),
+            "core" to core,
+            "rss" to rss,
             "running" to DataStore.serviceState.connected,
             "remote" to false,
             "heapInuse" to heapUsed,

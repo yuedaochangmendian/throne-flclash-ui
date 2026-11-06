@@ -19,11 +19,18 @@ class MemorySummary extends StatelessWidget {
   @override Widget build(BuildContext context) {
     final color = context.colorScheme;
     final remote = snapshot['remote'] == true;
+    final rss = snapshot['rss'] as num? ?? 0;
     final app = snapshot['app'] as num? ?? 0;
     final core = snapshot['core'] as num? ?? 0;
-    // The headline is what the process holds now. `total` is the ART heap ceiling, not device RAM,
-    // so it would read as "256 MB used" on a panel where App and Core add up to 68 MB.
-    final total = bytes(remote ? (snapshot['total'] as num? ?? 0) : app + core).split(' ');
+    // A running core whose API is off reports no figure of its own, and zero would claim it holds
+    // nothing. The process total already includes it, so the bar shows one segment and the legend
+    // says the share is unknown.
+    final coreUnknown = !remote && snapshot['running'] == true && core == 0;
+    // The headline is the process: that is what "memory" means to the reader, and it is what the
+    // RSS row below says. `app` is that process minus the core, so the two parts still add up to
+    // it; `total` is the ART heap ceiling, not device RAM, and would read as "256 MB" on a panel
+    // whose parts add up to 68 MB.
+    final total = bytes(remote ? (snapshot['total'] as num? ?? 0) : (rss > 0 ? rss : app + core)).split(' ');
     final parts = <(String, num, Color)>[
       if (!remote) ('App', app, color.primary),
       ('Core', core, Color.alphaBlend(color.primary.withValues(alpha: .45), SurfaceLevel.card.colorOf(color))),
@@ -34,10 +41,10 @@ class MemorySummary extends StatelessWidget {
         if (snapshot.isNotEmpty) TextSpan(text: ' ${total.last}', style: AppTextStyle.footnote.of(context).copyWith(color: color.onSurfaceVariant)),
       ]), maxLines: 1),
       const SizedBox(height: 14), MemoryBar(parts: parts), const SizedBox(height: 10),
-      Wrap(spacing: 16, runSpacing: 4, children: [for (final part in parts) Row(mainAxisSize: MainAxisSize.min, spacing: 6, children: [
+      Wrap(spacing: 16, runSpacing: 4, children: [for (final (index, part) in parts.indexed) Row(mainAxisSize: MainAxisSize.min, spacing: 6, children: [
         DecoratedBox(decoration: ShapeDecoration(color: part.$3, shape: AppShape.circle), child: const SizedBox.square(dimension: 8)),
         Text(context.tr(part.$1), style: context.listCaptionStyle),
-        Text(snapshot.isEmpty ? '—' : bytes(part.$2), style: AppTextStyle.footnote.of(context, emphasized: true).toTabular),
+        Text(snapshot.isEmpty || (coreUnknown && index == parts.length - 1) ? '—' : bytes(part.$2), style: AppTextStyle.footnote.of(context, emphasized: true).toTabular),
       ])]),
     ]);
   }
@@ -74,6 +81,8 @@ class _MemoryDetailsState extends State<MemoryDetails> {
   @override Widget build(BuildContext context) {
     final memory = context.watchBox(BoxAspect.memory).memory;
     final remote = memory['remote'] == true;
+    final core = memory['core'] as num? ?? 0;
+    final coreUnknown = !remote && memory['running'] == true && core == 0;
     return BoxDataSubscription(data: BoxData.memory, child: BoxPage(title: 'Memory', loading: _releasing, actions: [
       if (!remote && memory['running'] == true) IconButtonData(glyph: AppGlyphs.broom,
         tooltip: context.tr('Release memory'), onPressed: _releasing ? null : _release),
@@ -81,6 +90,7 @@ class _MemoryDetailsState extends State<MemoryDetails> {
       const SizedBox(height: 8), Text(context.tr('Total memory'), style: AppTextStyle.headline.of(context)), const SizedBox(height: 4),
       MemorySummary(snapshot: memory), const SizedBox(height: 12),
       Text(context.tr(remote ? 'Memory reported by the remote core. Detailed accounting is unavailable.'
+        : coreUnknown ? "The core API is off, so the core's own share is not reported; it stays inside the process figure."
         : 'App and core share one process. Core runtime memory is separated from process RSS, not added twice.'), style: context.listCaptionStyle),
       if (!remote) generateSection(title: context.tr('App'), items: [
         ListItem(title: Text(context.tr('Process RSS')), trailing: Text(bytes(memory['rss'] as num? ?? 0))),
@@ -89,7 +99,7 @@ class _MemoryDetailsState extends State<MemoryDetails> {
       ]),
       generateSection(title: context.tr('Core'), items: [
         if (!remote && memory['running'] != true) ListItem(title: Text(context.tr('Not running'))),
-        ListItem(title: Text(context.tr('Core memory')), trailing: Text(bytes(memory['core'] as num? ?? 0))),
+        ListItem(title: Text(context.tr('Core memory')), trailing: Text(coreUnknown ? '—' : bytes(core))),
       ]),
     ]));
   }
