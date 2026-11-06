@@ -19,18 +19,16 @@ class MemorySummary extends StatelessWidget {
   @override Widget build(BuildContext context) {
     final color = context.colorScheme;
     final remote = snapshot['remote'] == true;
-    final rss = snapshot['rss'] as num? ?? 0;
     final app = snapshot['app'] as num? ?? 0;
     final core = snapshot['core'] as num? ?? 0;
     // A running core whose API is off reports no figure of its own, and zero would claim it holds
-    // nothing. The process total already includes it, so the bar shows one segment and the legend
-    // says the share is unknown.
+    // nothing. The legend says the share is unknown instead.
     final coreUnknown = !remote && snapshot['running'] == true && core == 0;
-    // The headline is the process: that is what "memory" means to the reader, and it is what the
-    // RSS row below says. `app` is that process minus the core, so the two parts still add up to
-    // it; `total` is the ART heap ceiling, not device RAM, and would read as "256 MB" on a panel
-    // whose parts add up to 68 MB.
-    final total = bytes(remote ? (snapshot['total'] as num? ?? 0) : (rss > 0 ? rss : app + core)).split(' ');
+    // What the app and the core hold between them: the ART heap plus the core's own heap. The
+    // process holds more than this — native allocations, the engine, shared pages — and that is
+    // the RSS row on the details page. It is not what "memory used by this app" means to the
+    // reader, and using it as the headline made a 13.7 MB app look like a 283 MB one.
+    final total = bytes(remote ? (snapshot['total'] as num? ?? 0) : app + core).split(' ');
     final parts = <(String, num, Color)>[
       if (!remote) ('App', app, color.primary),
       ('Core', core, Color.alphaBlend(color.primary.withValues(alpha: .45), SurfaceLevel.card.colorOf(color))),
@@ -91,7 +89,7 @@ class _MemoryDetailsState extends State<MemoryDetails> {
       MemorySummary(snapshot: memory), const SizedBox(height: 12),
       Text(context.tr(remote ? 'Memory reported by the remote core. Detailed accounting is unavailable.'
         : coreUnknown ? "The core API is off, so the core's own share is not reported; it stays inside the process figure."
-        : 'App and core share one process. Core runtime memory is separated from process RSS, not added twice.'), style: context.listCaptionStyle),
+        : "The total is the app's heap plus the core's. The process figure is separate: it also counts native allocations, graphics and shared pages."), style: context.listCaptionStyle),
       if (!remote) generateSection(title: context.tr('App'), items: [
         ListItem(title: Text(context.tr('Process RSS')), trailing: Text(bytes(memory['rss'] as num? ?? 0))),
         ListItem(title: Text(context.tr('Heap in use')), trailing: Text(bytes(memory['heapInuse'] as num? ?? 0))),

@@ -305,20 +305,20 @@ void main() {
     // instance handle) and the clash API is off, so the channel's memory event says zero.
     box.handleEvent({'type': 'dashboard', 'value': {'status': 'Started', 'memory': 41943040}}, fromDriver: true);
     box.handleEvent({'type': 'memory', 'value': {
-      'rss': 297061581, 'app': 297061581, 'core': 0, 'running': true, 'remote': false,
+      'rss': 297061581, 'app': 14365491, 'core': 0, 'running': true, 'remote': false,
       'heapInuse': 14365491, 'heapIdle': 8700000, 'total': 268435456,
     }});
     expect(box.memory['core'], 41943040);
-    // Carved out of the process, not added to it.
-    expect(box.memory['app'], 297061581 - 41943040);
+    // The app's own heap is left alone: the panel adds the two halves.
+    expect(box.memory['app'], 14365491);
 
     // Without the driver the channel's figure is all there is, and it is left alone.
     box.debugDriverActive = false;
     box.handleEvent({'type': 'memory', 'value': {
-      'rss': 297061581, 'app': 297061581, 'core': 0, 'running': false, 'remote': false,
+      'rss': 297061581, 'app': 14365491, 'core': 0, 'running': false, 'remote': false,
       'heapInuse': 14365491, 'heapIdle': 8700000, 'total': 268435456,
     }});
     expect(box.memory['core'], 0);
-    expect(box.memory['app'], 297061581);
+    expect(box.memory['app'], 14365491);
   });
 }

@@ -115,6 +115,7 @@ const _zh = <String, String>{
   'Total memory': '总计', 'Core memory': '内核内存',
   'Release memory': '释放内存', 'Memory released': '已释放可回收内存',
   'App and core share one process. Core runtime memory is separated from process RSS, not added twice.': '应用与内核共享进程；内核运行时占用从进程常驻内存中拆分，避免重复计算。',
+  "The total is the app's heap plus the core's. The process figure is separate: it also counts native allocations, graphics and shared pages.": '总计为应用堆与内核堆之和；进程常驻内存另计，还包含 native 分配、图形内存与共享页。',
   "The core API is off, so the core's own share is not reported; it stays inside the process figure.": '核心 API 未开启，核心自身占用未单独上报，仍计入进程常驻内存。',
   'Memory reported by the remote core. Detailed accounting is unavailable.': '此数据由远程内核上报，暂不提供详细内存分类。',
   'Proxy groups': '代理组', 'Memory': '内存',
