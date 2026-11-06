@@ -1,3 +1,13 @@
+#### 3.3.1-pre.5
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one is about the memory panel's arithmetic.
+
+The panel built its headline out of two numbers: the app's ART heap and the core's own figure. On a 283.3 MB process the heap is 13.7 MB, so it announced a 13.7 MB total one row above a row that said 283.3 MB, and drew a bar claiming the app held a twentieth of what it did.
+
+* The headline is the process now — the figure the RSS row states, and what "memory" means to the reader
+* `app` is the process minus the core's share, so the parts still add up to the total instead of counting the core twice
+* A core whose API is off reports nothing; that share now reads as unknown rather than "0 B", and the caption says it stays inside the process figure
+
 #### 3.3.1-pre.4
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one is about how long the tunnel takes to come up.
