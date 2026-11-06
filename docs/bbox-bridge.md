@@ -150,6 +150,36 @@ Every lifecycle step writes a `[lifecycle] …` line into `core.log` (start, sto
 heartbeat loss, start failure), and the service writes `[service] state -> …` on each transition. The log screen tails
 that same file, so a restart loop reads as a sequence instead of a mystery.
 
+## The data plane moves to Dart
+
+`sager_net.db` is opened by Room, and Room opens it with `WRITE_AHEAD_LOGGING` — `SagerDatabase` says so and names
+the reason: a reader in one process runs while the other writes. Nothing stops a third connection in the Dart isolate
+from doing the same, so the data plane does not need a protocol between the two sides. It needs a path, which Dart
+cannot derive (`/data/data/<pkg>/databases` requires a package name it does not have), so `data.path` answers once at
+startup with the file and the schema version Room actually opened at — read from the file, not from the annotation,
+because a downgrade makes those two disagree.
+
+The library is the platform's own `libsqlite3.so` over `dart:ffi`, not `sqflite`. That is not a preference: this
+module's AAR cannot register plugins. `flutter build aar` publishes a `GeneratedPluginRegistrant` the host loads by
+reflection and **swallows** on failure, which is why `BboxFlutterActivity.registerScannerPlugin` exists at all. A
+`DynamicLibrary` has no registrant. `flutter/lib/data/sqlite.dart` is the whole binding.
+
+What is moved today is one table, read-only: `groups`, through `GroupsDao`. It is the slice that proves the two things
+that could sink the approach — that a second connection lives beside Room's, and that the columns are where
+`ProxyGroup.kt` says they are. The remaining five (`profiles`, `route_profiles`, `route_rules`, `SettingEntry`,
+`MarkerEntity`) follow the same shape, table by table, with writes only after reads are trusted on a device.
+
+Two rules keep this from drifting:
+
+- `schema_audit.py` compares `@Database(version = …)` with `roomSchemaVersion` in `db.dart` on every push. A bump on
+  one side alone still compiles and still queries — it just reads the wrong column, silently.
+- `DataLayer.attach` answers null for every failure (no library, no path, unexpected schema). A null means "keep using
+  the channel", the same contract `ThroneKernel.isAvailable` has on the kernel side.
+
+What stays on the channel is what Dart cannot reach: the platform (`VpnService`, notifications, the widget, SAF,
+`PackageManager`, Logcat) and the host's own state machine (`DataStore.serviceState`, `ProfileManager`'s caches).
+Neither is a gap in the migration — they are the parts that were never data.
+
 ## Not wired yet
 
 These fall through the dispatch to the `unsupported` error. They are the B-box features Throne has
