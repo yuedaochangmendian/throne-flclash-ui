@@ -11,6 +11,7 @@ import 'common/throttle.dart';
 import 'core/kernel_service.dart';
 import 'core/platform_value.dart';
 import 'core/throne_kernel.dart';
+import 'data/route_profiles_source.dart';
 
 part 'box_api.dart';
 
@@ -192,6 +193,17 @@ class BoxController extends ChangeNotifier {
   String? applyRequired;
   final appIcons = <String, Future<Uint8List?>>{};
   final _profileStats = <int, Future<Json>>{};
+
+  /// The route profile list's single entry point. SQLite is tried on the first
+  /// read and kept for the controller's lifetime; every failure answers with the
+  /// channel's `routes.list` instead, so no screen sees a difference. The
+  /// connection is closed with the controller, not with a page.
+  RouteProfilesSource? _routeProfiles;
+  RouteProfilesSource get routeProfiles => _routeProfiles ??= RouteProfilesSource(
+        resolvePath: () => dataPath(),
+        channelFallback: () => routeList(),
+      );
+
   late final ipQualities = IpQualityCache(
     read: (ip) => call('dashboard.qualityCache.get', {'ip': ip}),
     write: (ip, record) async { await call('dashboard.qualityCache.put', {'ip': ip, 'value': record}); },
@@ -697,6 +709,8 @@ class BoxController extends ChangeNotifier {
     _subscription?.cancel();
     _kernelSub?.cancel();
     _kernelEvents?.cancel();
+    _routeProfiles?.dispose();
+    _routeProfiles = null;
     kernel.dispose();
     eventBus.close();
     _stateChanges.dispose();

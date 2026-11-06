@@ -108,6 +108,13 @@ extension RoutesApi on BoxController {
   Future<dynamic> routeRuleSets(String query, int limit) => call('routes.ruleSets', {'query': query, 'limit': limit});
 }
 
+/// The one channel call the data plane still needs: the host answers with the
+/// Room file's path and the schema version it actually opened at. Everything
+/// after that is a `dart:ffi` read — see `lib/data/route_profiles_source.dart`.
+extension DataApi on BoxController {
+  Future<dynamic> dataPath() => call('data.path');
+}
+
 extension TerminalApi on BoxController {
   Future<dynamic> terminalSettings() => call('terminal.settings');
   Future<dynamic> terminalSet(dynamic key, dynamic value) => call('terminal.set', {'key': key, 'value': value});

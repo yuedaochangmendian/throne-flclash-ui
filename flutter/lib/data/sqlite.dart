@@ -12,14 +12,15 @@
 // without adding a second plugin to babysit.
 //
 // Everything here is synchronous, because sqlite3 is: a call blocks whichever
-// isolate made it. Nothing currently moves the DAO off the isolate that calls
-// it — see the NOT WIRED note in db.dart. When the slice is wired, queries
-// belong on a long-lived DB isolate so the UI isolate never pays for one.
+// isolate made it. The live route-profile read runs on the UI isolate — the
+// connection owns native pointers and cannot cross an isolate boundary — so it
+// is deliberately two small queries, and every failure falls back to the
+// channel. Moving the whole connection to a long-lived DB isolate is the next
+// step, not a precondition for reading one list.
 //
-// STATUS: NOT WIRED. `DataLayer.attach` has no production caller and the host's
-// `data.path` method is never invoked from Dart. This is a ready-to-wire vertical
-// slice, kept so switching it on needs no host change; release AOT tree-shakes
-// the whole `lib/data/` tree today.
+// STATUS: WIRED for `route_profiles` (see `route_profiles_source.dart`).
+// `DataLayer.attach` has a production caller and the host's `data.path` is
+// invoked once from Dart. `GroupsDao` remains the un-wired vertical slice.
 
 import 'dart:ffi';
 import 'dart:typed_data';

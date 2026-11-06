@@ -155,19 +155,26 @@ that same file, so a restart loop reads as a sequence instead of a mystery.
 `sager_net.db` is opened by Room, and Room opens it with `WRITE_AHEAD_LOGGING` — `SagerDatabase` says so and names
 the reason: a reader in one process runs while the other writes. Nothing stops a third connection in the Dart isolate
 from doing the same, so the data plane does not need a protocol between the two sides. It needs a path, which Dart
-cannot derive (`/data/data/<pkg>/databases` requires a package name it does not have), so `data.path` answers once at
-startup with the file and the schema version Room actually opened at — read from the file, not from the annotation,
-because a downgrade makes those two disagree.
+cannot derive (`/data/data/<pkg>/databases` requires a package name it does not have), so `data.path` answers once —
+on the first route-list read, not at startup — with the file and the schema version Room actually opened at, read
+from the file, not from the annotation, because a downgrade makes those two disagree.
 
 The library is the platform's own `libsqlite3.so` over `dart:ffi`, not `sqflite`. That is not a preference: this
 module's AAR cannot register plugins. `flutter build aar` publishes a `GeneratedPluginRegistrant` the host loads by
 reflection and **swallows** on failure, which is why `BboxFlutterActivity.registerScannerPlugin` exists at all. A
 `DynamicLibrary` has no registrant. `flutter/lib/data/sqlite.dart` is the whole binding.
 
-What is moved today is one table, read-only: `groups`, through `GroupsDao`. It is the slice that proves the two things
-that could sink the approach — that a second connection lives beside Room's, and that the columns are where
-`ProxyGroup.kt` says they are. The remaining five (`profiles`, `route_profiles`, `route_rules`, `SettingEntry`,
-`MarkerEntity`) follow the same shape, table by table, with writes only after reads are trusted on a device.
+What is live today is one table's **read**: `route_profiles`, joined to `route_rules` for the two counts and to
+`settings` for `current_route_id`, through `RouteProfilesDao`. `RouteProfilesSource` prefers it on the route list and
+the route editor and falls back to `routes.list` over the channel on every failure — no `libsqlite3.so`, no
+`data.path` answer, an unexpected schema, a SQL error, or an empty table. The empty case is deliberate: on the host
+side `RouteManager.all()` would call `ensureDefault()` and **write** a profile, which a read-only Dart connection
+must never do. The SQL reproduces `BboxRoutes.list()`'s wire shape, so the fallback is invisible to the screen.
+
+`groups` (through `GroupsDao`) remains the un-wired vertical slice: it proves that a second connection lives beside
+Room's and pins the column names, but no screen calls it and release AOT tree-shakes it. The remaining tables
+(`profiles`, `SettingEntry`, `MarkerEntity`) follow the same shape, table by table, with writes only after reads are
+trusted on a device.
 
 Two rules keep this from drifting:
 

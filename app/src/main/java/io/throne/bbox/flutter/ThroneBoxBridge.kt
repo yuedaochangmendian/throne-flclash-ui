@@ -889,10 +889,10 @@ class ThroneBoxBridge(
                 // `/data/data/<pkg>/databases` needs the package name, which the Dart side
                 // has no way to learn, so it asks once at startup and then opens the file
                 // itself. This is the last data-plane call on the channel.
-                // STATUS: NOT WIRED. `flutter/lib/data/` is a ready-to-wire vertical
-                // slice; `DataLayer.attach` has no production caller and this method is
-                // never invoked from Dart. Keeping both halves lets the slice be switched
-                // on without a host change, but release AOT tree-shakes the Dart side.
+                // STATUS: WIRED. `BoxController.routeProfiles` asks for this once, on the
+                // first route-list read, and `DataLayer.attach` opens the file read-only.
+                // `RouteProfilesSource` falls back to `routes.list` over the channel when
+                // this call fails, libsqlite3 is absent, or the schema does not match.
                 "data.path" -> {
                     val file = activity.getDatabasePath(Key.DB_PROFILE)
                     // Reading `version` forces Room to open (and migrate) the file, which is

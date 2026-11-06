@@ -13,11 +13,11 @@
 // a one-shot platform fact, not a data-plane call: after this file opens, the
 // channel is not in the query path at all.
 //
-// STATUS: NOT WIRED. Neither `DataLayer.attach` nor the host's `data.path` has a
-// production caller yet; the profile list still comes over the channel. The
-// slice is complete and tested on its own, but release AOT tree-shakes it. Keep
-// `roomSchemaVersion` and `databaseFileName` honest anyway — the CI schema gate
-// checks them, and the day it is wired they must already agree with Room.
+// STATUS: WIRED. `BoxController.routeProfiles` calls `DataLayer.attach` on the
+// first route-list read, and the host's `data.path` is invoked once from Dart.
+// The channel remains the answer whenever this file cannot be opened. Keep
+// `roomSchemaVersion` and `databaseFileName` honest — the CI schema gate checks
+// them, and a mismatch is one of the failures that must fall back.
 
 import 'sqlite.dart';
 
@@ -46,9 +46,12 @@ class SchemaMismatch implements Exception {
 /// A connection to the app database.
 ///
 /// Queries are synchronous (sqlite3 is), so a call blocks the isolate that made
-/// it. There is no caller today, hence no isolate to move them to; when the slice
-/// is wired they belong on a long-lived DB isolate — the same shape as
-/// `KernelWorker`, and for the same reason — rather than the UI isolate.
+/// it. The live caller reads one list on a screen open, from the UI isolate:
+/// the FFI connection holds native pointers and cannot be handed to another
+/// isolate, so moving it off-thread needs a dedicated DB isolate that owns the
+/// connection end to end (the `KernelWorker` shape). Until that exists the read
+/// stays small — one grouped SELECT and one `settings` lookup — and every
+/// failure falls back to the channel.
 class DataDatabase implements Queryable {
   DataDatabase._(this._db);
 
@@ -59,7 +62,7 @@ class DataDatabase implements Queryable {
 
   /// Opens [path], or returns null when the platform has no libsqlite3 or the
   /// file cannot be opened. A null result means "stay on the channel": the
-  /// caller keeps using `profiles.list` and friends.
+  /// caller keeps using `routes.list` and friends.
   ///
   /// [readOnly] defaults to false because the vertical slice writes nothing yet
   /// but must prove it can; pass true to run purely as an observer.

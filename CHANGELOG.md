@@ -115,6 +115,12 @@ The auto-selector panel now says the kernel holds the runtime instead of reporti
 
 Writes and the other five tables stay on the channel until a device agrees with this one.
 
+> **Correction (2026-11-07):** the four bullets above described the target slice, not a live path — at this release
+> `DataLayer.attach` had no production caller, `data.path` was never invoked from Dart, and the source was marked
+> `STATUS: NOT WIRED`. The first table actually wired is `route_profiles` (#19), read over `dart:ffi` with a full
+> `routes.list` fallback; `groups` remains the un-wired slice. See `docs/bbox-bridge.md` for the current state.
+> This note corrects the record; it is not a new build.
+
 #### 3.3.0
 
 The first stable release since 3.2.25. Previews pre.1–pre.13 were the test bed; the code here is the same, with the release notes written for people who do not read commit logs.

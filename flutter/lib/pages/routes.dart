@@ -26,7 +26,10 @@ class _RouteProfilesPageState extends State<RouteProfilesPage> {
 
   Future<void> _load() async {
     try {
-      final data = json(await context.box.routeList());
+      // The source reads Room's file over dart:ffi and falls back to
+      // `routes.list` over the channel on any failure; the page does not care
+      // which one answered.
+      final data = json(await context.box.routeProfiles.list());
       if (!mounted) return;
       setState(() {
         _profiles = (data['profiles'] as List? ?? const []).map((item) => json(item)).toList();
@@ -169,7 +172,9 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
     final box = context.box;
     try {
       final data = json(await box.routeGet(widget.id));
-      final list = json(await box.routeList());
+      // Same source as the list page, so `currentId` agrees whichever path
+      // answered (SQLite or the channel fallback).
+      final list = json(await box.routeProfiles.list());
       if (!mounted) return;
       setState(() {
         _name.text = data['name']?.toString() ?? '';

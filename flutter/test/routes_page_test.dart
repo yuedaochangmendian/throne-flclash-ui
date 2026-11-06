@@ -36,6 +36,7 @@ Map<String, Object?> rule({
 void main() {
   late StreamController<dynamic> events;
   late List<Map<String, Object?>> rules;
+  late List<String> dataPathCalls;
 
   Future<void> mount(WidgetTester tester) async {
     tester.binding.platformDispatcher.localesTestValue = const [Locale('en')];
@@ -46,9 +47,15 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     const channel = MethodChannel('test.routes-page');
     events = StreamController<dynamic>.broadcast();
+    dataPathCalls = <String>[];
     final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(channel, (call) async {
       switch (call.method) {
+        // The host cannot answer the data plane's one channel call (older host,
+        // no libsqlite3, schema mismatch): every screen must stay on routes.list.
+        case 'data.path':
+          dataPathCalls.add(call.method);
+          return null;
         case 'ready':
           return {
             'version': 'test', 'coreVersion': 'test', 'preferences': {'locale': 'en'},
@@ -127,6 +134,20 @@ void main() {
     await tester.tap(find.text('Add rule'));
     await tester.pumpAndSettle();
     expect(find.text('Add rule'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the route list falls back to the channel when data.path is unavailable', (tester) async {
+    reportFlutterErrors();
+    rules = [];
+    await mount(tester);
+    openPage(tester.element(find.byType(HomePage)), const RouteProfilesPage());
+    await tester.pumpAndSettle();
+
+    // data.path was asked once, answered null, and the list still rendered from
+    // routes.list — the screen must not see the difference.
+    expect(dataPathCalls, isNotEmpty);
+    expect(find.text('Default'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 }

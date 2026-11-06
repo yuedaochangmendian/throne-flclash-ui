@@ -11,15 +11,17 @@
 // `ThroneKernel.isAvailable` on the kernel side: a capability that is absent
 // degrades to the old path instead of taking the screen down.
 //
-// STATUS: NOT WIRED. The only caller of [attach] today is
-// `test/data_layer_test.dart`; the profile list still takes `profiles.list` over
-// the channel, and the host's `data.path` is never invoked from Dart. This layer
-// is a ready-to-wire vertical slice, not a live path — release AOT tree-shakes
-// it. Wiring it means replacing one list call and keeping the null-degradation
-// above, which is why the contract is written this way.
+// STATUS: WIRED (one table). `BoxController.routeProfiles` attaches this layer
+// on the first route-list read and asks [routeProfiles] for `routes.list`'s wire
+// shape; `RouteProfilesSource` keeps the channel as the answer whenever anything
+// above is absent or fails. `groups` is still the un-wired vertical slice — it
+// has no production caller, and release AOT tree-shakes that DAO. The
+// null-degradation contract is unchanged: widening the data plane means adding
+// a DAO, never making a screen aware of where its rows came from.
 
 import 'db.dart';
 import 'groups_dao.dart';
+import 'route_profiles_dao.dart';
 
 /// What `data.path` answers: where the file is, and the schema version the host
 /// has it at.
@@ -39,11 +41,18 @@ class DatabaseLocation {
 }
 
 class DataLayer {
-  DataLayer._(this._db) : groups = GroupsDao(_db);
+  DataLayer._(this._db)
+      : groups = GroupsDao(_db),
+        routeProfiles = RouteProfilesDao(_db);
 
   final DataDatabase _db;
 
+  /// The un-wired slice: reads `groups`. Kept because it proves the FFI
+  /// connection works and pins the column names, but no screen calls it yet.
   final GroupsDao groups;
+
+  /// The live slice: reproduces `routes.list` from Room's file.
+  final RouteProfilesDao routeProfiles;
 
   /// The file behind this layer, for diagnostics.
   String get path => _db.path;
