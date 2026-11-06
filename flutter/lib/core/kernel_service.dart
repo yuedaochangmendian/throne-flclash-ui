@@ -150,19 +150,23 @@ class KernelService {
     await Future<void>.delayed(const Duration(seconds: 1));
     if (_disposed || _kernel == null) return;
     note('adopt: the service came up before the driver, rebuilding its core');
-    await box.call('service.start'); // foreground only in ffiMode
     _recoveryAttempts = 0;
-    await _startCore();
+    await _startCore(bringUpService: true);
   }
 
-  /// Starts the foreground service (Android duty) and then the core itself.
+  /// Starts the foreground service (Android duty) and the core itself.
+  ///
+  /// The two only meet when the core asks the platform for a tun, so they run at the same
+  /// time: Android creating the service and Dart building the config have nothing to say to
+  /// each other. Sequenced, the whole service bring-up (a process start, a notification, a
+  /// VpnService instance) sat in front of a config build that then ran alone, and the user
+  /// waited for the sum instead of the larger of the two.
   Future<void> startService() async {
     if (_kernel == null) return;
     note('start: user asked for the tunnel');
-    await box.call('service.start'); // foreground only in ffiMode
     // A start the user asked for is a fresh incident, whatever the last one cost.
     _recoveryAttempts = 0;
-    await _startCore();
+    await _startCore(bringUpService: true);
   }
 
   Future<void> stopService() async {
@@ -239,36 +243,58 @@ class KernelService {
     }
   }
 
-  Future<void> _startCore() async {
+  Future<void> _startCore({bool bringUpService = false}) async {
     if (_kernel == null || _starting || _disposed) return;
     final worker = _worker;
     if (worker == null) return;
     _starting = true;
     _emitDashboard('Starting');
     final beganAt = DateTime.now();
+    final clock = Stopwatch()..start();
+    var serviceMs = 0;
+    var configMs = 0;
     try {
+      // Android's half runs alongside the build below: in ffiMode the service owns the
+      // VpnService the core asks for a tun, and nothing in the config depends on it.
+      final serviceUp = (bringUpService ? box.call('service.start') : Future<Object?>.value())
+          .whenComplete(() => serviceMs = clock.elapsedMilliseconds);
       // The native DB owns the selection (DataStore.selectedProxy). The Flutter
       // preference store holds UI settings only, so mining it for an id used to
       // send 0 here and fail every start with "profile 0 is gone".
+      final build = box.call('config.build', configBuildArgs())
+          .whenComplete(() => configMs = clock.elapsedMilliseconds);
+      // No eagerError: a failed start must not leave the other half running unobserved, and
+      // the service's own error is the one worth reporting when both halves fail.
+      final answers = await Future.wait<Object?>([serviceUp, build]);
       // The channel reply is a `Map<String, dynamic>` after BoxController.call
       // normalizes it. Use a checked conversion so a future codec change fails
       // with a readable message instead of a bare type-cast exception.
-      final built = asStringKeyedMap(
-        await box.call('config.build', configBuildArgs()),
-        context: 'config.build',
-      );
+      final built = asStringKeyedMap(answers.last, context: 'config.build');
+      final readyMs = clock.elapsedMilliseconds;
       final handle = await worker.createInstance(built);
       _instanceHandle = handle;
+      final instanceMs = clock.elapsedMilliseconds;
       await worker.start();
       await worker.setHeartbeat(true);
+      final startMs = clock.elapsedMilliseconds;
+      _startedAt = DateTime.now();
+      // Split by phase: the total alone cannot say whether the next second should be spent on
+      // Android's service, on the config build, or inside the core's own start.
+      final phases = [
+        if (bringUpService) 'service $serviceMs',
+        'config $configMs',
+        'instance ${instanceMs - readyMs}',
+        'start ${startMs - instanceMs}',
+      ].join(', ');
+      note('core started in ${DateTime.now().difference(beganAt).inMilliseconds}ms ($phases)');
+      _emitDashboard('Started');
       // What the service used to write right after proxy.init(). Running a chain is not only the
       // box's business: ProfileManager.runningUses refuses to delete a node a running config still
       // uses, and RouteManager.runningRouteId decides whether a group's routing change needs a
-      // reload. Both read the store, so the facts are reported here once the start held.
+      // reload. Both read the store, so the facts are reported here once the start held — after
+      // the screen has been told the tunnel is up, since it reads none of them, and the two guards
+      // above are only consulted when the user edits a profile or a route.
       await _markRunning(built);
-      _startedAt = DateTime.now();
-      note('core started in ${DateTime.now().difference(beganAt).inMilliseconds}ms');
-      _emitDashboard('Started');
       // Wi-Fi-scoped routes, DNS and rule sets need the core re-read whenever the SSID
       // changes. The monitor is Android's (it owns the callback); whether one is needed at
       // all is the core's answer, so ask the box that just started.

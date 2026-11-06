@@ -350,7 +350,9 @@ class ThroneBoxBridge(
             if (System.currentTimeMillis() > deadline) {
                 error("VpnService did not start within ${SERVICE_READY_TIMEOUT_MS / 1000}s")
             }
-            delay(50)
+            // The service is created in a few hundred milliseconds; a 50 ms poll added up to
+            // that again in quantization on a path the user is watching.
+            delay(10)
         }
     }
 

@@ -20,6 +20,7 @@ import androidx.core.content.getSystemService
 import io.nekohasekai.sagernet.appwidget.Widgets
 import io.nekohasekai.sagernet.bg.CoreRuntime
 import io.nekohasekai.sagernet.bg.SagerConnection
+import io.nekohasekai.sagernet.bg.SingBoxDashboard
 import io.nekohasekai.sagernet.bg.autoselector.AutoSelectorRuntime
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.SettingsMapper
@@ -100,6 +101,13 @@ class SagerNet : Application(),
             }
             // The icon pack of the removed custom icon feature; a no-op once it is gone.
             runOnDefaultDispatcher { File(filesDir, "custom_icon").deleteRecursively() }
+            // The sing-box dashboard is unpacked out of the APK once per install (46 files, a few
+            // megabytes). Doing it here instead of at the first connect keeps those copies off the
+            // one path the user is waiting on: `config.build` runs it, and only the stamp check
+            // remains by the time the tunnel is asked for.
+            if (DataStore.apiDashboardEnabled) {
+                runOnDefaultDispatcher { SingBoxDashboard.install() }
+            }
             RemoteRouteUpdater.schedule()
             SubscriptionScheduler.schedule()
             Widgets.watchSelection(this)
