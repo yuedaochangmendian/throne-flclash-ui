@@ -1148,46 +1148,39 @@ class ThroneBoxBridge(
     }
 
     /**
-     * What the memory panel shows. `rss` is the whole process — ART heap, native allocations and the
-     * core's own Go heap — so it is a container, never a third addend next to `app` and `core`.
-     * `total` is the ART heap ceiling, not device RAM: it bounds `app` alone, and is kept only so a
-     * remote core that reports a single figure still has somewhere to put it.
+     * What the memory panel shows, all of it from Android's own accounting.
      *
-     * The core reports one number (`inuse`) and no breakdown, so `heapInuse`/`heapIdle` describe the
-     * ART heap, not the core. Labelling them under "Core" used to divide a 64 MiB heap by a 4 MiB
-     * core and print 1600%.
+     * `Debug.MemoryInfo` reports PSS — what the process actually has resident — and splits it by
+     * allocator: `dalvikPss` for the ART heap, `nativePss` for native allocations (the Go runtime is
+     * one) and `otherPss` for the rest. The three add up to `totalPss`, so the panel can show four
+     * numbers that agree with each other without any arithmetic of its own.
+     *
+     * The core used to grade itself instead: `Status().Memory` is the heap the Go runtime has
+     * *mapped*, which is a different quantity from resident memory and can exceed RSS. On a 286 MB
+     * process it read 319 MB, and every way of folding it into the panel produced a part larger
+     * than the whole.
+     *
+     * `heapInuse`/`heapIdle` stay the ART heap's own counters: they answer "how full is the heap",
+     * which PSS cannot.
      */
     private fun memoryWire(): Map<String, Any?> {
         val runtime = Runtime.getRuntime()
         val heapUsed = runtime.totalMemory() - runtime.freeMemory()
-        // In ffiMode the core runs inside this process and publishes its own heap on the driver's
-        // status feed, which Dart folds in (it is the only side holding the instance handle). Asking
-        // the clash API here would be a second, slower answer to the same question — and the API is
-        // off by default, so the call spent a five-second timeout to come back empty.
-        val core = if (BboxKernel.ffiMode) 0L else runCatching { BboxApi.memory() }.getOrNull() ?: 0L
-        val rss = processPss()
+        val info = Debug.MemoryInfo()
+        Debug.getMemoryInfo(info)
+        fun kb(value: Int) = value.toLong() * 1024
         return mapOf(
             "total" to runtime.maxMemory(),
-            // The ART heap: what the app itself holds. The panel adds the core's share to this,
-            // and the two together are what the app and the core use. RSS is the whole process —
-            // heap, native allocations, the engine and the core's Go heap — and stays a separate
-            // row, because it is a container, not a third addend.
-            "app" to heapUsed,
-            "core" to core,
-            "rss" to rss,
+            "app" to kb(info.dalvikPss),
+            "core" to kb(info.nativePss),
+            "other" to kb(info.otherPss),
+            "rss" to kb(info.totalPss),
             "running" to DataStore.serviceState.connected,
             "remote" to false,
             "heapInuse" to heapUsed,
             "heapIdle" to (runtime.totalMemory() - heapUsed),
         )
     }
-
-    /** `totalPss` counts a shared page once, which is what "resident" has to mean for a whole process. */
-    private fun processPss(): Long = runCatching {
-        val info = Debug.MemoryInfo()
-        Debug.getMemoryInfo(info)
-        info.totalPss.toLong() * 1024
-    }.getOrDefault(0L)
 
     // -------------------------------------------------------------------------------------------- probes and egress
 

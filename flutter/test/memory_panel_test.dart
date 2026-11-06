@@ -5,9 +5,13 @@ import 'package:flrone/components/memory_panel.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// The numbers from the report: a 283.3 MB process whose ART heap is 13.7 MB.
+/// The numbers `Debug.MemoryInfo` reports for a 283.3 MB process: 13.7 MB of ART heap, 100 MB of
+/// native allocations (the Go runtime lives there) and the rest. The four add up, because the
+/// platform produced all of them.
 const _rss = 297061581;
-const _heap = 14365491;
+const _app = 14365491;
+const _core = 104857600;
+const _other = _rss - _app - _core;
 
 void main() {
   Future<StreamController<dynamic>> mount(WidgetTester tester) async {
@@ -37,53 +41,32 @@ void main() {
     return events;
   }
 
-  Future<void> push(WidgetTester tester, StreamController<dynamic> events, {required int core}) async {
+  Future<void> push(WidgetTester tester, StreamController<dynamic> events, {int other = _other}) async {
     events.add({'type': 'memory', 'value': {
-      'total': 256 * 1024 * 1024, 'rss': _rss, 'app': _heap, 'core': core,
-      'running': true, 'remote': false, 'heapInuse': _heap, 'heapIdle': 8700000,
+      'total': 256 * 1024 * 1024, 'rss': _rss, 'app': _app, 'core': _core, 'other': other,
+      'running': true, 'remote': false, 'heapInuse': _app, 'heapIdle': 8700000,
     }});
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 200));
   }
 
-  testWidgets('the headline is the process, and every part adds up to it', (tester) async {
+  testWidgets('the headline is the process, and the parts add up to it', (tester) async {
     final events = await mount(tester);
-    await push(tester, events, core: 0);
+    await push(tester, events);
     expect(find.byType(MemorySummary), findsOneWidget);
-    // 283.3 MB: the process, as the RSS row on the details page says.
     expect(find.text('283.3 MB'), findsOneWidget);
     expect(find.text('13.7 MB'), findsOneWidget);
-    // What is left once the app's heap is accounted for.
-    expect(find.text('269.6 MB'), findsOneWidget);
+    expect(find.text('100.0 MB'), findsOneWidget);
+    expect(find.text('169.6 MB'), findsOneWidget);
   });
 
-  testWidgets('a core that reports nothing is unknown, not zero', (tester) async {
+  testWidgets('a split with no remainder shows two parts', (tester) async {
     final events = await mount(tester);
-    await push(tester, events, core: 0);
-    final summary = find.byType(MemorySummary);
-    expect(find.descendant(of: summary, matching: find.text('—')), findsOneWidget);
-    expect(find.descendant(of: summary, matching: find.text('0 B')), findsNothing);
-  });
-
-  testWidgets('a reported core is carved out of the process, and the rest is named', (tester) async {
-    final events = await mount(tester);
-    const core = 41943040; // 40 MB
-    await push(tester, events, core: core);
+    // Nothing outside the two allocators: no "Other" segment to draw, and no zero to print.
+    await push(tester, events, other: 0);
     expect(find.text('283.3 MB'), findsOneWidget);
     expect(find.text('13.7 MB'), findsOneWidget);
-    expect(find.text('40.0 MB'), findsOneWidget);
-    // 283.3 - 13.7 - 40 = 229.6 MB of native allocations, graphics and shared pages.
-    expect(find.text('229.6 MB'), findsOneWidget);
-  });
-
-  testWidgets('a core that reports more than the process cannot exceed it', (tester) async {
-    final events = await mount(tester);
-    // The Go runtime reports mapped heap, which can be larger than what is resident: this is the
-    // 319.2 MB reading on a 286 MB process from the report.
-    await push(tester, events, core: 334700000);
-    expect(find.text('283.3 MB'), findsOneWidget);
-    // Capped at the process minus the app's heap, so nothing claims more than the whole.
-    expect(find.text('269.6 MB'), findsOneWidget);
-    expect(find.text('319.2 MB'), findsNothing);
+    expect(find.text('100.0 MB'), findsOneWidget);
+    expect(find.text('0 B'), findsNothing);
   });
 }

@@ -295,30 +295,4 @@ void main() {
     box.handleEvent({'type': 'rates', 'value': {'upload': 1024, 'download': 2048}}, fromDriver: true);
     expect(box.rates['upload'], 1024);
   });
-
-  test('the core\'s heap comes from the driver, not the clash API', () async {
-    messenger.setMockMethodCallHandler(channel, (_) async => {'version': 'test', 'coreVersion': 'test', 'dashboard': {'status': 'Started'}});
-    await box.initialize();
-    box.debugDriverActive = true;
-
-    // The driver reports its own heap in the status feed. The channel cannot ask it (it has no
-    // instance handle) and the clash API is off, so the channel's memory event says zero.
-    box.handleEvent({'type': 'dashboard', 'value': {'status': 'Started', 'memory': 41943040}}, fromDriver: true);
-    box.handleEvent({'type': 'memory', 'value': {
-      'rss': 297061581, 'app': 14365491, 'core': 0, 'running': true, 'remote': false,
-      'heapInuse': 14365491, 'heapIdle': 8700000, 'total': 268435456,
-    }});
-    expect(box.memory['core'], 41943040);
-    // The app's own heap is left alone: the panel adds the two halves.
-    expect(box.memory['app'], 14365491);
-
-    // Without the driver the channel's figure is all there is, and it is left alone.
-    box.debugDriverActive = false;
-    box.handleEvent({'type': 'memory', 'value': {
-      'rss': 297061581, 'app': 14365491, 'core': 0, 'running': false, 'remote': false,
-      'heapInuse': 14365491, 'heapIdle': 8700000, 'total': 268435456,
-    }});
-    expect(box.memory['core'], 0);
-    expect(box.memory['app'], 14365491);
-  });
 }
