@@ -19,19 +19,24 @@ class MemorySummary extends StatelessWidget {
   @override Widget build(BuildContext context) {
     final color = context.colorScheme;
     final remote = snapshot['remote'] == true;
+    final rss = snapshot['rss'] as num? ?? 0;
     final app = snapshot['app'] as num? ?? 0;
-    final core = snapshot['core'] as num? ?? 0;
-    // A running core whose API is off reports no figure of its own, and zero would claim it holds
-    // nothing. The legend says the share is unknown instead.
-    final coreUnknown = !remote && snapshot['running'] == true && core == 0;
-    // What the app and the core hold between them: the ART heap plus the core's own heap. The
-    // process holds more than this — native allocations, the engine, shared pages — and that is
-    // the RSS row on the details page. It is not what "memory used by this app" means to the
-    // reader, and using it as the headline made a 13.7 MB app look like a 283 MB one.
-    final total = bytes(remote ? (snapshot['total'] as num? ?? 0) : app + core).split(' ');
+    final reported = snapshot['core'] as num? ?? 0;
+    // The core reports the heap the Go runtime has mapped, not what the process has resident: the
+    // two are different quantities, and the reported one can exceed RSS — 319 MB on a 286 MB
+    // process. The process is the whole, so it is split into what can be accounted for: the app's
+    // heap, the core's share capped at what is left, and the rest (native allocations, graphics,
+    // shared pages). Every figure then adds up to the headline.
+    final room = math.max<num>(0, rss - app);
+    final core = reported > 0 ? math.min(reported, room) : 0;
+    final other = math.max<num>(0, room - core);
+    // A running core that reports nothing says so rather than claiming to hold nothing.
+    final coreUnknown = !remote && snapshot['running'] == true && reported == 0;
+    final total = bytes(remote ? (snapshot['total'] as num? ?? 0) : (rss > 0 ? rss : app + core + other)).split(' ');
     final parts = <(String, num, Color)>[
       if (!remote) ('App', app, color.primary),
       ('Core', core, Color.alphaBlend(color.primary.withValues(alpha: .45), SurfaceLevel.card.colorOf(color))),
+      if (!remote && other > 0) ('Other', other, color.onSurfaceVariant.withValues(alpha: .35)),
     ];
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text.rich(TextSpan(children: [
@@ -39,10 +44,10 @@ class MemorySummary extends StatelessWidget {
         if (snapshot.isNotEmpty) TextSpan(text: ' ${total.last}', style: AppTextStyle.footnote.of(context).copyWith(color: color.onSurfaceVariant)),
       ]), maxLines: 1),
       const SizedBox(height: 14), MemoryBar(parts: parts), const SizedBox(height: 10),
-      Wrap(spacing: 16, runSpacing: 4, children: [for (final (index, part) in parts.indexed) Row(mainAxisSize: MainAxisSize.min, spacing: 6, children: [
+      Wrap(spacing: 16, runSpacing: 4, children: [for (final part in parts) Row(mainAxisSize: MainAxisSize.min, spacing: 6, children: [
         DecoratedBox(decoration: ShapeDecoration(color: part.$3, shape: AppShape.circle), child: const SizedBox.square(dimension: 8)),
         Text(context.tr(part.$1), style: context.listCaptionStyle),
-        Text(snapshot.isEmpty || (coreUnknown && index == parts.length - 1) ? '—' : bytes(part.$2), style: AppTextStyle.footnote.of(context, emphasized: true).toTabular),
+        Text(snapshot.isEmpty || (coreUnknown && part.$1 == 'Core') ? '—' : bytes(part.$2), style: AppTextStyle.footnote.of(context, emphasized: true).toTabular),
       ])]),
     ]);
   }
@@ -79,8 +84,13 @@ class _MemoryDetailsState extends State<MemoryDetails> {
   @override Widget build(BuildContext context) {
     final memory = context.watchBox(BoxAspect.memory).memory;
     final remote = memory['remote'] == true;
-    final core = memory['core'] as num? ?? 0;
-    final coreUnknown = !remote && memory['running'] == true && core == 0;
+    final rss = memory['rss'] as num? ?? 0;
+    final app = memory['app'] as num? ?? 0;
+    final reported = memory['core'] as num? ?? 0;
+    // Same accounting as the card: the core's figure is capped at what the process holds beyond the
+    // app's heap, because the Go runtime reports mapped memory and that can exceed resident memory.
+    final core = reported > 0 ? math.min(reported, math.max<num>(0, rss - app)) : 0;
+    final coreUnknown = !remote && memory['running'] == true && reported == 0;
     return BoxDataSubscription(data: BoxData.memory, child: BoxPage(title: 'Memory', loading: _releasing, actions: [
       if (!remote && memory['running'] == true) IconButtonData(glyph: AppGlyphs.broom,
         tooltip: context.tr('Release memory'), onPressed: _releasing ? null : _release),
@@ -89,7 +99,7 @@ class _MemoryDetailsState extends State<MemoryDetails> {
       MemorySummary(snapshot: memory), const SizedBox(height: 12),
       Text(context.tr(remote ? 'Memory reported by the remote core. Detailed accounting is unavailable.'
         : coreUnknown ? "The core API is off, so the core's own share is not reported; it stays inside the process figure."
-        : "The total is the app's heap plus the core's. The process figure is separate: it also counts native allocations, graphics and shared pages."), style: context.listCaptionStyle),
+        : "The total is the process's resident memory: the app's heap, the core's share, and the rest — native allocations, graphics and shared pages."), style: context.listCaptionStyle),
       if (!remote) generateSection(title: context.tr('App'), items: [
         ListItem(title: Text(context.tr('Process RSS')), trailing: Text(bytes(memory['rss'] as num? ?? 0))),
         ListItem(title: Text(context.tr('Heap in use')), trailing: Text(bytes(memory['heapInuse'] as num? ?? 0))),
