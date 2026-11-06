@@ -136,17 +136,25 @@ class BoxController extends ChangeNotifier {
     'status', 'startedAt', 'uploadTotal', 'downloadTotal', 'connections', 'memory', 'goroutines',
   };
 
-  /// [incoming] with the driver's own fields kept from [current] when it owns the core.
+  /// [incoming] with the driver's own fields kept from [current] when [channelIsStale]:
+  /// the service side has no box in FFI mode, so its copy of these is a row of zeros.
   /// Everything else — the mode, the selected profile, the system proxy — still comes from
-  /// the channel, which is the side that persists it.
-  static Json mergeDashboard(Json current, Json incoming, {required bool driverOwns}) {
-    if (!driverOwns) return incoming;
+  /// the channel, which is the side that persists it. The driver's own events are never
+  /// merged: they are the values the merge is protecting.
+  static Json mergeDashboard(Json current, Json incoming, {required bool channelIsStale}) {
+    if (!channelIsStale) return incoming;
     final merged = Map<String, dynamic>.of(incoming);
     for (final key in driverOwnedDashboard) {
       if (current.containsKey(key)) merged[key] = current[key];
     }
     return merged;
   }
+
+  /// Test hook: pretend the FFI driver owns the core, so the arbitration between the two
+  /// sources can be exercised without the library. Null asks the driver.
+  @visibleForTesting
+  bool? debugDriverActive;
+  bool get _driverActive => debugDriverActive ?? kernel.active;
 
   BoxCapabilities capabilities = BoxCapabilities.empty;
   Json toolState = {}, stun = {}, quality = {}, inbox = {}, ping = {};
@@ -376,7 +384,7 @@ class BoxController extends ChangeNotifier {
       _kernelEvents = null;
       if (kernel.ffiMode) {
         _kernelSub = ThroneKernel.ensure()?.logs.listen(_onKernelLog, onError: report);
-        _kernelEvents = kernel.events.listen(_onEvent, onError: report);
+        _kernelEvents = kernel.events.listen((event) => _onEvent(event, fromDriver: true), onError: report);
       }
     } catch (error) {
       // The FFI worker failed to start. KernelService has already handed core
@@ -504,10 +512,17 @@ class BoxController extends ChangeNotifier {
   static String describe(Object error) => error is PlatformException
       ? error.message ?? error.code : error.toString();
 
-  void _onEvent(dynamic event) {
+  /// [event] from the driver's own status feed, as opposed to the channel.
+  @visibleForTesting
+  void handleEvent(dynamic event, {bool fromDriver = false}) => _onEvent(event, fromDriver: fromDriver);
+
+  void _onEvent(dynamic event, {bool fromDriver = false}) {
     if (_disposed) return;
     final item = json(event);
     final value = item['value'];
+    // The driver's feed is the truth while it runs the core; the channel's dashboard and
+    // rates then carry the service meter's zeros and must not overwrite it.
+    final channelIsStale = _driverActive && !fromDriver;
     var aspects = const [BoxAspect.state];
     switch (item['type']) {
       case 'tools': toolState = json(value);
@@ -533,7 +548,7 @@ class BoxController extends ChangeNotifier {
         return;
       case 'browserComplete': eventBus.emit(BrowserCompleteEvent(json(value))); return;
       case 'dashboard':
-        final nextDashboard = mergeDashboard(dashboard, json(value), driverOwns: kernel.active);
+        final nextDashboard = mergeDashboard(dashboard, json(value), channelIsStale: channelIsStale);
         if (const DeepCollectionEquality().equals(dashboard, nextDashboard)) return;
         const counters = {'memory', 'goroutines', 'uploadTotal', 'downloadTotal', 'connections'};
         Json state(Json data) => Map.fromEntries(data.entries.where((entry) => !counters.contains(entry.key)));
@@ -598,7 +613,7 @@ class BoxController extends ChangeNotifier {
         // The driver's own status feed carries these numbers while it runs the core; the
         // channel's copy is the service meter's, which has no TrafficUpdater in FFI mode and
         // would alternate with the real rates once a second.
-        if (kernel.active) return;
+        if (channelIsStale) return;
         rates = json(value);
         // One point per second, whoever pushes it: the channel's tick and the FFI status feed can
         // both report the same second, and a doubled sample would halve the window's span. The
