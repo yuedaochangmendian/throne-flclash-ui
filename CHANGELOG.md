@@ -1,3 +1,14 @@
+#### 3.3.1-pre.4
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one is about how long the tunnel takes to come up.
+
+Tapping connect used to run the two halves one after the other: Android brought the service up, and only then did Dart build the config. They have nothing to say to each other until the core asks for the tun, so they now run at the same time — the service's process start, notification and receiver registration are spent while the config is being built instead of in front of it. The screen is also told the tunnel is up the moment the core is, rather than after the running-config facts have been written to the store.
+
+* `service.start` and `config.build` are issued together and awaited together; a failure in either still ends the start with nothing left running
+* The `core started in` line now carries the split (`service`, `config`, `instance`, `start`) so the next round has numbers instead of a total
+* The sing-box dashboard is unpacked at app start instead of at the first connect. It is 46 files out of the APK, once per install, and it used to sit inside `config.build` — on the one path the user is watching. `install()` is now synchronized, so the start that overlaps the prewarm cannot unpack into the same directory
+* The wait for the live `VpnService` polls every 10 ms instead of 50 ms; the service registers itself in the first line of `startProxy`, so the poll was mostly measuring its own interval
+
 #### 3.3.1-pre.3
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one corrects pre.2.
