@@ -18,10 +18,15 @@ class MemorySummary extends StatelessWidget {
   final Json snapshot;
   @override Widget build(BuildContext context) {
     final color = context.colorScheme;
-    final total = bytes(snapshot['total'] as num? ?? 0).split(' ');
+    final remote = snapshot['remote'] == true;
+    final app = snapshot['app'] as num? ?? 0;
+    final core = snapshot['core'] as num? ?? 0;
+    // The headline is what the process holds now. `total` is the ART heap ceiling, not device RAM,
+    // so it would read as "256 MB used" on a panel where App and Core add up to 68 MB.
+    final total = bytes(remote ? (snapshot['total'] as num? ?? 0) : app + core).split(' ');
     final parts = <(String, num, Color)>[
-      if (snapshot['remote'] != true) ('App', snapshot['app'] as num? ?? 0, color.primary),
-      ('Core', snapshot['core'] as num? ?? 0, Color.alphaBlend(color.primary.withValues(alpha: .45), SurfaceLevel.card.colorOf(color))),
+      if (!remote) ('App', app, color.primary),
+      ('Core', core, Color.alphaBlend(color.primary.withValues(alpha: .45), SurfaceLevel.card.colorOf(color))),
     ];
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text.rich(TextSpan(children: [
@@ -67,25 +72,24 @@ class _MemoryDetailsState extends State<MemoryDetails> {
     if (mounted) setState(() => _releasing = false);
   }
   @override Widget build(BuildContext context) {
-    final memory = context.watchBox(BoxAspect.memory).memory, total = (memory['core'] as num?)?.toDouble() ?? 0;
+    final memory = context.watchBox(BoxAspect.memory).memory;
+    final remote = memory['remote'] == true;
     return BoxDataSubscription(data: BoxData.memory, child: BoxPage(title: 'Memory', loading: _releasing, actions: [
-      if (memory['remote'] != true && memory['running'] == true) IconButtonData(glyph: AppGlyphs.broom,
+      if (!remote && memory['running'] == true) IconButtonData(glyph: AppGlyphs.broom,
         tooltip: context.tr('Release memory'), onPressed: _releasing ? null : _release),
     ], children: [
-      const SizedBox(height: 8), Text(context.tr('Total'), style: AppTextStyle.headline.of(context)), const SizedBox(height: 4),
+      const SizedBox(height: 8), Text(context.tr('Total memory'), style: AppTextStyle.headline.of(context)), const SizedBox(height: 4),
       MemorySummary(snapshot: memory), const SizedBox(height: 12),
-      Text(context.tr(memory['remote'] == true ? 'Memory reported by the remote core. Detailed accounting is unavailable.'
+      Text(context.tr(remote ? 'Memory reported by the remote core. Detailed accounting is unavailable.'
         : 'App and core share one process. Core runtime memory is separated from process RSS, not added twice.'), style: context.listCaptionStyle),
-      if (memory['remote'] != true) generateSection(title: context.tr('App'), items: [
+      if (!remote) generateSection(title: context.tr('App'), items: [
         ListItem(title: Text(context.tr('Process RSS')), trailing: Text(bytes(memory['rss'] as num? ?? 0))),
-        ListItem(title: Text(context.tr('App and shared memory')), trailing: Text(bytes(memory['app'] as num? ?? 0))),
+        ListItem(title: Text(context.tr('Heap in use')), trailing: Text(bytes(memory['heapInuse'] as num? ?? 0))),
+        ListItem(title: Text(context.tr('Retained idle heap')), trailing: Text(bytes(memory['heapIdle'] as num? ?? 0))),
       ]),
       generateSection(title: context.tr('Core'), items: [
-        if (memory['running'] != true && memory['remote'] != true) ListItem(title: Text(context.tr('Not running'))),
-        for (final (key, label) in const [('heapInuse', 'Heap in use'), ('heapIdle', 'Retained idle heap'), ('stack', 'Stack'), ('runtimeOther', 'Other runtime memory')])
-          if (memory[key] is num) ListItem(title: Text(context.tr(label)), subtitle: Text(bytes(memory[key] as num)),
-            trailing: Text('${total == 0 ? '0.0' : ((memory[key] as num) * 100 / total).toStringAsFixed(1)}%')),
-        if (memory['goroutines'] != null) ListItem(title: Text(context.tr('Goroutines')), trailing: Text(memory['goroutines'].toString())),
+        if (!remote && memory['running'] != true) ListItem(title: Text(context.tr('Not running'))),
+        ListItem(title: Text(context.tr('Core memory')), trailing: Text(bytes(memory['core'] as num? ?? 0))),
       ]),
     ]));
   }

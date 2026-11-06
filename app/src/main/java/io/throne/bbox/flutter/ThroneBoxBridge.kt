@@ -15,6 +15,7 @@ import io.flutter.plugin.common.MethodChannel
 import io.nekohasekai.sagernet.BuildConfig
 import io.nekohasekai.sagernet.SagerNet
 import android.os.Build
+import android.os.Debug
 import io.nekohasekai.sagernet.Key
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.utils.CrashStore
@@ -1081,21 +1082,38 @@ class ThroneBoxBridge(
         }
     }
 
+    /**
+     * What the memory panel shows. `rss` is the whole process — ART heap, native allocations and the
+     * core's own Go heap — so it is a container, never a third addend next to `app` and `core`.
+     * `total` is the ART heap ceiling, not device RAM: it bounds `app` alone, and is kept only so a
+     * remote core that reports a single figure still has somewhere to put it.
+     *
+     * The core reports one number (`inuse`) and no breakdown, so `heapInuse`/`heapIdle` describe the
+     * ART heap, not the core. Labelling them under "Core" used to divide a 64 MiB heap by a 4 MiB
+     * core and print 1600%.
+     */
     private fun memoryWire(): Map<String, Any?> {
         val runtime = Runtime.getRuntime()
+        val heapUsed = runtime.totalMemory() - runtime.freeMemory()
         val core = runCatching { BboxApi.memory() }.getOrNull()
         return mapOf(
             "total" to runtime.maxMemory(),
-            "app" to (runtime.totalMemory() - runtime.freeMemory()),
+            "app" to heapUsed,
             "core" to (core ?: 0L),
-            "rss" to (core ?: 0L),
-            "heapInuse" to (runtime.totalMemory() - runtime.freeMemory()),
-            "heapIdle" to (runtime.maxMemory() - runtime.totalMemory()),
-            "stack" to 0L,
-            "runtimeOther" to 0L,
-            "goroutines" to 0,
+            "rss" to processPss(),
+            "running" to DataStore.serviceState.connected,
+            "remote" to false,
+            "heapInuse" to heapUsed,
+            "heapIdle" to (runtime.totalMemory() - heapUsed),
         )
     }
+
+    /** `totalPss` counts a shared page once, which is what "resident" has to mean for a whole process. */
+    private fun processPss(): Long = runCatching {
+        val info = Debug.MemoryInfo()
+        Debug.getMemoryInfo(info)
+        info.totalPss.toLong() * 1024
+    }.getOrDefault(0L)
 
     // -------------------------------------------------------------------------------------------- probes and egress
 
