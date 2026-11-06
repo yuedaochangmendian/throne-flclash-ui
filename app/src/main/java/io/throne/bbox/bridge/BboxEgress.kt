@@ -75,8 +75,10 @@ object BboxEgress {
      * That setting was written to `exit_lookup_provider` and read by nothing, so changing it did
      * nothing at all. A provider this build has no parser for — ip2location needs a key, cloudflare
      * answers plain text — falls back to the default order rather than to nothing.
+     *
+     * `internal` (rather than private) so `BboxEgressParseTest` can pin the ordering.
      */
-    private fun endpointsFor(provider: String): List<Pair<String, (JSONObject) -> Info>> {
+    internal fun endpointsFor(provider: String): List<Pair<String, (JSONObject) -> Info>> {
         val chosen: Pair<String, (JSONObject) -> Info> = when (provider) {
             "ipwho" -> "https://ipwho.is/" to ::parseIpWhoIs
             "ipinfo" -> "https://ipinfo.io/json" to ::parseIpInfo
@@ -338,14 +340,14 @@ object BboxEgress {
         return Info(
             ip = json.optString("ip").takeIf { it.isNotBlank() },
             country = json.optString("country").takeIf { it.isNotBlank() },
-            organization = org?.substringAfter(' ', org),
+            organization = if (asn != null) org?.substringAfter(' ') else org,
             asn = asn,
             type = if (json.optString("ip").contains(':')) "IPv6" else "IPv4",
         )
     }
 
     /** ip-api.com keys the AS number and the operator together in `as`, and repeats the ISP in `isp`. */
-    private fun parseIpApi(json: JSONObject): Info {
+    internal fun parseIpApi(json: JSONObject): Info {
         if (json.optString("status") != "success") return Info()
         val asField = json.optString("as")
         return Info(
@@ -361,21 +363,24 @@ object BboxEgress {
     }
 
     /** ipapi.co names the country twice (`country` is the ISO code) and packs the AS into `org`. */
-    private fun parseIpApiCo(json: JSONObject): Info {
+    internal fun parseIpApiCo(json: JSONObject): Info {
         val org = json.optString("org").takeIf { it.isNotBlank() }
+        val asn = org?.substringBefore(' ')?.takeIf { it.startsWith("AS") }
         return Info(
             ip = json.optString("ip").takeIf { it.isNotBlank() },
             country = json.optString("country").takeIf { it.isNotBlank() },
             countryName = json.optString("country_name").takeIf { it.isNotBlank() },
             region = json.optString("region").takeIf { it.isNotBlank() },
             city = json.optString("city").takeIf { it.isNotBlank() },
-            organization = org?.substringAfter(' ', org),
-            asn = org?.substringBefore(' ')?.takeIf { it.startsWith("AS") },
+            // Strip the leading AS number only when there is one; otherwise `org`
+            // is the whole operator name and dropping its first word would be wrong.
+            organization = if (asn != null) org?.substringAfter(' ') else org,
+            asn = asn,
         )
     }
 
     /** freeipapi.com answers location only: no operator, no AS number. */
-    private fun parseFreeIpApi(json: JSONObject): Info = Info(
+    internal fun parseFreeIpApi(json: JSONObject): Info = Info(
         ip = json.optString("ipAddress").takeIf { it.isNotBlank() },
         country = json.optString("countryCode").takeIf { it.isNotBlank() },
         countryName = json.optString("countryName").takeIf { it.isNotBlank() },

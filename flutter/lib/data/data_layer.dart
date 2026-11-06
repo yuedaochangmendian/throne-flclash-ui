@@ -10,6 +10,13 @@
 // null as "keep using the channel", which is the same shape as
 // `ThroneKernel.isAvailable` on the kernel side: a capability that is absent
 // degrades to the old path instead of taking the screen down.
+//
+// STATUS: NOT WIRED. The only caller of [attach] today is
+// `test/data_layer_test.dart`; the profile list still takes `profiles.list` over
+// the channel, and the host's `data.path` is never invoked from Dart. This layer
+// is a ready-to-wire vertical slice, not a live path — release AOT tree-shakes
+// it. Wiring it means replacing one list call and keeping the null-degradation
+// above, which is why the contract is written this way.
 
 import 'db.dart';
 import 'groups_dao.dart';

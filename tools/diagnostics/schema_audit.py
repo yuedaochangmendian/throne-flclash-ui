@@ -43,6 +43,28 @@ def fail(message: str) -> None:
     print(f"::error::{message}")
 
 
+def annotation_body(source: str) -> str | None:
+    """The text inside `@Database(...)`, found by balancing parentheses.
+
+    `@Database\\s*\\((.*?)\\)` stops at the first `)`, which may belong to a
+    nested call (`AutoMigration(from = 1, to = 2)`). That would truncate the
+    body and could hide `version` entirely. Count the nesting instead.
+    """
+    match = re.search(r"@Database\s*\(", source)
+    if not match:
+        return None
+    depth = 1
+    for index in range(match.end(), len(source)):
+        char = source[index]
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                return source[match.end():index]
+    return None
+
+
 def main() -> int:
     problems = []
 
@@ -51,12 +73,12 @@ def main() -> int:
     db_dart = read(DB_DART)
 
     # The @Database annotation: `version = 19,` inside the annotation's parentheses.
-    room_match = re.search(r"@Database\s*\((.*?)\)\s*\n", database_kt, re.S)
-    if not room_match:
-        problems.append("could not find @Database(...) in SagerDatabase.kt")
+    body = annotation_body(database_kt)
+    if body is None:
+        problems.append("could not find a balanced @Database(...) in SagerDatabase.kt")
         room_version = None
     else:
-        version_match = re.search(r"\bversion\s*=\s*(\d+)", room_match.group(1))
+        version_match = re.search(r"\bversion\s*=\s*(\d+)", body)
         if not version_match:
             problems.append("could not read `version = N` from @Database")
             room_version = None

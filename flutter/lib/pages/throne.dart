@@ -677,6 +677,17 @@ String xrayVlessPreferenceName(int value) => switch (value) {
 };
 const exitLookupProviders = ['auto', 'ip-api', 'ipwho', 'ipinfo', 'ipapi-co', 'ip2location', 'freeipapi', 'cloudflare'];
 
+/// Three choices cannot be honoured by the probe set as it stands: ip-api's free
+/// endpoint is plain HTTP, ip2location needs an API key, and cloudflare answers
+/// plain text rather than JSON. Name that in the picker instead of letting a
+/// change look like it did nothing (they fall back to the default order).
+String exitLookupProviderName(String value) => switch (value) {
+  'ip-api' => 'Lookup provider cleartext',
+  'ip2location' => 'Lookup provider needs key',
+  'cloudflare' => 'Lookup provider fallback',
+  _ => value,
+};
+
 class TestingPage extends StatelessWidget {
   const TestingPage({super.key});
   @override Widget build(BuildContext context) => BoxPage(title: 'Testing', actions: [
@@ -699,7 +710,7 @@ class TestingPage extends StatelessWidget {
     ]),
     generateSection(title: context.tr('Exit detection'), items: [
       SettingToggle('Look up exit country', 'exitCountryLookup'),
-      SettingChoice<String>('Lookup provider', 'exitLookupProvider', options: exitLookupProviders, text: (value) => value),
+      SettingChoice<String>('Lookup provider', 'exitLookupProvider', options: exitLookupProviders, text: exitLookupProviderName),
     ]),
   ]);
 }

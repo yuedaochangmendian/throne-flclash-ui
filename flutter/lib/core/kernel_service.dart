@@ -49,6 +49,7 @@ class KernelService {
   bool _recovering = false;
   bool _disposed = false;
   bool _initializing = false;
+  bool _statsInFlight = false;
 
   /// Set when the bridge stopped a service-side box to hand the control plane over
   /// (the service came up before Dart did). [adoptService] rebuilds the core once the
@@ -70,6 +71,19 @@ class KernelService {
   bool get ffiMode => _kernel != null;
 
   // --- lifecycle ----------------------------------------------------------
+
+  /// Test-only: reaches the state [initialize] would leave after a successful
+  /// hand-over without a native library or a spawned worker isolate. The tests
+  /// pass signature-level fakes; only channel calls and the worker's lifecycle
+  /// methods are exercised.
+  void debugAttach(ThroneKernel kernel, KernelWorker worker) {
+    _kernel = kernel;
+    _worker = worker;
+    _workerSub = worker.events.listen(_onWorkerEvent, onError: report);
+    _statusSub = kernel.events
+        .where((event) => event['method'] == 'status')
+        .listen(_onKernelStatus, onError: report);
+  }
 
   Future<void> initialize() async {
     // Bridge mode: no FFI library is opened, no worker isolate is spawned, and
@@ -147,11 +161,58 @@ class KernelService {
     if (!handoverPending) return;
     handoverPending = false;
     if (_kernel == null) return;
-    await Future<void>.delayed(const Duration(seconds: 1));
+    await _awaitServiceRelease();
     if (_disposed || _kernel == null) return;
     note('adopt: the service came up before the driver, rebuilding its core');
     _recoveryAttempts = 0;
     await _startCore(bringUpService: true);
+  }
+
+  /// A hand-over restarts the service in place: `handOver()` stops the box, and
+  /// `startProxy` re-registers the VpnService under ffiMode. A fixed one-second
+  /// delay was a guess — too short when the close is still running on a slow
+  /// device, and a wasted second on a fast one. Poll the read-only service state
+  /// instead, with a hard ceiling so a host that cannot answer never hangs the
+  /// hand-over.
+  static const _handoverTimeout = Duration(seconds: 5);
+  static const _handoverPollInterval = Duration(milliseconds: 50);
+
+  Future<void> _awaitServiceRelease() async {
+    final deadline = DateTime.now().add(_handoverTimeout);
+    while (!_disposed) {
+      try {
+        final state = asStringKeyedMap(
+          await box.call('service.state'),
+          context: 'service.state',
+        );
+        // Registered again, in ffiMode, and Connected: the tun the core asks for
+        // belongs to a service that has finished its restart.
+        if (state['registered'] == true &&
+            state['ffiMode'] == true &&
+            state['state'] == 'Connected') {
+          return;
+        }
+      } catch (_) {
+        // The channel is still coming up (or an older host has no `service.state`);
+        // polling is the answer, not an error. The deadline below is the ceiling.
+      }
+      if (DateTime.now().isAfter(deadline)) {
+        note('adopt: the service did not report ready in '
+            '${_handoverTimeout.inSeconds}s, rebuilding anyway');
+        return;
+      }
+      await Future<void>.delayed(_handoverPollInterval);
+    }
+  }
+
+  /// A `ready` that failed cannot build a config, so a pending hand-over must not
+  /// be left pending: the service sits Connected under ffiMode with no core and
+  /// nothing will ever rebuild it. Give control back to the bridge, which rebuilds
+  /// its own box on `service.reload` (the same path as a failed initialization).
+  Future<void> abandonHandover() async {
+    if (!handoverPending) return;
+    note('hand-over abandoned: the channel could not become ready');
+    await _rollbackToBridge();
   }
 
   /// Starts the foreground service (Android duty) and the core itself.
@@ -254,22 +315,40 @@ class KernelService {
     var serviceMs = 0;
     var configMs = 0;
     try {
-      // Android's half runs alongside the build below: in ffiMode the service owns the
-      // VpnService the core asks for a tun, and nothing in the config depends on it.
-      final serviceUp = (bringUpService ? box.call('service.start') : Future<Object?>.value())
-          .whenComplete(() => serviceMs = clock.elapsedMilliseconds);
       // The native DB owns the selection (DataStore.selectedProxy). The Flutter
       // preference store holds UI settings only, so mining it for an id used to
       // send 0 here and fail every start with "profile 0 is gone".
       final build = box.call('config.build', configBuildArgs())
           .whenComplete(() => configMs = clock.elapsedMilliseconds);
-      // No eagerError: a failed start must not leave the other half running unobserved, and
-      // the service's own error is the one worth reporting when both halves fail.
-      final answers = await Future.wait<Object?>([serviceUp, build]);
+      // Android's half runs alongside the build above: in ffiMode the service owns the
+      // VpnService the core asks for a tun, and nothing in the config depends on it.
+      final serviceUp = bringUpService
+          ? box.call('service.start')
+              .whenComplete(() => serviceMs = clock.elapsedMilliseconds)
+          : null;
+      // Both are already in flight. Await the service half first: when Android refuses
+      // the VPN (no permission, always-on conflict) there is no reason to make the
+      // user sit through a slow xray/config build before seeing the error. The build
+      // is still awaited below on the success path, and observed here on failure so
+      // its resources are released rather than completing unobserved.
+      if (serviceUp != null) {
+        try {
+          await serviceUp;
+        } catch (error) {
+          unawaited(() async {
+            try {
+              await build;
+            } catch (buildError) {
+              note('config.build after a failed service start: $buildError');
+            }
+          }());
+          rethrow;
+        }
+      }
       // The channel reply is a `Map<String, dynamic>` after BoxController.call
       // normalizes it. Use a checked conversion so a future codec change fails
       // with a readable message instead of a bare type-cast exception.
-      final built = asStringKeyedMap(answers.last, context: 'config.build');
+      final built = asStringKeyedMap(await build, context: 'config.build');
       final readyMs = clock.elapsedMilliseconds;
       final handle = await worker.createInstance(built);
       _instanceHandle = handle;
@@ -309,6 +388,17 @@ class KernelService {
       // A failed start leaves nothing running, and a reload that kept the old facts
       // would otherwise describe a core that is not there.
       await _clearRunning();
+      // In ffiMode BaseService announces `Connected` as soon as the service starts
+      // (startProxy), before any core exists. A failed build must not leave the
+      // notification, tile and VPN icon claiming a tunnel that is not there — and
+      // with `active == false` the watchdog will not recover it. Stop the service
+      // too, in the same order as stopService(). Best effort: a channel failure
+      // here must not hide the original start error.
+      try {
+        await box.call('service.stop');
+      } catch (stopError) {
+        note('core start FAILED: could not stop the service: $stopError');
+      }
       _emitDashboard('Stopped');
     } finally {
       _starting = false;
@@ -411,7 +501,11 @@ class KernelService {
   /// Push the same snapshot it would have produced; the screen-off rule is already handled
   /// on the Kotlin side by `listenPostSpeed`.
   void _publishStats(Map<String, int> snapshot) {
-    if (_disposed) return;
+    // One status snapshot per second, but a busy main thread can leave a channel
+    // call in flight for longer. Drop the overlap instead of piling up replies
+    // that would all describe an older second anyway.
+    if (_disposed || _statsInFlight) return;
+    _statsInFlight = true;
     unawaited(() async {
       try {
         await box.call('state.stats', {
@@ -422,6 +516,8 @@ class KernelService {
         });
       } catch (_) {
         // A notification that cannot be updated is not a reason to lose the status stream.
+      } finally {
+        _statsInFlight = false;
       }
     }());
   }
@@ -476,7 +572,6 @@ class KernelService {
       'value': {
         'upload': snapshot['uplink'] ?? 0,
         'download': snapshot['downlink'] ?? 0,
-        'memoryBytes': snapshot['memory'] ?? 0,
       },
     });
     _emitDashboard(

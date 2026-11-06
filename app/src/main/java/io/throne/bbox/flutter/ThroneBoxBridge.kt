@@ -368,6 +368,15 @@ class ThroneBoxBridge(
                     if (DataStore.serviceState.canStop) SagerNet.stopService()
                     result.success(null)
                 }
+                // Read-only state the FFI driver polls while adopting a service that
+                // started before Dart did. `registered` says the VpnService is back
+                // after handOver()'s in-place restart; the core must not ask it for
+                // a tun before that. No side effects: this never starts or stops.
+                "service.state" -> result.success(mapOf(
+                    "state" to DataStore.serviceState.name,
+                    "registered" to (DataStore.baseService != null),
+                    "ffiMode" to BboxKernel.ffiMode,
+                ))
                 "service.reload" -> {
                     if (DataStore.serviceState.canStop) SagerNet.reloadService()
                     result.success(null)
@@ -880,6 +889,10 @@ class ThroneBoxBridge(
                 // `/data/data/<pkg>/databases` needs the package name, which the Dart side
                 // has no way to learn, so it asks once at startup and then opens the file
                 // itself. This is the last data-plane call on the channel.
+                // STATUS: NOT WIRED. `flutter/lib/data/` is a ready-to-wire vertical
+                // slice; `DataLayer.attach` has no production caller and this method is
+                // never invoked from Dart. Keeping both halves lets the slice be switched
+                // on without a host change, but release AOT tree-shakes the Dart side.
                 "data.path" -> {
                     val file = activity.getDatabasePath(Key.DB_PROFILE)
                     // Reading `version` forces Room to open (and migrate) the file, which is
@@ -1139,8 +1152,8 @@ class ThroneBoxBridge(
         if (!visible) return
         memoryJob = scope.launch {
             while (isActive) {
-                // The core's HTTP call inside runs off the main thread, or it throws there and the
-                // runCatching in memoryWire keeps the core figure at zero forever.
+                // memoryWire() only calls Debug.getMemoryInfo and Runtime (no HTTP
+                // any more), but a 2 s sample still belongs off the main looper.
                 emit("memory", withContext(Dispatchers.IO) { memoryWire() })
                 delay(2000)
             }

@@ -12,8 +12,14 @@
 // without adding a second plugin to babysit.
 //
 // Everything here is synchronous, because sqlite3 is: a call blocks whichever
-// isolate made it. The DAO layer runs on the DB isolate (see db.dart) so the UI
-// isolate never pays for a query.
+// isolate made it. Nothing currently moves the DAO off the isolate that calls
+// it — see the NOT WIRED note in db.dart. When the slice is wired, queries
+// belong on a long-lived DB isolate so the UI isolate never pays for one.
+//
+// STATUS: NOT WIRED. `DataLayer.attach` has no production caller and the host's
+// `data.path` method is never invoked from Dart. This is a ready-to-wire vertical
+// slice, kept so switching it on needs no host change; release AOT tree-shakes
+// the whole `lib/data/` tree today.
 
 import 'dart:ffi';
 import 'dart:typed_data';
@@ -245,6 +251,15 @@ class SqliteDatabase {
   }
 
   void _bind(Pointer<Void> stmt, List<Object?> params) {
+    final expected = _lib._bindParameterCount(stmt);
+    if (params.length != expected) {
+      // sqlite leaves an unbound slot as NULL, so a missing parameter does not
+      // fail: the query just finds nothing. Say which count was wrong instead.
+      throw ArgumentError.value(
+        params.length, 'params.length',
+        'statement binds $expected parameters',
+      );
+    }
     for (var i = 0; i < params.length; i++) {
       final index = i + 1;
       final value = params[i];
@@ -344,6 +359,8 @@ class Sqlite {
         _lib.lookupFunction<_BindBlobC, _BindBlobD>('sqlite3_bind_blob');
     _bindNull =
         _lib.lookupFunction<_BindNullC, _BindNullD>('sqlite3_bind_null');
+    _bindParameterCount = _lib.lookupFunction<_CountC, _CountD>(
+        'sqlite3_bind_parameter_count');
     _columnCount =
         _lib.lookupFunction<_CountC, _CountD>('sqlite3_column_count');
     _columnName = _lib.lookupFunction<_NameC, _NameD>('sqlite3_column_name');
@@ -377,6 +394,7 @@ class Sqlite {
   late final _BindTextD _bindText;
   late final _BindBlobD _bindBlob;
   late final _BindNullD _bindNull;
+  late final _CountD _bindParameterCount;
   late final _CountD _columnCount;
   late final _NameD _columnName;
   late final _TypeD _columnType;
@@ -391,17 +409,21 @@ class Sqlite {
   late final _BusyD _busyTimeout;
 
   static Sqlite? _instance;
+  static bool _openFailed = false;
 
   /// The library, or null when this platform cannot open it. Cached per isolate:
   /// `DynamicLibrary.open` on the same soname is cheap but not free, and the DAO
-  /// asks once per call.
+  /// asks once per call. A failed open is cached too — otherwise every
+  /// `openDatabase` retries a soname that is not there.
   static Sqlite? open() {
     final cached = _instance;
     if (cached != null) return cached;
+    if (_openFailed) return null;
     try {
       return _instance = Sqlite._(DynamicLibrary.open('libsqlite3.so'));
     } on ArgumentError {
       // No such soname on this platform (desktop test runs, mostly).
+      _openFailed = true;
       return null;
     }
   }
@@ -421,8 +443,10 @@ class Sqlite {
         if (out.value.address != 0) _close(out.value);
         return null;
       }
-      // A writer that finds Room mid-transaction should wait rather than fail:
-      // WAL allows one writer, and the other one is a user gesture, not a loop.
+      // Any connection that finds Room mid-transaction should wait rather than
+      // fail — readers included: WAL lets a reader run alongside a writer, but a
+      // checkpoint or a schema change still takes the lock briefly. 2 s is well
+      // past a user-gesture write and short enough not to stall a screen.
       _busyTimeout(out.value, 2000);
       return SqliteDatabase._(this, out.value, path);
     } finally {

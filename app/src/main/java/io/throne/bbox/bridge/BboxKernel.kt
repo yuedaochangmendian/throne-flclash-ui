@@ -7,6 +7,7 @@
 // actions answer both until the rebuilt AAR is proven in CI.
 package io.throne.bbox.bridge
 
+import io.nekohasekai.sagernet.bg.BaseService
 import io.nekohasekai.sagernet.bg.proto.BoxInstance
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.SagerDatabase
@@ -83,15 +84,28 @@ object BboxKernel {
      * restarted in place — with [ffiMode] now true, that start keeps the notification and leaves the
      * core to Dart.
      *
-     * @return true when a service-side box was actually stopped, so the caller knows the tunnel is
-     *   down and has to be rebuilt.
+     * @return true only when a service-side box was actually stopped, so the caller knows the
+     *   tunnel is down and has to be rebuilt. A stop that was declined (the service is already
+     *   `State.Stopping`) is NOT a hand-over: reporting true there would make Dart start a new
+     *   core while the previous close still owns the tun.
      */
     fun handOver(): Boolean {
         val service = DataStore.baseService ?: return false
-        if (!DataStore.serviceState.canStop) return false
-        val hadCore = service.data.proxy != null
-        service.stopRunner(restart = true)
-        return hadCore
+        // `changeState` keeps these two in sync, but stopRunner guards on `data.state`
+        // directly. Check both so an in-flight stop can never be mistaken for ours.
+        if (service.data.state == BaseService.State.Stopping ||
+            !DataStore.serviceState.canStop
+        ) return false
+        if (service.data.proxy == null) return false
+        return try {
+            service.stopRunner(restart = true)
+            // stopRunner sets State.Stopping synchronously before it returns. If it
+            // declined our call, the state is still something else.
+            service.data.state == BaseService.State.Stopping
+        } catch (error: Throwable) {
+            // A failed stop is not a hand-over; Dart must not rebuild onto it.
+            false
+        }
     }
 
     /** The mode switch's persist half; Dart reloads the core itself (FFI). */

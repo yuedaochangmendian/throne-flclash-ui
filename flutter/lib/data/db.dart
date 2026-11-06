@@ -12,6 +12,12 @@
 // `/data/data/<pkg>/databases` without a package name it does not have. That is
 // a one-shot platform fact, not a data-plane call: after this file opens, the
 // channel is not in the query path at all.
+//
+// STATUS: NOT WIRED. Neither `DataLayer.attach` nor the host's `data.path` has a
+// production caller yet; the profile list still comes over the channel. The
+// slice is complete and tested on its own, but release AOT tree-shakes it. Keep
+// `roomSchemaVersion` and `databaseFileName` honest anyway — the CI schema gate
+// checks them, and the day it is wired they must already agree with Room.
 
 import 'sqlite.dart';
 
@@ -40,10 +46,9 @@ class SchemaMismatch implements Exception {
 /// A connection to the app database.
 ///
 /// Queries are synchronous (sqlite3 is), so a call blocks the isolate that made
-/// it. The vertical slice keeps them on the UI isolate because every statement
-/// here is a single-table read under a few hundred rows; the moment a query
-/// grows past that, it belongs on a long-lived DB isolate — the same shape as
-/// `KernelWorker`, and for the same reason.
+/// it. There is no caller today, hence no isolate to move them to; when the slice
+/// is wired they belong on a long-lived DB isolate — the same shape as
+/// `KernelWorker`, and for the same reason — rather than the UI isolate.
 class DataDatabase implements Queryable {
   DataDatabase._(this._db);
 

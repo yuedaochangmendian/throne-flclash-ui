@@ -391,6 +391,9 @@ class BoxController extends ChangeNotifier {
       // control back to the channel, so the UI stays usable and shows why the
       // accelerated path is unavailable instead of hanging on the loading view.
       startupError = describe(error);
+      // If the rollback itself did not finish, the service would sit Connected
+      // under ffiMode with no core and nothing left to rebuild it.
+      if (kernel.handoverPending) unawaited(kernel.abandonHandover());
       notifyListeners();
     }
     try {
@@ -418,6 +421,12 @@ class BoxController extends ChangeNotifier {
       for (final data in _dataOwners.keys) { _syncData(data); }
     } catch (error) {
       startupError = describe(error);
+      // `ready` never completed, so config.build cannot be trusted and the
+      // hand-over must not be left pending: give the core back to the bridge,
+      // which rebuilds its own box on service.reload.
+      if (!ready && kernel.handoverPending) {
+        unawaited(kernel.abandonHandover());
+      }
     }
     // The service may have started its own box before Dart attached (START_STICKY,
     // always-on VPN); the bridge stopped it to avoid two boxes on one tun. Rebuild it
