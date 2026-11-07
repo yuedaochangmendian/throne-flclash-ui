@@ -90,6 +90,11 @@ class FakeWorker implements KernelWorker {
     calls.add('dispose');
     await _events.close();
   }
+
+  /// Reports the core lost, the way a stalled heartbeat would.
+  void lose() {
+    _events.add(<String, dynamic>{'type': 'lost'});
+  }
 }
 
 /// A worker whose [start] hangs until the test releases it, so a second
@@ -303,6 +308,105 @@ void main() {
         worker.calls.where((call) => call == 'createInstance'),
         hasLength(1),
         reason: 'overwriting the handle would leak the live instance',
+      );
+      expect(service.active, isTrue);
+    });
+
+    test('a lost core is rebuilt without the user asking', () async {
+      final log = ChannelLog('test.handshake.lost-rebuild');
+      log.install(defaultReply);
+      addTearDown(log.tearDown);
+
+      final kernel = FakeKernel();
+      final worker = FakeWorker();
+      final service = KernelService(log.box);
+      service.debugAttach(kernel, worker);
+      addTearDown(() {
+        service.dispose();
+        kernel.close();
+      });
+
+      await service.startService();
+      worker.lose();
+      // The recovery runs on attempt 0 without a backoff; give the queue a
+      // beat to tear the dead core down and start a fresh one.
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+
+      expect(worker.calls, [
+        'createInstance', 'start', 'setHeartbeat', //
+        'setHeartbeat', 'stop', //
+        'createInstance', 'start', 'setHeartbeat',
+      ]);
+      expect(service.active, isTrue);
+    });
+
+    test('a manual start during the recovery backoff rebuilds, not swallows',
+        () async {
+      final log = ChannelLog('test.handshake.lost-manual-start');
+      log.install(defaultReply);
+      addTearDown(log.tearDown);
+      KernelService.recoveryBackoffOverride = const Duration(milliseconds: 50);
+      addTearDown(() => KernelService.recoveryBackoffOverride = Duration.zero);
+
+      final kernel = FakeKernel();
+      final worker = FakeWorker();
+      final service = KernelService(log.box);
+      service.debugAttach(kernel, worker);
+      addTearDown(() {
+        service.dispose();
+        kernel.close();
+      });
+
+      await service.startService();
+      worker.lose(); // attempt 0: rebuilt immediately
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      expect(service.active, isTrue);
+
+      // Second loss inside the same incident reaches the backoff window.
+      worker.lose();
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      // The user sees the tunnel down and taps start while the recovery
+      // sleeps. The stale handle must not read as "already running".
+      await service.startService();
+
+      // The recovery wakes, sees the user's start (a newer epoch), dissolves.
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      expect(
+        worker.calls.where((call) => call == 'createInstance'),
+        hasLength(3),
+        reason: 'the manual start must build its own instance',
+      );
+      expect(service.active, isTrue);
+    });
+
+    test('a second start while the first is unwinding does not orphan',
+        () async {
+      final log = ChannelLog('test.handshake.queued-double-start');
+      log.install(defaultReply);
+      addTearDown(log.tearDown);
+
+      final kernel = FakeKernel();
+      final worker = GatedWorker();
+      final service = KernelService(log.box);
+      service.debugAttach(kernel, worker);
+      addTearDown(() {
+        service.dispose();
+        kernel.close();
+      });
+
+      // The first start hangs in worker.start(); the second is queued behind
+      // it, so by the time it runs the guard is the only thing that can stop
+      // a second createInstance from overwriting the live handle.
+      final first = service.startService();
+      final second = service.startService();
+      worker.startGate.complete();
+      await first;
+      await second;
+
+      expect(
+        worker.calls.where((call) => call == 'createInstance'),
+        hasLength(1),
+        reason: 'the queued start must be a no-op, not an orphaning overwrite',
       );
       expect(service.active, isTrue);
     });

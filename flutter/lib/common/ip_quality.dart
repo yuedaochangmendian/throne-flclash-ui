@@ -144,7 +144,9 @@ String _urlOf(IpQualitySource source, String ip) {
     // ip-api.com's free endpoint is HTTP-only: HTTPS answers 403 with "SSL
     // unavailable for this endpoint" (verified live, not a maybe). Cleartext is
     // the same trade the egress lookup's ip-api provider already makes — the
-    // reply carries no secret, only the IP's own quality facts.
+    // reply carries no secret (what leaks is that this device asked about its
+    // own egress IP); what cleartext gives up is integrity, and a forged answer
+    // only mislabels the quality card, which nothing downstream acts on.
     IpQualitySource.ipApiCom =>
       'http://ip-api.com/json/$ip?fields=status,isp,org,as,mobile,proxy,hosting',
     IpQualitySource.ipQuery => 'https://api.ipquery.io/$ip?format=json',

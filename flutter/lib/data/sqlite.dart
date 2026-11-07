@@ -226,7 +226,10 @@ class SqliteDatabase {
   }
 
   /// The rowid of the last successful INSERT.
-  int get lastInsertRowId => _lib._lastRowId(_db);
+  int get lastInsertRowId {
+    if (_closed) throw StateError('connection closed: $path');
+    return _lib._lastRowId(_db);
+  }
 
   /// Closes the connection. Idempotent: a second call is a no-op, so a shutdown
   /// path and a scope guard can both run.
@@ -239,6 +242,11 @@ class SqliteDatabase {
   // --- internals ------------------------------------------------------------
 
   Pointer<Void> _prepare(String sql) {
+    // A closed handle is freed memory: after close() (from an eviction, a
+    // dispose or an invalidate that raced a read) the only honest answer is a
+    // Dart exception the callers already route to the channel fallback, not a
+    // sqlite3 call into a dangling pointer.
+    if (_closed) throw StateError('connection closed: $path');
     final native = sql.toNativeUtf8();
     final out = calloc<Pointer<Void>>();
     try {

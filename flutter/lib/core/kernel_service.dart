@@ -10,6 +10,8 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../box.dart';
 import 'kernel_worker.dart';
 import 'platform_value.dart';
@@ -48,6 +50,19 @@ class KernelService {
   bool _stopping = false;
   bool _recovering = false;
 
+  /// Set when the worker reports the core lost, until a start holds or a stop
+  /// acknowledges it. A lost core leaves `_instanceHandle` pointing at the dead
+  /// instance on purpose — the recovery path reads it — so `active` alone says
+  /// "running" when the truth is "dead": the start guard consults this flag to
+  /// let a user's manual start through during the recovery backoff instead of
+  /// silently swallowing it (and dissolving the recovery with a no-op epoch).
+  bool _instanceLost = false;
+
+  /// Bumped by every effective core lifecycle transition (a start that builds
+  /// an instance, a stop that closes one). Guarded no-ops do not count, so a
+  /// swallowed command cannot make a delayed recovery think the user moved.
+  int _epoch = 0;
+
   /// Lifecycle commands (start/stop/reload) run one at a time through this
   /// chain: a reload or stop that arrives while a start is still unwinding
   /// waits for it instead of tearing down the instance that start is about to
@@ -56,11 +71,6 @@ class KernelService {
   /// not pull the tunnel back up.
   Future<void>? _lifecycle;
 
-  /// Bumped by every lifecycle op that actually runs. A delayed recovery
-  /// compares the epoch it saw when the core was lost against the current one,
-  /// so a stop-and-restart by the user while the backoff runs cancels the
-  /// recovery instead of reloading a tunnel the user just brought up.
-  int _epoch = 0;
   bool _disposed = false;
   bool _initializing = false;
   bool _statsInFlight = false;
@@ -244,7 +254,6 @@ class KernelService {
         }
       }
       if (_disposed || _kernel == null) return;
-      _epoch++;
       await op();
     }
     final future = run();
@@ -275,12 +284,18 @@ class KernelService {
     note('stop: user asked to stop');
     await _enqueue(() async {
       await _stopCore();
+      // The core is down either way and the dashboard must say so; the channel
+      // failure still propagates so callers see the service stop failed (the
+      // pre-serialization behavior their bool checks rely on).
+      Object? serviceFailure;
       try {
         await box.call('service.stop');
       } catch (error) {
         note('stop: $error');
+        serviceFailure = error;
       }
       _emitDashboard('Stopped');
+      if (serviceFailure != null) throw serviceFailure;
     });
   }
 
@@ -360,12 +375,16 @@ class KernelService {
     if (worker == null) return;
     // A start requested while a core already runs (double tap, a queued second
     // start) must not overwrite `_instanceHandle` and orphan the live instance
-    // inside the worker — the old one would never be closed.
-    if (active) {
+    // inside the worker — the old one would never be closed. A lost core
+    // leaves the handle pointing at a dead instance, so `active` alone would
+    // swallow a user's manual start during the recovery backoff; the lost
+    // flag tells the two apart.
+    if (active && !_instanceLost) {
       note('start: the core is already running');
       return;
     }
     _starting = true;
+    _epoch++;
     _emitDashboard('Starting');
     final beganAt = DateTime.now();
     final clock = Stopwatch()..start();
@@ -411,6 +430,9 @@ class KernelService {
       _instanceHandle = handle;
       final instanceMs = clock.elapsedMilliseconds;
       await worker.start();
+      // The start held: whatever the worker reported lost before is replaced
+      // by a core that is answering again.
+      _instanceLost = false;
       await worker.setHeartbeat(true);
       final startMs = clock.elapsedMilliseconds;
       _startedAt = DateTime.now();
@@ -466,6 +488,11 @@ class KernelService {
     final handle = _instanceHandle;
     _instanceHandle = null;
     _startedAt = null;
+    // A stop acknowledges a loss even when the lost instance never gets to be
+    // closed: the world is going down either way, so a pending recovery is
+    // moot and an epoch bump here (a real transition) is what the delayed
+    // recovery's staleness check reads.
+    _instanceLost = false;
     // Cleared before the box closes, so nothing reads "still running" while it shuts down. A
     // reload keeps the facts: the next start writes them again a moment later, and the gap is
     // not a stop the user asked for. The Wi-Fi monitor follows the same rule — it is useless
@@ -480,6 +507,7 @@ class KernelService {
     }
     final worker = _worker;
     if (handle == null || worker == null) return;
+    _epoch++;
     _stopping = true;
     _emitDashboard('Stopping');
     try {
@@ -585,6 +613,7 @@ class KernelService {
     report(StateError(reason is String && reason.isNotEmpty
         ? 'the kernel stopped responding: $reason'
         : 'the kernel stopped responding'));
+    _instanceLost = true;
     _emitDashboard('Stopped');
     _recoverOnce();
   }
@@ -614,8 +643,7 @@ class KernelService {
     try {
       if (attempt > 0) {
         _emitDashboard('Starting');
-        await Future<void>.delayed(
-            attempt == 1 ? const Duration(seconds: 10) : const Duration(seconds: 30));
+        await Future<void>.delayed(recoveryBackoff(attempt));
         if (!active) return; // the user stopped it while waiting
         if (_epoch != epochAtLoss) return; // ...or stopped and restarted it
       }
@@ -627,6 +655,17 @@ class KernelService {
       _recovering = false;
     }
   }
+
+  /// The 10s first backoff and 30s second one. [recoveryBackoffOverride] lets
+  /// widget tests exercise the backoff window without real seconds.
+  static Duration recoveryBackoff(int attempt) =>
+      recoveryBackoffOverride != Duration.zero
+          ? recoveryBackoffOverride
+          : (attempt == 1 ? const Duration(seconds: 10) : const Duration(seconds: 30));
+
+  /// Test-only: when non-zero, replaces the recovery backoff entirely.
+  @visibleForTesting
+  static Duration recoveryBackoffOverride = Duration.zero;
 
   void _emitStatus(Map<String, int> snapshot) {
     if (_disposed) return;
@@ -712,7 +751,12 @@ class KernelService {
     unawaited(_statusSub?.cancel());
     final worker = _worker;
     _worker = null;
-    if (worker != null) unawaited(worker.dispose());
+    if (worker != null) {
+      // dispose() races the ops still unwinding in the queue: a worker command
+      // sent after the isolate shut down waits out its timeout and fails. That
+      // failure is expected here — catch it so `unawaited` never surfaces it.
+      unawaited(worker.dispose().catchError((Object _) {}));
+    }
     _events.close();
     _kernel?.dispose();
     _kernel = null;

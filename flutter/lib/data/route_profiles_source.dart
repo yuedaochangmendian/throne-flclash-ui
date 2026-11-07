@@ -12,10 +12,11 @@
 // change while the host process is alive. A transient one is retried a bounded
 // number of times, one attempt per read, and `retryFailed()` (called by the
 // controller on app resume) restarts that budget. A reader that fails mid-read
-// is closed and demoted the same way: SQL is fixed text, so the failure cannot
-// heal inside this run. `invalidate()` drops a healthy connection so the next
-// read re-attaches — kept for the day a flow replaces the database file under
-// a live app; no production flow calls it today.
+// is closed and demoted the same way: the error carries no result code, so any
+// read failure is treated as permanent for this run and the channel takes
+// over. `invalidate()` drops a healthy connection so the next read re-attaches
+// — kept for the day a flow replaces the database file under a live app; no
+// production flow calls it today.
 //
 // This file does not depend on `box.dart`. It takes two callbacks so the data
 // plane keeps pointing one way (channel -> data) and can be tested without a
@@ -122,10 +123,12 @@ class RouteProfilesSource {
           return wire;
         }
       } catch (_) {
-        // A SQL error, a moved column, a bad row: the connection is not
-        // trusted again. SQL is fixed text, so this failure cannot heal inside
-        // this process — close the reader, fall through to the channel, and
-        // stop re-attaching (the same class the header calls permanent).
+        // Any read failure demotes the reader for the rest of this run: close
+        // it, fall through to the channel, and stop re-attaching. The layer
+        // below reports no result codes, so a transient-looking SQLITE_BUSY
+        // cannot be told apart from a moved column — and the channel answers
+        // the same query identically, so the worst case is losing the FFI
+        // shortcut until restart, never a wrong or missing screen.
         reader.close();
         _reader = null;
         _permanent = true;

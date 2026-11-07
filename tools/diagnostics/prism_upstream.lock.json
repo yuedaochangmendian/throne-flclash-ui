@@ -2,7 +2,7 @@
   "repo": "https://github.com/chen08209/prism_ui.git",
   "vendored_from": {
     "ref": "main",
-    "commit": "5d8ed7ab6",
+    "commit": "5d8ed7ab674ed2011adf94a7e41aff6d705e9cb6",
     "subject": "fix(press): fade a press the tap drops after winning",
     "date": "2026-11-06",
     "version": "0.1.2"
@@ -10,7 +10,7 @@
   "note": "Pinned baseline for Prism UI drift detection: the upstream commit the vendored copy under flutter/lib/ui was taken from. Regenerate with `prism_drift.py snapshot --upstream <checkout>` only after a real sync, and update reviewed_upstream by hand when the `upstream` mode is re-run.",
   "manifest": "prism_upstream.manifest.json",
   "reviewed_upstream": {
-    "commit": "5d8ed7ab6",
+    "commit": "5d8ed7ab674ed2011adf94a7e41aff6d705e9cb6",
     "subject": "fix(press): fade a press the tap drops after winning",
     "date": "2026-11-06",
     "reviewed": "2026-11-07",

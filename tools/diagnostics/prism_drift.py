@@ -280,6 +280,11 @@ def main(argv=None) -> int:
                     help="exit non-zero if diverged+added+removed exceeds this (default: never)")
     args = ap.parse_args(argv)
 
+    if args.expect_diverged and args.fail_on in ("diverged", "any"):
+        ap.error("--expect-diverged already fails when the diverged set is not "
+                 "exactly the expected one; --fail-on diverged/any would make the "
+                 "check fail even when it matches")
+
     if args.mode == "snapshot":
         if not args.upstream or not args.upstream.is_dir():
             ap.error("--upstream <dir> is required for snapshot and must exist")

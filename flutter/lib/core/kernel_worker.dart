@@ -48,14 +48,24 @@ class KernelWorker {
   final SendPort _commands;
   final Stream<WorkerEvent> _events;
   final ReceivePort _eventsPort;
+  bool _disposed = false;
 
   Stream<WorkerEvent> get events => _events;
 
   static Future<KernelWorker> spawn() async {
     final events = ReceivePort();
     final ready = ReceivePort();
-    final isolate = await Isolate.spawn(
-        _workerMain, <Object>[events.sendPort, ready.sendPort]);
+    final Isolate isolate;
+    try {
+      isolate = await Isolate.spawn(
+          _workerMain, <Object>[events.sendPort, ready.sendPort]);
+    } catch (_) {
+      // The spawn itself failed before any cleanup path existed; without
+      // closing these the two native ports would leak.
+      events.close();
+      ready.close();
+      rethrow;
+    }
     late final SendPort commands;
     try {
       commands = await ready.first.timeout(
@@ -171,6 +181,8 @@ class KernelWorker {
   }
 
   Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
     try {
       await _call(KernelCommand.dispose);
     } finally {
