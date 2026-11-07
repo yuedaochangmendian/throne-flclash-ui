@@ -381,7 +381,6 @@ class TunPage extends StatelessWidget {
 
 // ------------------------------------------------------------------------------------------------- dns
 
-const dnsStrategies = ['', 'ipv4_only', 'ipv6_only', 'prefer_ipv4', 'prefer_ipv6'];
 const dnsFinalOuts = ['remote', 'direct'];
 
 class DnsPage extends StatelessWidget {

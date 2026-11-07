@@ -67,7 +67,11 @@ export 'package:material_ui/material_ui.dart'
 export 'box.dart';
 export 'l10n.dart';
 export 'pages/throne.dart';
-export 'pages/routes.dart';
+export 'pages/route_texts.dart';
+export 'pages/route_profiles.dart';
+export 'pages/route_editor.dart';
+export 'pages/rule_order.dart';
+export 'pages/rule_editor.dart';
 export 'pages/auto_selector.dart';
 export 'pages/node_tuning.dart';
 export 'ui/ui.dart';
