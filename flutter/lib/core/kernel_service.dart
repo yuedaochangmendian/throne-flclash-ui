@@ -100,13 +100,39 @@ class KernelService {
   /// hand-over without a native library or a spawned worker isolate. The tests
   /// pass signature-level fakes; only channel calls and the worker's lifecycle
   /// methods are exercised.
-  void debugAttach(ThroneKernel kernel, KernelWorker worker) {
+  void debugAttach(ThroneKernel kernel, KernelWorker worker) => _attach(kernel, worker);
+
+  /// Wires the worker's event stream and the kernel's status feed to this
+  /// driver. Both entry points — [initialize] and the tests' [debugAttach] —
+  /// subscribe the same way, so they cannot drift apart.
+  void _attach(ThroneKernel kernel, KernelWorker worker) {
     _kernel = kernel;
     _worker = worker;
     _workerSub = worker.events.listen(_onWorkerEvent, onError: report);
+    // The Go side pushes a "status" event for every aggregate snapshot; the
+    // worker heartbeat triggers it and uses the return value to detect loss.
     _statusSub = kernel.events
         .where((event) => event['method'] == 'status')
         .listen(_onKernelStatus, onError: report);
+  }
+
+  /// Drops both subscriptions and the worker after a failed start-up. A worker
+  /// that never came up is disposed on a best-effort basis: there is nothing
+  /// left to tear down when the isolate did not start.
+  Future<void> _detach() async {
+    await _workerSub?.cancel();
+    await _statusSub?.cancel();
+    _workerSub = null;
+    _statusSub = null;
+    final worker = _worker;
+    _worker = null;
+    _kernel = null;
+    if (worker == null) return;
+    try {
+      await worker.dispose();
+    } catch (_) {
+      // The worker never came up; nothing to tear down.
+    }
   }
 
   Future<void> initialize() async {
@@ -129,31 +155,13 @@ class KernelService {
         await _rollbackToBridge();
         return;
       }
+      // Set before the spawn: `adoptService` reads it to decide whether a
+      // pending hand-over still has a driver to rebuild the core for.
       _kernel = kernel;
       try {
-        final worker = await KernelWorker.spawn();
-        _worker = worker;
-        _workerSub = worker.events.listen(_onWorkerEvent, onError: report);
-        // The Go side pushes a "status" event for every aggregate snapshot; the
-        // worker heartbeat triggers it and uses the return value to detect loss.
-        _statusSub = kernel.events
-            .where((event) => event['method'] == 'status')
-            .listen(_onKernelStatus, onError: report);
+        _attach(kernel, await KernelWorker.spawn());
       } catch (_) {
-        await _workerSub?.cancel();
-        await _statusSub?.cancel();
-        _workerSub = null;
-        _statusSub = null;
-        final worker = _worker;
-        _worker = null;
-        _kernel = null;
-        if (worker != null) {
-          try {
-            await worker.dispose();
-          } catch (_) {
-            // The worker never came up; nothing to tear down.
-          }
-        }
+        await _detach();
         // Hand control back to the channel path so the app is still usable.
         await _rollbackToBridge();
         rethrow;
