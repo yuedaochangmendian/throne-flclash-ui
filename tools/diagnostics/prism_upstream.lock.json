@@ -2,25 +2,20 @@
   "repo": "https://github.com/chen08209/prism_ui.git",
   "vendored_from": {
     "ref": "main",
-    "commit": "946af6da37bd5ff34046f14477a7a550ad04807e",
-    "subject": "fix(menu): let the selection owner keep or close the edit menu and shrink its press highlight",
-    "date": "2026-11-01",
+    "commit": "5d8ed7ab6",
+    "subject": "fix(press): fade a press the tap drops after winning",
+    "date": "2026-11-06",
     "version": "0.1.2"
   },
   "note": "Pinned baseline for Prism UI drift detection: the upstream commit the vendored copy under flutter/lib/ui was taken from. Regenerate with `prism_drift.py snapshot --upstream <checkout>` only after a real sync, and update reviewed_upstream by hand when the `upstream` mode is re-run.",
   "manifest": "prism_upstream.manifest.json",
   "reviewed_upstream": {
-    "commit": "63450c0ac0e8e1b2c0f3ed4ad7926dc94e083185",
-    "subject": "fix(sheet): round a floating foot like the top where the display reports no corners",
-    "date": "2026-11-03",
-    "reviewed": "2026-11-05",
-    "commits_ahead": 2,
-    "files_changed": [
-      "collapsible_section.dart",
-      "keyed_animated_list.dart",
-      "route_motion_hold.dart",
-      "sheet.dart"
-    ],
-    "decision": "Not taken in 3.2.26-pre.4: the four files are upstream fixes from e93fec1 and 63450c0, unrelated to the drift tooling this preview ships. Queued for a dedicated sync."
+    "commit": "5d8ed7ab6",
+    "subject": "fix(press): fade a press the tap drops after winning",
+    "date": "2026-11-06",
+    "reviewed": "2026-11-07",
+    "commits_ahead": 0,
+    "files_changed": [],
+    "decision": "Synced on 2026-11-07: e93fec1, 63450c0 and 5d8ed7ab are in the vendored copy (five files plus the two upstream test files and their helpers); the baseline was re-snapshotted at 5d8ed7ab. banner.dart stays our only local patch."
   }
 }
