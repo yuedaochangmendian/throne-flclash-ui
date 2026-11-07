@@ -3,6 +3,7 @@ import 'package:flutter/widgets.dart';
 import 'ui/l10n.dart';
 
 const _zh = <String, String>{
+  "Unset": "未设置",
   "Capture HTTPS with eBPF": "使用 eBPF 抓取 HTTPS",
   "HTTPS excluded domains": "HTTPS 排除域名",
   "Add captured HTTPS domains": "从记录添加 HTTPS 域名",

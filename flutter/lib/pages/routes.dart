@@ -2,6 +2,97 @@ import 'package:material_ui/material_ui.dart' as material;
 import '../widgets.dart';
 import '../components/form.dart';
 
+/// A `(stored value, display label)` pair for a rule field that Throne for
+/// Android exposes as a fixed `SimpleMenuPreference` instead of free text.
+typedef RuleEnumOption = ({String value, String label});
+
+/// The legal stored values, verbatim from Throne for Android's
+/// `res/values/arrays.xml` (`route_rule_*_values` / `domain_strategy_values`).
+/// The first entry is the empty string: the rule does not narrow the match on
+/// that field. `action` keeps this build's `bypass` and adds the `hijack-dns`
+/// value the upstream XML carries (additive only, so existing rules survive).
+const Map<String, List<RuleEnumOption>> ruleEnumValues = {
+  'ip_version': [
+    (value: '', label: 'Any'),
+    (value: '4', label: 'IPv4'),
+    (value: '6', label: 'IPv6'),
+  ],
+  'network': [
+    (value: '', label: 'Any'),
+    (value: 'tcp', label: 'tcp'),
+    (value: 'udp', label: 'udp'),
+    (value: 'icmp', label: 'icmp'),
+  ],
+  'protocol': [
+    (value: '', label: 'Any'),
+    (value: 'http', label: 'http'),
+    (value: 'tls', label: 'tls'),
+    (value: 'quic', label: 'quic'),
+    (value: 'stun', label: 'stun'),
+    (value: 'dns', label: 'dns'),
+    (value: 'bittorrent', label: 'bittorrent'),
+    (value: 'dtls', label: 'dtls'),
+    (value: 'ssh', label: 'ssh'),
+    (value: 'rdp', label: 'rdp'),
+    (value: 'ntp', label: 'ntp'),
+  ],
+  'reject_method': [
+    (value: '', label: 'Unset'),
+    (value: 'default', label: 'default'),
+    (value: 'drop', label: 'drop'),
+    (value: 'reply', label: 'reply'),
+  ],
+  'strategy': [
+    (value: '', label: 'Default'),
+    (value: 'ipv4_only', label: 'ipv4_only'),
+    (value: 'ipv6_only', label: 'ipv6_only'),
+    (value: 'prefer_ipv4', label: 'prefer_ipv4'),
+    (value: 'prefer_ipv6', label: 'prefer_ipv6'),
+  ],
+  'action': [
+    (value: 'route', label: 'route'),
+    (value: 'reject', label: 'reject'),
+    (value: 'hijack-dns', label: 'hijack-dns'),
+    (value: 'sniff', label: 'sniff'),
+    (value: 'resolve', label: 'resolve'),
+    (value: 'route-options', label: 'route-options'),
+    (value: 'bypass', label: 'bypass'),
+  ],
+};
+
+/// Throne's `RouteRuleActivity.ensureValue`: a stored value outside the preset
+/// list is appended as a selectable option, so opening and saving a rule from
+/// an older build never drops or silently rewrites that value.
+List<RuleEnumOption> ruleEnumOptions(String key, String current) {
+  final presets = ruleEnumValues[key] ?? const <RuleEnumOption>[];
+  if (current.isEmpty || presets.any((option) => option.value == current)) {
+    return presets;
+  }
+  return <RuleEnumOption>[...presets, (value: current, label: current)];
+}
+
+/// The label for [current]; an empty value resolves to the field's "unset"
+/// entry (Any / Unset / Default, depending on the field).
+String ruleEnumLabel(String key, String current) {
+  for (final option in ruleEnumOptions(key, current)) {
+    if (option.value == current) return option.label;
+  }
+  return current.isEmpty ? 'Any' : current;
+}
+
+/// Apply a menu selection. The empty option removes the field entirely instead
+/// of storing an empty-string key: Throne's SimpleMenuPreference writes an
+/// unset value, and the rule serializer treats a missing key the same way.
+Json ruleEnumApply(Json rule, String key, String value) {
+  final next = <String, dynamic>{...rule};
+  if (value.isEmpty) {
+    next.remove(key);
+  } else {
+    next[key] = value;
+  }
+  return next;
+}
+
 /// Route profiles: the named rule sets a configuration is built with, one of them the global choice.
 ///
 /// The list shows every profile and which one is current; the editor holds the name, the default
@@ -831,9 +922,9 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
           _networkTypeRow(),
           _csvRow('Wi-Fi SSID', 'wifi_ssid'),
           _csvRow('Wi-Fi BSSID', 'wifi_bssid'),
-          _textRow('IP version', 'ip_version', hint: 'ipv4 / ipv6'),
-          _textRow('Network', 'network', hint: 'tcp / udp'),
-          _textRow('Protocol', 'protocol'),
+          _enumRow('IP version', 'ip_version'),
+          _enumRow('Network', 'network'),
+          _enumRow('Protocol', 'protocol'),
           ListItem.toggle(
             title: Text(context.tr('Network is expensive')),
             value: _rule['network_is_expensive'] == true,
@@ -853,8 +944,8 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
               final picked = await showDialog<String>(context: context, builder: (context) => SimpleDialog(
                 title: Text(context.tr('Action')),
                 children: [
-                  for (final value in const ['route', 'reject', 'sniff', 'resolve', 'route-options', 'bypass'])
-                    SimpleDialogOption(onPressed: () => Navigator.pop(context, value), child: Text(value)),
+                  for (final option in ruleEnumOptions('action', _rule['action']?.toString() ?? 'route'))
+                    SimpleDialogOption(onPressed: () => Navigator.pop(context, option.value), child: Text(option.value)),
                 ],
               ));
               if (picked != null) _set('action', picked);
@@ -862,7 +953,7 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
           ),
           // reject_method is a scalar string on RouteRule (STRING_FIELDS), not a list like the
           // match conditions above: a csv row here saved it as "[drop]" through ruleFromMap's str().
-          _textRow('Reject method', 'reject_method', hint: 'default / drop / reply'),
+          _enumRow('Reject method', 'reject_method'),
           ListItem.toggle(
             title: Text(context.tr('No drop')),
             value: _rule['no_drop'] == true,
@@ -889,7 +980,7 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
             value: _rule['sniff_override_dest'] == true,
             onChanged: (value) => _set('sniff_override_dest', value),
           ),
-          _textRow('Strategy', 'strategy', hint: 'prefer_ipv4 / prefer_ipv6 / …'),
+          _enumRow('Strategy', 'strategy'),
         ]),
       ],
     );
@@ -953,6 +1044,35 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
       onChanged: (value) => _set(key, value),
     ),
   );
+
+  /// A scalar field with a fixed set of legal values, shown as a menu the way
+  /// Throne for Android's `SimpleMenuPreference` does. The first (empty) option
+  /// clears the field. An unknown stored value is appended by [ruleEnumOptions]
+  /// so an old rule opened and saved unchanged keeps its value (ensureValue).
+  Widget _enumRow(String title, String key) {
+    final current = _rule[key]?.toString() ?? '';
+    final options = ruleEnumOptions(key, current);
+    return ListItem(
+      title: Text(context.tr(title)),
+      trailing: Text(context.tr(ruleEnumLabel(key, current))),
+      onTap: () async {
+        final picked = await showDialog<String>(
+          context: context,
+          builder: (context) => SimpleDialog(
+            title: Text(context.tr(title)),
+            children: [
+              for (final option in options)
+                SimpleDialogOption(
+                  onPressed: () => Navigator.pop(context, option.value),
+                  child: Text(context.tr(option.label)),
+                ),
+            ],
+          ),
+        );
+        if (picked != null) setState(() => _rule = ruleEnumApply(_rule, key, picked));
+      },
+    );
+  }
 
   String _outboundName(int id) => switch (id) {
     -1 => 'Proxy',

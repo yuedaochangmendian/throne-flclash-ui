@@ -150,4 +150,83 @@ void main() {
     expect(find.text('Default'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
+
+  // The scalar rule fields are fixed menus with the legal values Throne for
+  // Android ships in arrays.xml, not free-text rows. These are pure helpers,
+  // so the value contract is asserted without pumping a widget.
+  group('rule enum options (Throne for Android parity)', () {
+    test('ip_version stores 4/6, not the old ipv4/ipv6 hints', () {
+      expect(ruleEnumValues['ip_version']!.map((o) => o.value), ['', '4', '6']);
+      expect(ruleEnumValues['ip_version']!.map((o) => o.label), ['Any', 'IPv4', 'IPv6']);
+      expect(ruleEnumValues['ip_version']!.length, 3);
+    });
+
+    test('network and protocol carry the full upstream value sets', () {
+      expect(ruleEnumValues['network']!.map((o) => o.value), ['', 'tcp', 'udp', 'icmp']);
+      expect(ruleEnumValues['protocol']!.map((o) => o.value), [
+        '', 'http', 'tls', 'quic', 'stun', 'dns', 'bittorrent', 'dtls', 'ssh',
+        'rdp', 'ntp',
+      ]);
+    });
+
+    test('reject_method and strategy keep an empty first (unset) option', () {
+      expect(ruleEnumValues['reject_method']!.first.value, '');
+      expect(ruleEnumValues['reject_method']!.map((o) => o.value).skip(1).toList(),
+          ['default', 'drop', 'reply']);
+      expect(ruleEnumValues['strategy']!.first.value, '');
+      expect(ruleEnumValues['strategy']!.map((o) => o.value).skip(1).toList(),
+          ['ipv4_only', 'ipv6_only', 'prefer_ipv4', 'prefer_ipv6']);
+    });
+
+    test('action keeps bypass and adds hijack-dns', () {
+      final values = ruleEnumValues['action']!.map((o) => o.value).toList();
+      expect(values, containsAll(<String>['route', 'reject', 'hijack-dns',
+        'sniff', 'resolve', 'route-options', 'bypass']));
+    });
+
+    test('an unknown stored value is appended, not dropped (ensureValue)', () {
+      final options = ruleEnumOptions('ip_version', 'ipv4');
+      expect(options.map((o) => o.value), ['', '4', '6', 'ipv4']);
+      expect(options.last.label, 'ipv4');
+      expect(ruleEnumLabel('ip_version', 'ipv4'), 'ipv4');
+      // A known value is never duplicated into the option list.
+      expect(ruleEnumOptions('ip_version', '4').map((o) => o.value), ['', '4', '6']);
+      // An unknown field falls back to an empty option list without throwing.
+      expect(ruleEnumOptions('unknown_field', 'x'), isEmpty);
+    });
+
+    test('empty values resolve to their unset label', () {
+      expect(ruleEnumLabel('ip_version', ''), 'Any');
+      expect(ruleEnumLabel('network', ''), 'Any');
+      expect(ruleEnumLabel('protocol', ''), 'Any');
+      expect(ruleEnumLabel('reject_method', ''), 'Unset');
+      expect(ruleEnumLabel('strategy', ''), 'Default');
+    });
+
+    test('selecting the unset option removes the key instead of storing ""', () {
+      final original = <String, dynamic>{'name': 'r', 'ip_version': '4', 'action': 'route'};
+      final cleared = ruleEnumApply(original, 'ip_version', '');
+      expect(cleared.containsKey('ip_version'), isFalse);
+      expect(cleared['name'], 'r');
+      expect(cleared['action'], 'route');
+      expect(original['ip_version'], '4', reason: 'input map is not mutated');
+      final set = ruleEnumApply(original, 'ip_version', '6');
+      expect(set['ip_version'], '6');
+      // A previously-unset field can be added again.
+      expect(ruleEnumApply(cleared, 'ip_version', '6')['ip_version'], '6');
+    });
+  });
+
+  testWidgets('a rule holding a legacy ip_version still renders', (tester) async {
+    reportFlutterErrors();
+    rules = [{...rule(name: 'Legacy'), 'ip_version': 'ipv4'}];
+    await mount(tester);
+    openPage(tester.element(find.byType(HomePage)), const RouteEditorPage(id: 1));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Legacy'));
+    await tester.pumpAndSettle();
+    expect(find.text('Edit rule'), findsWidgets);
+    expect(tester.takeException(), isNull,
+      reason: 'ensureValue must keep an out-of-preset value renderable');
+  });
 }
