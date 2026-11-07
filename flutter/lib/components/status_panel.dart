@@ -10,7 +10,6 @@ import 'shape_badge.dart';
 import 'dashboard_chip.dart';
 import '../common/ip_quality.dart';
 import '../common/ip_quality_cache.dart';
-import '../common/ip_enrichment.dart';
 import '../common/routed_ip_probe.dart';
 
 /// Mobile layout from FlClash's current_outbound.dart, with sing-box data.
@@ -406,84 +405,14 @@ class EgressDetails extends StatelessWidget {
     'Organization': info['organization'], if (info['isp'] != null) 'ISP': info['isp'], 'ASN': info['asn'],
     'Type': context.tr(info['type'] as String? ?? 'Unknown type'),
     if (info['quality'] != null) 'Quality': context.tr(info['quality'] as String),
-    'IP query source': info['ipSource'], 'Quality query source': info['source'],
+    // One row, not two: show the source that actually answered (the quality lookup
+    // when it ran, otherwise the egress probe), never both side by side.
+    'IP source': info['source'] ?? info['ipSource'],
     'Last checked': localDate(info['qualityCheckedAt'] ?? info['checkedAt'])}),
     if (info['qualityError'] != null) generateSection(title: context.tr('IP quality unavailable'), items: [
       for (final failure in rows(info['qualityFailures'])) ListItem(title: Text(failure['source'].toString()),
         trailing: Text(context.tr({'noType': 'No type data', 'timeout': 'Timeout', 'rateLimited': 'Rate limited',
           'failed': 'Unavailable', 'ipMismatch': 'IP mismatch'}[failure['status']] ?? 'Unavailable'))),
     ]),
-    // Bettbox-style enrichment is opt-in: opening this page costs zero requests.
-    _IpEnrichmentSection(info: info),
   ]);
-}
-
-/// Bettbox's IP card only fetches the fraud score when its shield is tapped.
-/// The same on-demand shape is kept here: the automatic dashboard refresh path
-/// (with its hedged six-source timing and request-count contracts) is untouched,
-/// and the user opts in to a merged multi-source detail/risk lookup explicitly.
-class _IpEnrichmentSection extends StatefulWidget {
-  const _IpEnrichmentSection({required this.info});
-  final Json info;
-  @override State<_IpEnrichmentSection> createState() => _IpEnrichmentSectionState();
-}
-
-class _IpEnrichmentSectionState extends State<_IpEnrichmentSection> {
-  IpEnrichment? _data;
-  bool _loading = false;
-  String? _error;
-  RoutedIpProbe? _probe;
-
-  @override void dispose() { _probe?.cancel(); super.dispose(); }
-
-  Future<void> _lookup() async {
-    final ip = widget.info['ip'] as String? ?? '';
-    if (ip.isEmpty || _loading) return;
-    // Resolve everything the BuildContext can give us before the first await:
-    // `use_build_context_synchronously` is a fatal-info lint in this project.
-    final box = context.box;
-    final noData = context.tr('No data');
-    final failed = context.tr('Lookup failed');
-    setState(() { _loading = true; _error = null; });
-    final probe = RoutedIpProbe(box);
-    _probe = probe;
-    try {
-      final result = await lookupIpEnrichment(probe, ip);
-      if (!mounted) return;
-      setState(() { _loading = false; _data = result; _error = result == null ? noData : null; });
-    } on Object {
-      if (!mounted) return;
-      setState(() { _loading = false; _error = failed; });
-    } finally {
-      try { await probe.close(); } on Object { /* best effort */ }
-    }
-  }
-
-  @override Widget build(BuildContext context) {
-    final ip = widget.info['ip'] as String? ?? '';
-    final data = _data;
-    return generateSection(title: context.tr('IP details & risk'), items: [
-      ListItem(
-        leading: const GlyphIcon(AppGlyphs.search),
-        title: Text(context.tr(_loading ? 'Checking…' : 'Look up IP details & risk')),
-        subtitle: Text(context.tr('Query Bettbox-style sources on demand')),
-        onTap: _loading || ip.isEmpty ? null : _lookup,
-      ),
-      if (_error != null) ListItem(title: Text(_error!)),
-      if (data != null) DetailRows(<String, dynamic>{
-        if (data.countryCode != null) 'Country code': data.countryCode,
-        if (data.country != null) 'Country': data.country,
-        if (data.region != null) 'Region': data.region,
-        if (data.city != null) 'City': data.city,
-        if (data.isp != null) 'ISP': data.isp,
-        if (data.asn != null) 'ASN': data.asn,
-        if (data.asName != null) 'AS name': data.asName,
-        if (data.asDomain != null) 'AS domain': data.asDomain,
-        if (data.continent != null) 'Continent': data.continent,
-        if (data.riskScore != null) 'Fraud score': data.riskScore,
-        if (data.riskLevel != null) 'Risk level': data.riskLevel!.label,
-        if (data.sources.isNotEmpty) 'Sources': data.sources.join(', '),
-      }),
-    ]);
-  }
 }

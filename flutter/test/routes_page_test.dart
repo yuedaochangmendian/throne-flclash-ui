@@ -221,7 +221,7 @@ void main() {
     });
   });
 
-  testWidgets('a rule holding a legacy ip_version still renders', (tester) async {
+  testWidgets('a legacy ip_version still renders', (tester) async {
     reportFlutterErrors();
     rules = [{...rule(name: 'Legacy'), 'ip_version': 'ipv4'}];
     await mount(tester);
@@ -232,5 +232,29 @@ void main() {
     expect(find.text('Edit rule'), findsWidgets);
     expect(tester.takeException(), isNull,
       reason: 'ensureValue must keep an out-of-preset value renderable');
+  });
+
+  testWidgets('a custom rule folds the long tail behind Advanced', (tester) async {
+    reportFlutterErrors();
+    rules = [{...rule(name: 'Custom one')}];
+    await mount(tester);
+    openPage(tester.element(find.byType(HomePage)), const RouteEditorPage(id: 1));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Custom one'));
+    await tester.pumpAndSettle();
+
+    // Throne's two basic categories are visible; the advanced tail is folded.
+    expect(find.text('Match'), findsWidgets);
+    expect(find.text('Domain keyword'), findsNothing);
+    expect(find.text('Port'), findsNothing);
+
+    await tester.ensureVisible(find.text('Advanced'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Advanced'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Domain keyword'), findsWidgets);
+    expect(find.text('Port'), findsWidgets);
+    expect(tester.takeException(), isNull);
   });
 }
