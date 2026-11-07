@@ -142,7 +142,9 @@ object Settings {
         listEntry(
             "notificationActions",
             Apply.None,
-            { DataStore.notificationActions.ifEmpty { ServiceNotification.DEFAULT_ACTIONS } },
+            // null (never configured) is the default set; an explicitly emptied list stays empty,
+            // matching ServiceNotification's own reading of the same key.
+            { DataStore.configurationStore.getStringList(Key.NOTIFICATION_ACTIONS) ?: ServiceNotification.DEFAULT_ACTIONS },
             { DataStore.notificationActions = it },
         ),
         boolEntry("allowBetaUpdate", get = { DataStore.allowBetaUpdate }, set = { DataStore.allowBetaUpdate = it }),

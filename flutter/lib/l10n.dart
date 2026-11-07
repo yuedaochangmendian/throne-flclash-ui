@@ -563,7 +563,6 @@ const _zh = <String, String>{
   'Next': '下一台',
   'Switch…': '切换…',
   'Reset connections': '重置连接',
-  'None': '无',
   'Check for updates automatically': '自动检查更新',
   'HTTP/3 only': '仅 HTTP/3',
   'HTTP/3 with fallback': 'HTTP/3 优先并回退',

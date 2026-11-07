@@ -181,8 +181,17 @@ class _NotificationActionsEditorState extends State<_NotificationActionsEditor> 
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-    title: Text(context.tr('Notification buttons')),
-    content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+    title: context.tr('Notification buttons'),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: Text(context.tr('Cancel'))),
+      TextButton(
+        // Keep the host's order, not the dialog's: the save is what the service reads.
+        onPressed: () => Navigator.pop(context,
+            NotificationActionsSetting.actions.map((a) => a.$1).where(_selected.contains).toList()),
+        child: Text(context.tr('Save')),
+      ),
+    ],
+    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: Text(context.tr('The first three of the enabled ones show, in a fixed order'),
@@ -190,7 +199,7 @@ class _NotificationActionsEditorState extends State<_NotificationActionsEditor> 
       ),
       for (final (id, label) in NotificationActionsSetting.actions)
         CheckboxListTile(
-          value: id in _selected,
+          value: _selected.contains(id),
           title: Text(context.tr(label)),
           controlAffinity: ListTileControlAffinity.leading,
           contentPadding: EdgeInsets.zero,
@@ -203,15 +212,6 @@ class _NotificationActionsEditorState extends State<_NotificationActionsEditor> 
           }),
         ),
     ]),
-    actions: [
-      TextButton(onPressed: () => Navigator.pop(context), child: Text(context.tr('Cancel'))),
-      TextButton(
-        // Keep the host's order, not the dialog's: the save is what the service reads.
-        onPressed: () => Navigator.pop(context,
-            NotificationActionsSetting.actions.map((a) => a.$1).where(_selected.contains).toList()),
-        child: Text(context.tr('Save')),
-      ),
-    ],
   );
 }
 
