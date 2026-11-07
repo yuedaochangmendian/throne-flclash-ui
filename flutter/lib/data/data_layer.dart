@@ -40,6 +40,27 @@ class DatabaseLocation {
   }
 }
 
+/// Why [DataLayer.attach] could not open the file. `attach` stays total — null
+/// on every failure — but a caller that owns a retry policy needs to know
+/// which failures are worth another attempt and which will not change until
+/// the process restarts.
+enum AttachFailure {
+  /// The host did not answer `data.path` with a usable location. Usually a
+  /// cold-start race: the channel is not up yet or the host has not opened
+  /// the database. Worth retrying.
+  hostPath,
+
+  /// The file is at a schema version this build does not know. The host's
+  /// version cannot change while its process is alive, so retrying inside
+  /// this app run cannot help.
+  schemaVersion,
+
+  /// No libsqlite3 on this platform, or the file could not be opened —
+  /// locked by a checkpoint, unreadable, or corrupt. Bounded retries are
+  /// reasonable; the lock case is transient, the others are not.
+  openFailed,
+}
+
 class DataLayer {
   DataLayer._(this._db)
       : groups = GroupsDao(_db),
@@ -65,33 +86,48 @@ class DataLayer {
   ///
   /// [readOnly] is passed through: a build that has not yet moved any writes
   /// should open the file read-only, so a bug here cannot damage Room's data.
+  ///
+  /// [onFailure] receives the reason when the answer is null, so a caller can
+  /// tell a cold-start race ([AttachFailure.hostPath]) from a schema this
+  /// build will never understand ([AttachFailure.schemaVersion]).
   static Future<DataLayer?> attach({
     required Future<Object?> Function() resolvePath,
     bool readOnly = true,
+    void Function(AttachFailure reason)? onFailure,
   }) async {
     final Object? reply;
     try {
       reply = await resolvePath();
     } catch (_) {
       // No host, no channel, or the host refused. Stay on the channel path.
+      onFailure?.call(AttachFailure.hostPath);
       return null;
     }
     final location = DatabaseLocation.parse(reply);
-    if (location == null) return null;
+    if (location == null) {
+      onFailure?.call(AttachFailure.hostPath);
+      return null;
+    }
     // A host that reports a version this build was not written against is not a
     // reason to guess: the columns may have moved, and reading them by name
     // would silently return the wrong field rather than fail.
     if (location.version >= 0 && location.version != roomSchemaVersion) {
+      onFailure?.call(AttachFailure.schemaVersion);
       return null;
     }
     final DataDatabase db;
     try {
       final opened = DataDatabase.openAt(location.path, readOnly: readOnly);
-      if (opened == null) return null;
+      if (opened == null) {
+        onFailure?.call(AttachFailure.openFailed);
+        return null;
+      }
       db = opened;
     } on SchemaMismatch {
+      onFailure?.call(AttachFailure.schemaVersion);
       return null;
     } catch (_) {
+      onFailure?.call(AttachFailure.openFailed);
       return null;
     }
     return DataLayer._(db);

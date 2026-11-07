@@ -68,6 +68,12 @@ jobs:
           # queries — it just reads the wrong column.
           python3 tools/diagnostics/schema_audit.py
           python3 tools/diagnostics/py_syntax_check.py tools/diagnostics/*.py tools/bindgen/*.py buildScript/*.py
+      # Locale completeness is a report, not a gate: the 885 known gaps across 19 locales
+      # predate this job and are burned down incrementally. `continue-on-error` keeps the
+      # list visible on every push without blocking it.
+      - name: i18n coverage report
+        run: python3 tools/diagnostics/i18n_coverage.py --summary
+        continue-on-error: true
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -83,7 +89,9 @@ jobs:
         run: flutter test --coverage
       - name: Coverage floor
         working-directory: flutter
-        run: python3 ../tools/diagnostics/coverage_gate.py coverage/lcov.info --min 40
+        # --report-dirs prints every lib/<dir> percentage so per-directory floors
+        # (--min-dir lib/data:NN) can be set from a measured number, not a guess.
+        run: python3 ../tools/diagnostics/coverage_gate.py coverage/lcov.info --min 40 --report-dirs
       - name: Upload coverage
         if: ${{ always() }}
         uses: actions/upload-artifact@v7

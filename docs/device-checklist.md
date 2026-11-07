@@ -62,6 +62,22 @@ CI 只证明「构建得出、测试过」；本清单证明「真机好用」�
 
 - [ ] 「检查更新」发现新版 → 下载 → 校验通过 → 唤起安装器（拒绝路径由单元测试覆盖，本项验证正向链路）
 
+## 数据层直读（#19，3.3.1-pre.11 起）
+
+> 路由页数据可来自 SQLite 直读或 channel 回退，UI 不可区分是设计使然；以下关注的是「直读路径是否健康」。
+> 观察方法受包体限制：tag 发布的 preview 是 release 包（不可 run-as），要拉库验证请用 preview 工作流的
+> `workflow_dispatch` 产物（包名 `com.nb4a.throne.debug`，可 `run-as`）。
+
+- [ ] 覆盖升级：`adb install -r Flrone-3.3.1-pre.11-*.apk` 成功；若失败，记录完整 `Failure [INSTALL_FAILED_…]` 码
+      （静态实测三版包名/签名一致、versionCode 单调，失败即设备侧原因）
+- [ ] 老库迁移：曾装过 schema < 19 版本的设备升级后首开路由页，字段不串位、不缺行（列名漂移的运行时表现；
+      CI 的 schema_audit 只能拦住源码侧漂移）
+- [ ] WAL 并发读：触发订阅更新（写库）的同时反复进出路由页，无可感知卡顿/ANR；
+      辅证：`adb shell dumpsys gfxinfo com.throneflclash` 的 jank 统计
+- [ ] 直读路径确认：`adb exec-out run-as com.nb4a.throne.debug cat databases/sager_net.db > sager_net.db`
+      拉库后本地 `sqlite3 sager_net.db 'PRAGMA user_version'` 应为 19；路由页此刻正常即证明直读可用
+      （回退路径不读该文件）
+
 ## 记录
 
 | 日期 | 版本 | 设备 | 结果 |

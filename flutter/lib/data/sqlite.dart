@@ -429,10 +429,11 @@ class Sqlite {
     }
   }
 
-  /// Opens [path]. [readOnly] is the safe default for a file another component
-  /// owns: a reader that never writes cannot corrupt Room's journal, and every
-  /// query still sees committed rows under WAL.
-  SqliteDatabase? openDatabase(String path, {bool readOnly = false}) {
+  /// Opens [path]. [readOnly] defaults to true — the safe choice for a file
+  /// another component owns: a reader that never writes cannot corrupt Room's
+  /// journal, and every query still sees committed rows under WAL. A caller
+  /// that owns writes opts out explicitly.
+  SqliteDatabase? openDatabase(String path, {bool readOnly = true}) {
     final name = path.toNativeUtf8();
     final out = calloc<Pointer<Void>>();
     try {
@@ -445,10 +446,14 @@ class Sqlite {
         return null;
       }
       // Any connection that finds Room mid-transaction should wait rather than
-      // fail — readers included: WAL lets a reader run alongside a writer, but a
-      // checkpoint or a schema change still takes the lock briefly. 2 s is well
-      // past a user-gesture write and short enough not to stall a screen.
-      _busyTimeout(out.value, 2000);
+      // fail — readers included: WAL lets a reader run alongside a writer, but
+      // a checkpoint or a schema change still takes the lock briefly. The wait
+      // runs on the UI isolate until the connection moves to a dedicated DB
+      // isolate, so it is bounded tightly: 250 ms rides out a checkpoint lock
+      // and keeps a dropped frame from becoming a visible stall, and anything
+      // longer fails this read, which falls back to the channel path — the
+      // channel answers off the main thread anyway.
+      _busyTimeout(out.value, 250);
       return SqliteDatabase._(this, out.value, path);
     } finally {
       calloc.free(out);

@@ -1,3 +1,20 @@
+#### 3.3.1-pre.12
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. This one is the structure-audit round: the follow-ups the link-by-link review of the #19 data path asked for, with no feature change. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open — it now has a data-layer section with the exact commands.
+
+The review found three structural risks (a schema gate that only compared version numbers, a versionCode scheme previews can never come back from, and SQLite reads on the UI isolate) and a tail of smaller ones. This lands the ones that did not need a device in the loop:
+
+* `schema_audit.py` now parses Room's exported schema JSON and column-checks every SELECT in `flutter/lib/data/*_dao.dart` — a migration that renames or drops a column the SQL mentions by name fails the push instead of dying silently behind the channel fallback (previously only the version number was compared, and the version staying at 19 was exactly the case nobody would catch)
+* Preview tags are capped at `-pre.998` in `release.yml`: 999 is the stable slot, and a `-pre.999` would have built the same versionCode as the stable release of that version; README now states the one-way rule (a preview never installs over the stable release it belongs to — `INSTALL_FAILED_VERSION_DOWNGRADE` by design)
+* `data.path` no longer opens (and migrates) Room's database on the main thread — a new `respondIo` wrapper runs the block on `Dispatchers.IO` and replies on the main thread; `settings.get` moves with it (a cold read loads its JSON document from disk)
+* A failed SQLite attach is now classified: a schema version mismatch is permanent for this run, while a cold-start `data.path` race or a locked file is retried up to three reads and gets a fresh budget every time the app resumes; `invalidate()` re-attaches from scratch for flows that replace the database file
+* The read connection's `busy_timeout` drops from 2 s to 250 ms: until the connection moves to a DB isolate, that wait runs on the UI isolate, and anything longer falls back to the channel — which answers off the main thread anyway
+* `readOnly` now defaults to true in both `openAt` and `openDatabase` (every production caller already passed it; only the defaults and one comment disagreed), the speed-test defaults are `https://` (both endpoints verified to serve TLS), and `TrustAllManager` carries the rule that every call site stays behind `net_insecure`
+* The coverage gate can hold per-directory floors (`--min-dir lib/data:NN`) and prints a per-directory report; the locale audit runs on every push as a non-blocking report (885 known gaps, now visible instead of invisible)
+* `docs/device-checklist.md` gains the data-layer section: overwrite-install failure codes, post-migration column drift, WAL concurrency and pulling the database off a debug package to confirm `PRAGMA user_version`
+
+`BuildConfig.VERSION_CODE` was also re-checked statically: the updater filters candidates by version name first (`Semver.compare(version, installed) > 0`), so a device on this preview is never offered 3.3.0 regardless of how AGP fills the code. Still open, by choice: the DB isolate migration (the review's P0-1 — it waits for real-device numbers from the checklist above), the one cleartext IP probe source (`http://ip-api.com/json`, a user decision), and the missing `10.json` schema export (pre-dates the repository).
+
 #### 3.3.1-pre.11
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one starts reading route profiles straight from Room over `dart:ffi`, with a transparent fallback to the existing channel.

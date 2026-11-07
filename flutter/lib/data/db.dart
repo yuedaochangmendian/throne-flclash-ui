@@ -64,9 +64,10 @@ class DataDatabase implements Queryable {
   /// file cannot be opened. A null result means "stay on the channel": the
   /// caller keeps using `routes.list` and friends.
   ///
-  /// [readOnly] defaults to false because the vertical slice writes nothing yet
-  /// but must prove it can; pass true to run purely as an observer.
-  static DataDatabase? openAt(String path, {bool readOnly = false}) {
+  /// [readOnly] defaults to true: the data plane has not moved any writes, so
+  /// the safe posture is to observe Room's file without being able to alter
+  /// it. The write path — when one exists — opts out explicitly.
+  static DataDatabase? openAt(String path, {bool readOnly = true}) {
     final sqlite = Sqlite.open();
     if (sqlite == null) return null;
     final db = sqlite.openDatabase(path, readOnly: readOnly);

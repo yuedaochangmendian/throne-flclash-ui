@@ -61,6 +61,13 @@ jobs:
               echo "::error::preview tag must end in -pre.<number>"
               exit 1
             }
+            # 999 is the stable slot: a preview taking it would build the same
+            # versionCode as the stable release of the same version (see
+            # Helpers.kt), and two different builds would claim one code.
+            (( 10#$BUILD_NUMBER >= 1 && 10#$BUILD_NUMBER <= 998 )) || {
+              echo "::error::preview build number must be 1..998 (999 is the stable slot)"
+              exit 1
+            }
           else
             CHANNEL=stable
             PRERELEASE=false

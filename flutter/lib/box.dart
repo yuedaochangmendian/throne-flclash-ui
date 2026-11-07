@@ -195,9 +195,10 @@ class BoxController extends ChangeNotifier {
   final _profileStats = <int, Future<Json>>{};
 
   /// The route profile list's single entry point. SQLite is tried on the first
-  /// read and kept for the controller's lifetime; every failure answers with the
-  /// channel's `routes.list` instead, so no screen sees a difference. The
-  /// connection is closed with the controller, not with a page.
+  /// read and kept while it works; every failure answers with the channel's
+  /// `routes.list` instead, so no screen sees a difference. A transiently
+  /// failed attach gets a fresh retry budget on resume; the connection is
+  /// closed with the controller, not with a page.
   RouteProfilesSource? _routeProfiles;
   RouteProfilesSource get routeProfiles => _routeProfiles ??= RouteProfilesSource(
         resolvePath: () => dataPath(),
@@ -238,6 +239,10 @@ class BoxController extends ChangeNotifier {
   /// the first frame back shows current data instead of a stale dashboard.
   void resumeRefreshes() {
     refreshGate.setForeground(true);
+    // A cold start can race the host's first `data.path` answer; if the
+    // SQLite attach failed transiently, coming back to the app is the natural
+    // moment to try again. A healthy connection is not touched.
+    _routeProfiles?.retryFailed();
     if (_deferredAspects.isEmpty) return;
     final aspects = _deferredAspects.toList();
     _deferredAspects.clear();

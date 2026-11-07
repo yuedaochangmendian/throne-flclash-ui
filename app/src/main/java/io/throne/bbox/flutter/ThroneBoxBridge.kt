@@ -332,6 +332,33 @@ class ThroneBoxBridge(
     }
 
     /**
+     * [respond] for the handlers whose work is disk-bound: the block runs on [Dispatchers.IO] and the
+     * reply is sent back on the scope's main-thread dispatcher, because a `MethodChannel.Result` reply
+     * belongs on the thread the call arrived on. Use this for a block that opens a database or is the
+     * first to touch a preferences file — `data.path`'s Room open can migrate on disk, and a cold
+     * `settings.get` loads the JSON document. Keep [respond] for blocks that touch UI, services or
+     * single-threaded host state; blocks that mix both should take [respond] and switch inside.
+     */
+    private fun MethodChannel.Result.respondIo(block: suspend () -> Any?) {
+        if (!scope.isActive) {
+            error("cancelled", "Activity closed", null)
+            return
+        }
+        scope.launch {
+            try {
+                val answer = withContext(Dispatchers.IO) { block() }
+                success(answer)
+            } catch (e: CancellationException) {
+                error("cancelled", e.message ?: "Operation cancelled", null)
+                throw e
+            } catch (e: Exception) {
+                Logs.w(e)
+                error("failed", e.message ?: e.javaClass.simpleName, null)
+            }
+        }
+    }
+
+    /**
      * Starts the background service and, in VPN mode, waits until it exists before answering.
      *
      * `SagerNet.startService()` only posts a startForegroundService intent, so it returns before
@@ -624,7 +651,9 @@ class ThroneBoxBridge(
                     val values = call.argument<Map<String, Any?>>("value").orEmpty()
                     result.success(writePreferences(values))
                 }
-                "settings.get" -> result.success(settingsWire())
+                // A cold read loads the JSON document from disk and walks DataStore; a warm one is
+                // memory. Either way it touches no UI and no service, so it can go to IO.
+                "settings.get" -> result.respondIo { settingsWire() }
                 "settings.set" -> {
                     val key = call.argument<String>("key") ?: error("Missing key")
                     applySettings(mapOf(key to call.argument<Any>("value")))
@@ -894,12 +923,16 @@ class ThroneBoxBridge(
                 // `RouteProfilesSource` falls back to `routes.list` over the channel when
                 // this call fails, libsqlite3 is absent, or the schema does not match.
                 "data.path" -> {
-                    val file = activity.getDatabasePath(Key.DB_PROFILE)
                     // Reading `version` forces Room to open (and migrate) the file, which is
                     // what makes the answer trustworthy: the annotation could disagree with
                     // the file after a downgrade, and Dart would then map columns by position.
-                    val version = SagerDatabase.instance.openHelper.readableDatabase.version
-                    result.success(mapOf("path" to file.absolutePath, "version" to version))
+                    // That open (and a migration) is disk work, so it must not block the main
+                    // thread — this call sits ahead of the first route-profile screen.
+                    result.respondIo {
+                        val file = activity.getDatabasePath(Key.DB_PROFILE)
+                        val version = SagerDatabase.instance.openHelper.readableDatabase.version
+                        mapOf("path" to file.absolutePath, "version" to version)
+                    }
                 }
                 "ffi.mode" -> {
                     val enabled = call.argument<Boolean>("enabled") == true

@@ -3,6 +3,7 @@
 // database and no MethodChannel are involved — the default `DataLayer.attach`
 // is exercised only for the failures that return before sqlite is opened.
 
+import 'package:flrone/data/data_layer.dart' show AttachFailure;
 import 'package:flrone/data/route_profiles_source.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -61,7 +62,7 @@ void main() {
           channelCalls++;
           return channelWire;
         },
-        attach: (_) async => reader,
+        attach: (_, {onFailure}) async => reader,
       );
 
       expect(await source.list(), same(wire));
@@ -73,7 +74,7 @@ void main() {
       final source = RouteProfilesSource(
         resolvePath: () async => null,
         channelFallback: () async => channelWire,
-        attach: (_) async => null,
+        attach: (_, {onFailure}) async => null,
       );
 
       expect(await source.list(), same(channelWire));
@@ -83,7 +84,7 @@ void main() {
       final source = RouteProfilesSource(
         resolvePath: () async => {'path': '/tmp/x.db', 'version': 19},
         channelFallback: () async => channelWire,
-        attach: (_) async => throw StateError('libsqlite3 missing'),
+        attach: (_, {onFailure}) async => throw StateError('libsqlite3 missing'),
       );
 
       expect(await source.list(), same(channelWire));
@@ -93,7 +94,7 @@ void main() {
       final source = RouteProfilesSource(
         resolvePath: () async => {'path': '/tmp/x.db', 'version': 19},
         channelFallback: () async => channelWire,
-        attach: (_) async => FakeReader(validWire(), throwOnRead: true),
+        attach: (_, {onFailure}) async => FakeReader(validWire(), throwOnRead: true),
       );
 
       expect(await source.list(), same(channelWire));
@@ -103,7 +104,7 @@ void main() {
       final source = RouteProfilesSource(
         resolvePath: () async => {'path': '/tmp/x.db', 'version': 19},
         channelFallback: () async => channelWire,
-        attach: (_) async => FakeReader(<String, Object?>{
+        attach: (_, {onFailure}) async => FakeReader(<String, Object?>{
               'currentId': 1,
               'profiles': <Object?>[],
             }),
@@ -116,7 +117,7 @@ void main() {
       final source = RouteProfilesSource(
         resolvePath: () async => {'path': '/tmp/x.db', 'version': 19},
         channelFallback: () async => channelWire,
-        attach: (_) async => FakeReader(<String, Object?>{
+        attach: (_, {onFailure}) async => FakeReader(<String, Object?>{
               'profiles': [validWire()['profiles']],
             }),
       );
@@ -130,7 +131,7 @@ void main() {
       final source = RouteProfilesSource(
         resolvePath: () async => {'path': '/tmp/x.db', 'version': 19},
         channelFallback: () async => channelWire,
-        attach: (_) async {
+        attach: (_, {onFailure}) async {
           attaches++;
           return reader;
         },
@@ -146,7 +147,7 @@ void main() {
       final failing = RouteProfilesSource(
         resolvePath: () async => null,
         channelFallback: () async => channelWire,
-        attach: (_) async {
+        attach: (_, {onFailure}) async {
           failedAttaches++;
           return null;
         },
@@ -161,7 +162,7 @@ void main() {
       final source = RouteProfilesSource(
         resolvePath: () async => {'path': '/tmp/x.db', 'version': 19},
         channelFallback: () async => channelWire,
-        attach: (_) async => reader,
+        attach: (_, {onFailure}) async => reader,
       );
 
       await source.list();
@@ -169,6 +170,176 @@ void main() {
 
       expect(reader.closes, 1);
       expect(await source.list(), same(channelWire));
+    });
+  });
+
+  group('attach retry and invalidation', () {
+    test('a transient failure (cold-start data.path race) is retried on the next read', () async {
+      final wire = validWire();
+      final reader = FakeReader(wire);
+      var attempts = 0;
+      final source = RouteProfilesSource(
+        resolvePath: () async => null,
+        channelFallback: () async => channelWire,
+        attach: (resolve, {onFailure}) async {
+          attempts++;
+          if (attempts < 2) {
+            onFailure?.call(AttachFailure.hostPath);
+            return null;
+          }
+          return reader;
+        },
+      );
+
+      expect(await source.list(), same(channelWire));
+      expect(await source.list(), same(wire));
+      expect(attempts, 2);
+    });
+
+    test('a schema version mismatch is permanent: no retry, not even retryFailed()', () async {
+      var attempts = 0;
+      final source = RouteProfilesSource(
+        resolvePath: () async => {'path': '/tmp/x.db', 'version': 18},
+        channelFallback: () async => channelWire,
+        attach: (resolve, {onFailure}) async {
+          attempts++;
+          onFailure?.call(AttachFailure.schemaVersion);
+          return null;
+        },
+      );
+
+      await source.list();
+      await source.list();
+      source.retryFailed();
+      await source.list();
+
+      expect(attempts, 1);
+    });
+
+    test('transient attempts are capped', () async {
+      var attempts = 0;
+      final source = RouteProfilesSource(
+        resolvePath: () async => null,
+        channelFallback: () async => channelWire,
+        attach: (resolve, {onFailure}) async {
+          attempts++;
+          onFailure?.call(AttachFailure.hostPath);
+          return null;
+        },
+      );
+
+      for (var i = 0; i < 5; i++) {
+        await source.list();
+      }
+
+      expect(attempts, 3);
+    });
+
+    test('retryFailed() restarts the transient budget', () async {
+      var attempts = 0;
+      final source = RouteProfilesSource(
+        resolvePath: () async => null,
+        channelFallback: () async => channelWire,
+        attach: (resolve, {onFailure}) async {
+          attempts++;
+          onFailure?.call(AttachFailure.hostPath);
+          return null;
+        },
+      );
+
+      for (var i = 0; i < 5; i++) {
+        await source.list();
+      }
+      expect(attempts, 3);
+
+      source.retryFailed();
+      await source.list();
+      expect(attempts, 4);
+    });
+
+    test('retryFailed() does not touch a healthy reader', () async {
+      final wire = validWire();
+      final reader = FakeReader(wire);
+      var attaches = 0;
+      final source = RouteProfilesSource(
+        resolvePath: () async => {'path': '/tmp/x.db', 'version': 19},
+        channelFallback: () async => channelWire,
+        attach: (_, {onFailure}) async {
+          attaches++;
+          return reader;
+        },
+      );
+
+      await source.list();
+      await source.list();
+      source.retryFailed();
+      await source.list();
+
+      expect(attaches, 1);
+      expect(reader.reads, 3);
+      expect(reader.closes, 0);
+    });
+
+    test('invalidate() closes the reader and the next read re-attaches', () async {
+      final first = FakeReader(validWire());
+      final second = FakeReader(validWire());
+      final readers = [first, second];
+      var attaches = 0;
+      final source = RouteProfilesSource(
+        resolvePath: () async => {'path': '/tmp/x.db', 'version': 19},
+        channelFallback: () async => channelWire,
+        attach: (_, {onFailure}) async => readers[attaches++],
+      );
+
+      await source.list();
+      source.invalidate();
+
+      expect(first.closes, 1);
+
+      await source.list();
+      expect(attaches, 2);
+      expect(second.reads, 1);
+    });
+
+    test('invalidate() does not revive a permanent failure', () async {
+      var attempts = 0;
+      final source = RouteProfilesSource(
+        resolvePath: () async => {'path': '/tmp/x.db', 'version': 18},
+        channelFallback: () async => channelWire,
+        attach: (resolve, {onFailure}) async {
+          attempts++;
+          onFailure?.call(AttachFailure.schemaVersion);
+          return null;
+        },
+      );
+
+      await source.list();
+      source.invalidate();
+      await source.list();
+
+      expect(attempts, 1);
+    });
+
+    test('an openFailed attach is retried like a transient one', () async {
+      final wire = validWire();
+      final reader = FakeReader(wire);
+      var attempts = 0;
+      final source = RouteProfilesSource(
+        resolvePath: () async => {'path': '/tmp/x.db', 'version': 19},
+        channelFallback: () async => channelWire,
+        attach: (resolve, {onFailure}) async {
+          attempts++;
+          if (attempts < 2) {
+            onFailure?.call(AttachFailure.openFailed);
+            return null;
+          }
+          return reader;
+        },
+      );
+
+      expect(await source.list(), same(channelWire));
+      expect(await source.list(), same(wire));
+      expect(attempts, 2);
     });
   });
 

@@ -178,8 +178,11 @@ trusted on a device.
 
 Two rules keep this from drifting:
 
-- `schema_audit.py` compares `@Database(version = …)` with `roomSchemaVersion` in `db.dart` on every push. A bump on
-  one side alone still compiles and still queries — it just reads the wrong column, silently.
+- `schema_audit.py` compares `@Database(version = …)` with `roomSchemaVersion` in `db.dart` on every push, and also
+  column-checks every SELECT in `flutter/lib/data/*_dao.dart` against Room's exported schema JSON
+  (`app/schemas/…/<version>.json`). A version bump on one side alone still compiles and still queries — it just reads
+  the wrong column, silently; so does a migration that renames or drops a column the SQL mentions by name (the query
+  throws, `RouteProfilesSource` catches, and the channel answers forever with no report). Both now fail the push.
 - `DataLayer.attach` answers null for every failure (no library, no path, unexpected schema). A null means "keep using
   the channel", the same contract `ThroneKernel.isAvailable` has on the kernel side.
 
