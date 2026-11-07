@@ -132,12 +132,19 @@ object Settings {
         ),
         // The notification's own customisation set. All take effect on the service's next
         // update cycle (or restart), so none needs Apply.Reload of the running core.
+        boolEntry("showProxySpeed", get = { DataStore.showProxySpeed }, set = { DataStore.showProxySpeed = it }),
         boolEntry("showTrafficTotal", get = { DataStore.showTrafficTotal }, set = { DataStore.showTrafficTotal = it }),
         textEntry(
-            "notificationTitlePrefix",
+            "notificationTitleTemplate",
             Apply.None,
-            { DataStore.notificationTitlePrefix },
-            { DataStore.notificationTitlePrefix = it },
+            { DataStore.notificationTitleTemplate },
+            { DataStore.notificationTitleTemplate = it },
+        ),
+        textEntry(
+            "notificationContentTemplate",
+            Apply.None,
+            { DataStore.notificationContentTemplate },
+            { DataStore.notificationContentTemplate = it },
         ),
         listEntry(
             "notificationActions",

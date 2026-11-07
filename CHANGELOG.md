@@ -1,3 +1,13 @@
+#### 3.3.1-pre.13
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. This one fixes the notification buttons dialog that pre.12 shipped broken, and turns the notification text into something the user writes.
+
+* The **notification buttons** dialog no longer crashes on open. The in-house `AlertDialog` renders its body on a `Surface`, not a `Material`, so `CheckboxListTile`'s `ListTile` reached `Material.of(context)!` and threw "Null check operator used on a null value" (release builds skip the `debugCheckHasMaterial` assert, so it surfaced as that null check rather than the assert message). The picker's body is now wrapped in a transparent `Material`
+* The General page gains a **Show proxy speed** switch (`showProxySpeed`, default on). Off hides the proxy rate line; the cumulative total under it stays governed by **Show traffic total**, so the notification can be title-only, title + total, or title + rate
+* The title prefix becomes a **title template** (`notificationTitleTemplate`): `{title}` is the profile name (or "Switching…") and everything else is literal, so `🚀 {title}` reads `🚀 Tokyo 01`. An existing `notificationTitlePrefix` is folded in on read as `<prefix> {title}`, so upgrading users keep their prefix without re-entering it
+* A new **notification content template** (`notificationContentTemplate`) replaces the built-in speed line when set. Placeholders: `{title}`, `{up}`, `{down}`, `{directUp}`, `{directDown}`, `{totalUp}`, `{totalDown}`; a multi-line template uses the expanded (BigText) style. Empty keeps the built-in line and the switches above, so the two ways of shaping the body never fight
+* Both templates and the switch ride the same `settings.set` channel as the other notification rows, apply on the service's next update (no restart badge), and are covered by the settings audit, the i18n gate (zh entries included) and widget tests
+
 #### 3.3.1-pre.12
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. This one is the structure-audit round: the follow-ups the link-by-link review of the #19 data path asked for, with no feature change. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open — it now has a data-layer section with the exact commands.

@@ -132,6 +132,7 @@ SHELL_OWNED = {
 RESTORE_ONLY = {
     "appTLSVersion",         # Nets.kt restricts the app's own TLS; no page surfaces it
     "notificationActions",   # ServiceNotification picks its buttons from it
+    "notificationTitlePrefix",  # legacy; folded into the title template on read, never edited now
     "show_config_security",  # ProfileRowHolder reads it for its display flags
     "xray_vless_preference", # SettingsMapper reads it when the importer builds a VLESS node
     "xray_geoip_url",        # XrayGeoAssets reads it when a config needs geoip.dat

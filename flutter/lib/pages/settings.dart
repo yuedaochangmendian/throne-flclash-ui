@@ -90,10 +90,13 @@ class GeneralPage extends StatelessWidget {
         const NativeToggle('Always show the address', 'alwaysShowAddress', restart: false),
         // Both are read by the host on its next update, so they need no core restart.
         const NativeToggle('Show group name in the notification', 'showGroupInNotification', restart: false),
+        const NativeToggle('Show proxy speed', 'showProxySpeed', restart: false),
         const NativeToggle('Show direct speed', 'showDirectSpeed', restart: false),
         const NativeToggle('Show traffic total', 'showTrafficTotal', restart: false),
-        const SettingText('Notification title prefix', 'notificationTitlePrefix',
-            hint: 'Shown in front of the title, for example 🚀', restart: false),
+        const SettingText('Notification title template', 'notificationTitleTemplate',
+            hint: 'Use {title} for the profile name, for example 🚀 {title}', restart: false),
+        const SettingText('Notification content template', 'notificationContentTemplate',
+            hint: 'Leave empty for the built-in speed line; {up} {down} {totalUp} {totalDown}', restart: false),
         const NotificationActionsSetting(),
       ]),
       generateSection(title: context.tr('Connections'), items: [

@@ -24,9 +24,13 @@ object Key {
     const val ALLOW_BYPASS = "vpnAllowBypass"
 
     const val SHOW_DIRECT_SPEED = "showDirectSpeed"
+    const val SHOW_PROXY_SPEED = "showProxySpeed"
     const val SHOW_GROUP_IN_NOTIFICATION = "showGroupInNotification"
     const val NOTIFICATION_ACTIONS = "notificationActions"
+    // Legacy: superseded by the title template, still read to migrate a prefix the user set.
     const val NOTIFICATION_TITLE_PREFIX = "notificationTitlePrefix"
+    const val NOTIFICATION_TITLE_TEMPLATE = "notificationTitleTemplate"
+    const val NOTIFICATION_CONTENT_TEMPLATE = "notificationContentTemplate"
     const val SHOW_TRAFFIC_TOTAL = "showTrafficTotal"
 
     const val APPEND_HTTP_PROXY = "appendHttpProxy"
