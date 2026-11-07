@@ -3,8 +3,6 @@ import '../widgets.dart';
 import 'profiles.dart';
 import 'profile_editor.dart';
 
-const configEncoder = JsonEncoder.withIndent('  ');
-
 class ProfileConfigStore extends ChangeNotifier {
   ProfileConfigStore(this.box, this.profile);
   final BoxController box;
