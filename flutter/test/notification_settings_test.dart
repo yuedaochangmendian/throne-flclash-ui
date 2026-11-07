@@ -1,7 +1,7 @@
-// The notification customisation rows on the General page: the switches and the two
-// templates write through settings.set with no restart badge (the service applies them on
-// its next update), and the button picker saves the host's fixed order no matter the order
-// the checkboxes were touched in.
+// The notification customisation rows on their own settings page: the switches and
+// the two templates write through settings.set with no restart badge (the service
+// applies them on its next update), and the button picker saves the host's fixed
+// order no matter the order the checkboxes were touched in.
 
 import 'dart:async';
 import 'package:flrone/main.dart';
@@ -10,7 +10,7 @@ import 'package:flrone/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-/// Opens the General page against a fake host that records settings.set calls.
+/// Opens the Notification page against a fake host that records settings.set calls.
 Future<(BoxController, List<Json>, StreamController<dynamic>)> _openGeneral(
   WidgetTester tester,
   String channelName,
@@ -42,7 +42,7 @@ Future<(BoxController, List<Json>, StreamController<dynamic>)> _openGeneral(
   final box = BoxController(channel: channel, events: events.stream);
   await tester.pumpWidget(BoxApp(controller: box));
   await tester.pumpAndSettle();
-  openPage(tester.element(find.byType(HomePage)), const GeneralPage());
+  openPage(tester.element(find.byType(HomePage)), const NotificationPage());
   await tester.pumpAndSettle();
   return (box, edits, events);
 }

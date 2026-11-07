@@ -21,11 +21,16 @@ const simpleAddressRuleTypes = <int>[1, 2, 3, 10];
 /// `1L` when the row is missing or the stored value fails `{ it > 0 }`.
 const defaultCurrentRouteId = 1;
 
+/// `OutboundIds` (RouteRule targets) as the list wire's `defaultOutbound` token,
+/// matching `BboxRoutes.list()`.
+const defaultOutboundTokens = <int, String>{-1: 'proxy', -3: 'block', -5: 'warp-bypass'};
+
 /// One `route_profiles` row plus the two counts the list shows.
 class RouteProfileRow {
   const RouteProfileRow({
     required this.id,
     required this.name,
+    required this.defaultOutbound,
     required this.isRemote,
     required this.isRaw,
     required this.ruleCount,
@@ -34,6 +39,10 @@ class RouteProfileRow {
 
   final int id;
   final String name;
+
+  /// The token `BboxRoutes.list()` puts in `defaultOutbound`: proxy / direct /
+  /// block / warp-bypass, `direct` being the fallback for every other id.
+  final String defaultOutbound;
   final bool isRemote;
   final bool isRaw;
 
@@ -47,6 +56,8 @@ class RouteProfileRow {
   factory RouteProfileRow.fromRow(SqlRow row) => RouteProfileRow(
         id: _int(row, 'id'),
         name: _string(row, 'name'),
+        defaultOutbound:
+            defaultOutboundTokens[_int(row, 'default_outbound_id', fallback: -2)] ?? 'direct',
         isRemote: _bool(row, 'is_remote'),
         isRaw: _bool(row, 'is_raw'),
         ruleCount: _int(row, 'rule_count'),
@@ -57,6 +68,7 @@ class RouteProfileRow {
   Map<String, Object?> toWire(int currentId) => <String, Object?>{
         'id': id,
         'name': name,
+        'defaultOutbound': defaultOutbound,
         'current': id == currentId,
         'isRemote': isRemote,
         'isRaw': isRaw,
@@ -115,12 +127,12 @@ class RouteProfilesDao {
   /// ones. LEFT JOIN + COUNT on the join key reproduces both: a profile with no
   /// rules yields 0 rather than disappearing.
   static final _select = '''
-SELECT p.id, p.name, p.is_remote, p.is_raw,
+SELECT p.id, p.name, p.default_outbound_id, p.is_remote, p.is_raw,
        COUNT(r.route_profile_id) AS rule_count,
        COALESCE(SUM(CASE WHEN r.type IN (${simpleAddressRuleTypes.join(', ')}) THEN 1 ELSE 0 END), 0) AS simple_rule_count
 FROM route_profiles p
 LEFT JOIN route_rules r ON r.route_profile_id = p.id
-GROUP BY p.id, p.name, p.is_remote, p.is_raw
+GROUP BY p.id, p.name, p.default_outbound_id, p.is_remote, p.is_raw
 ORDER BY p.id''';
 
   static const _currentIdSelect =

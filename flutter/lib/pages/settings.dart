@@ -2,8 +2,6 @@ import '../widgets.dart';
 import 'access.dart';
 import 'appearance.dart';
 import 'backup.dart';
-import 'diagnostics.dart';
-import 'resolve.dart';
 
 export 'appearance.dart';
 export 'access.dart';
@@ -31,9 +29,9 @@ class NativeToggle extends StatelessWidget {
 /// Inbound, TUN, routing, DNS and the rest are pages of their own rather than items behind a
 /// "General" container; General is the connection/behaviour page upstream calls General.
 List<ListItem> settingsEntries(BuildContext context) {
-  final caps = context.box.capabilities;
   return [
     ListItem.open(leading: const GlyphIcon(AppGlyphs.settings), title: Text(context.tr('General')), widget: const GeneralPage()),
+    ListItem.open(leading: const GlyphIcon(AppGlyphs.status), title: Text(context.tr('Notification')), widget: const NotificationPage()),
     ListItem.open(leading: const GlyphIcon(AppGlyphs.paintbrush), title: Text(context.tr('Appearance')), widget: const AppearancePage()),
     ListItem.open(leading: const GlyphIcon(AppGlyphs.devices), title: Text(context.tr('Inbound')), widget: const InboundPage()),
     ListItem.open(leading: const GlyphIcon(AppGlyphs.split), title: Text(context.tr('TUN')), widget: const TunPage()),
@@ -43,27 +41,28 @@ List<ListItem> settingsEntries(BuildContext context) {
     ListItem.open(leading: const GlyphIcon(AppGlyphs.speed), title: Text(context.tr('Testing')), widget: const TestingPage()),
     ListItem.open(leading: const GlyphIcon(AppGlyphs.profiles), title: Text(context.tr('Subscriptions')), widget: const SubscriptionPage()),
     ListItem.open(leading: const GlyphIcon(AppGlyphs.cpu), title: Text(context.tr('Core')), widget: const CorePage()),
-    if (caps.of('quality') || caps.of('stun') || caps.of('dnsResolve'))
-      ListItem.open(leading: const GlyphIcon(AppGlyphs.target), title: Text(context.tr('Diagnostics')), widget: const DiagnosticsSettingsPage()),
     ListItem.open(leading: const GlyphIcon(AppGlyphs.appsList), title: Text(context.tr('Access control')), widget: const AccessPage()),
     ListItem.open(leading: const GlyphIcon(AppGlyphs.cloudSync), title: Text(context.tr('Backup and restore')), widget: const BackupPage()),
   ];
 }
 
-/// Throne puts the two network probes on the settings list itself; both pages answer a host method,
-/// so the entry only exists when the host advertises them.
-class DiagnosticsSettingsPage extends StatelessWidget {
-  const DiagnosticsSettingsPage({super.key});
+/// The service notification's rows, one tap from the settings list. They used to
+/// live on the General page, where they outgrew the section they were squeezed into.
+class NotificationPage extends StatelessWidget {
+  const NotificationPage({super.key});
   @override Widget build(BuildContext context) {
-    final caps = context.box.capabilities;
-    return BoxPage(title: 'Diagnostics', children: [
+    return BoxPage(title: 'Notification', children: [
       generateSection(items: [
-        if (caps.of('quality'))
-          ListItem.open(leading: const GlyphIcon(AppGlyphs.target), title: Text(context.tr('Network quality')), widget: const DiagnosticsPage(quality: true)),
-        if (caps.of('stun'))
-          ListItem.open(leading: const GlyphIcon(AppGlyphs.connections), title: Text(context.tr('STUN test')), widget: const DiagnosticsPage(quality: false)),
-        if (caps.of('dnsResolve'))
-          ListItem.open(leading: const GlyphIcon(AppGlyphs.dns), title: Text(context.tr('Domain resolution')), widget: const ResolvePage()),
+        // Both are read by the host on its next update, so they need no core restart.
+        const NativeToggle('Show group name in the notification', 'showGroupInNotification', restart: false),
+        const NativeToggle('Show proxy speed', 'showProxySpeed', restart: false),
+        const NativeToggle('Show direct speed', 'showDirectSpeed', restart: false),
+        const NativeToggle('Show traffic total', 'showTrafficTotal', restart: false),
+        const SettingText('Notification title template', 'notificationTitleTemplate',
+            hint: 'Use {title} for the profile name, for example 🚀 {title}', restart: false),
+        const SettingText('Notification content template', 'notificationContentTemplate',
+            hint: 'Leave empty for the built-in speed line; {up} {down} {totalUp} {totalDown}', restart: false),
+        const NotificationActionsSetting(),
       ]),
     ]);
   }
@@ -88,16 +87,7 @@ class GeneralPage extends StatelessWidget {
         // "Allow bypass" lives on the Access screen as the per-app mode; the private-range switch is
         // under TUN, because upstream keeps them in two different stores.
         const NativeToggle('Always show the address', 'alwaysShowAddress', restart: false),
-        // Both are read by the host on its next update, so they need no core restart.
-        const NativeToggle('Show group name in the notification', 'showGroupInNotification', restart: false),
-        const NativeToggle('Show proxy speed', 'showProxySpeed', restart: false),
-        const NativeToggle('Show direct speed', 'showDirectSpeed', restart: false),
-        const NativeToggle('Show traffic total', 'showTrafficTotal', restart: false),
-        const SettingText('Notification title template', 'notificationTitleTemplate',
-            hint: 'Use {title} for the profile name, for example 🚀 {title}', restart: false),
-        const SettingText('Notification content template', 'notificationContentTemplate',
-            hint: 'Leave empty for the built-in speed line; {up} {down} {totalUp} {totalDown}', restart: false),
-        const NotificationActionsSetting(),
+        // The notification rows are a page of their own on the settings list.
       ]),
       generateSection(title: context.tr('Connections'), items: [
         const NativeToggle('Reset connections on network change', 'networkChangeResetConnections', restart: false),

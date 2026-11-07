@@ -75,10 +75,6 @@ class FakeWorker implements KernelWorker {
   Future<void> updateWifiState() async {}
 
   @override
-  Future<Map<String, dynamic>> resolveDomains(List<String> domains) async =>
-      <String, dynamic>{'running': false, 'results': const <Object?>[]};
-
-  @override
   Future<Map<String, dynamic>> warpRegister(
     String tunnelType,
     Map<String, dynamic> params,
@@ -572,24 +568,6 @@ void main() {
           reason: 'the second snapshot is dropped while the first is in flight');
       statsGate.complete(<String, dynamic>{});
       await Future<void>.delayed(const Duration(milliseconds: 10));
-    });
-  });
-
-  group('domain lookup batching', () {
-    test('one lookup is capped at a single 16-name batch', () {
-      final domains = List<String>.generate(40, (i) => 'host$i.test');
-      final limited = limitDomains(domains);
-
-      expect(limited, hasLength(16));
-      expect(limited.first, 'host0.test');
-      expect(limited.last, 'host15.test');
-    });
-
-    test('blank and duplicate names are dropped before the batch', () {
-      expect(
-        limitDomains(<String>[' a.test ', '', 'a.test', 'b.test']),
-        <String>['a.test', 'b.test'],
-      );
     });
   });
 }

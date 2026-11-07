@@ -72,7 +72,6 @@ translation, not a set of adapters bolted onto each screen.
 | `updateSubscription` | `SubscriptionQueue.refreshGroup(gid, showDiff = true)`. |
 | `deleteProfile` | `GroupRepo.delete` (its profiles go by the foreign key cascade). |
 | `openUrl` | `ACTION_VIEW` on the application context. |
-| `dns.resolve(domains)` | `DomainResolver` in `:bg` over the core's `ResolveDomains`, reached through `ICoreService.resolveDomains`. Lookups are pinned to the running box's `dns-direct` — the OS resolver is what a kill switch blocks, and a Tun answers it from fakeip — so 32 domains resolve 16 at a time at 5 s each, and no box up answers `running: false` instead of the phone's resolver pretending to be the tunnel. |
 | `groups.visible(visible)` | `BboxGroupsWire` through `ThroneBoxBridge.setGroupsVisible` | `ready` and the one-second pump carry group **counts** only (`nodeCount`, `timeouts`). The Proxies screen turns rows on while it is open and off when it closes, so the largest payload the bridge builds only exists while a screen renders it. |
 | `groups.nodes` | `BboxGroupsWire.nodes` | The rule editor's outbound picker: every node's id and tag, flat, without the per-node rows of the catalog event. |
 
@@ -122,10 +121,11 @@ the running box can give:
   store, so a driver that never writes it silently disables two guards. The values come straight from `config.build`,
   and they are written after `worker.start()` held — not when the config was built, which would leave stale facts
   behind whenever the core refuses to come up.
-- **Domain resolution.** `dns.resolve` used to answer `running = false` because it reads `CoreRuntime.running`, which
-  only the gomobile start path fills. The driver calls `Mobile.resolveDomains` on the handle it already holds and
-  answers in the same wire shape, so the diagnostics page works either way. Subscription filtering never needed this:
-  its request carries a full test config, so the core builds a probe box when no instance is passed.
+- **Domain resolution.** The diagnostics screen and its `dns.resolve` channel went away, and the AIDL method,
+  `DomainResolver` and the Dart driver path went with them. The C ABI's `Mobile.resolveDomains` stays in the core
+  patch (it is part of the throne_* surface, not something the UI owns); nothing calls it today. Subscription
+  filtering never needed any of this: its request carries a full test config, so the core builds a probe box when
+  no instance is passed.
 - **Wi-Fi rules.** The monitor has to live on the Android side (it owns the ConnectivityManager callback), but the
   core that re-reads the SSID is Dart's. `wifi.watch` starts the monitor when the box says it needs Wi-Fi state;
   each change comes back as a `wifi.state` event and the driver calls `Instance.updateWIFIState()`.
@@ -202,9 +202,9 @@ list needs no Shizuku grant.
 
 Wired since the earlier drafts of this file: the connections and logs screens (`BboxApi.connections`
 over the clash API, `BboxLogs` over `CoreLog`), profile import (`addProfile` and the scanner/file
-flows), the per-node probe (`dashboard.probe.*` with `dashboard.qualityCache.*`), and the
-domain-resolution tool (`dns.resolve`, whose `dnsResolve` capability is the one diagnostics entry
-that is on).
+flows) and the per-node probe (`dashboard.probe.*` with `dashboard.qualityCache.*`). The
+domain-resolution tool shipped here once and left with the diagnostics screen (see the driver note
+above).
 
 File payloads the platform hands the app land here too: `files.open` takes a `content://` or
 `file://` Uri and answers either with the `backup` envelope of a `.thrbackup` (the same shape

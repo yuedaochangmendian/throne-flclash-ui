@@ -556,17 +556,6 @@ class KernelService {
     });
   }
 
-  /// Domain resolution through the box Dart owns. In FFI mode the service never
-  /// creates a `ProxyInstance`, so `dns.resolve` could only answer "not running";
-  /// the C ABI's `Mobile.resolveDomains` takes the handle this driver already holds.
-  Future<Map<String, dynamic>> resolveDomains(List<String> domains) async {
-    final worker = _worker;
-    if (worker == null || !active) {
-      return <String, dynamic>{'running': false, 'results': const <Object?>[]};
-    }
-    return worker.resolveDomains(domains);
-  }
-
   // --- events --------------------------------------------------------------
 
   void _onKernelStatus(BridgeEvent event) {

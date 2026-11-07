@@ -120,12 +120,16 @@ class _RouteProfilesPageState extends State<RouteProfilesPage> {
     ]);
   }
 
+  /// Throne's profile_summary line: "Default: proxy · 3 rules", with the two
+  /// markers that mean something here appended (a raw profile is read-only, a
+  /// remote one is fetched).
   String _summary(Json profile) {
     final rules = (profile['ruleCount'] as num?)?.toInt() ?? 0;
     final marks = <String>[
-      if (profile['isRaw'] == true) context.tr('Read-only'),
-      if (profile['isRemote'] == true) context.tr('Remote'),
+      '${context.tr('Default')}: ${profile['defaultOutbound']?.toString() ?? 'direct'}',
       '$rules ${context.tr('rules')}',
+      if (profile['isRemote'] == true) context.tr('Remote'),
+      if (profile['isRaw'] == true) context.tr('Read-only'),
     ];
     return marks.join(' · ');
   }
@@ -363,7 +367,7 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
           for (final (index, rule) in _rules.indexed)
             ListItem(
               title: Text(ruleName(rule, index)),
-              subtitle: Text(ruleSummary(context, rule)),
+              subtitle: ruleRowSubtitle(context, rule),
               onTap: _isRaw ? null : () => _editRule(index),
             ),
           if (!_isRaw) ListItem(
@@ -432,21 +436,119 @@ String ruleName(Json rule, int index) {
   return '#${index + 1}';
 }
 
-/// A rule's row subtitle: the action plus a count per non-empty match list.
-String ruleSummary(BuildContext context, Json rule) {
+/// The outbound side of "route → x", Throne's `RouteTexts.outboundName`: the
+/// fixed targets as their tokens, a server profile as its id (the picker that
+/// reads `groups.nodes` is the only name source, and the row stays synchronous).
+String outboundToken(int id) => switch (id) {
+  -1 => 'proxy',
+  -2 => 'direct',
+  -3 => 'block',
+  -5 => 'warp-bypass',
+  > 0 => '#$id',
+  _ => '$id',
+};
+
+/// The action line's colour, Throne's route palette (RouteTexts.kt +
+/// colors.xml): proxy blue, direct green, reject red, everything else the
+/// config purple. Night lifts each hue a Material step so it keeps contrast.
+Color routeActionColor(BuildContext context, String action, int outboundId) {
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  return switch (action) {
+    'reject' => dark ? const Color(0xFFEF5350) : const Color(0xFFE53935),
+    'route' || 'bypass' => outboundId == -2
+        ? (dark ? const Color(0xFF66BB6A) : const Color(0xFF43A047))
+        : (dark ? const Color(0xFF42A5F5) : const Color(0xFF1E88E5)),
+    _ => dark ? const Color(0xFFAB47BC) : const Color(0xFF8E24AA),
+  };
+}
+
+/// The rule's effect line: "route → direct", "reject (drop)", "resolve
+/// (strategy)" — the tokens are the sing-box / desktop names, as upstream.
+String ruleActionText(Json rule) {
   final action = rule['action']?.toString() ?? 'route';
-  final conditions = <String>[];
-  for (final key in const [
-    'domain', 'domain_suffix', 'domain_keyword', 'domain_regex', 'ip_cidr', 'source_ip_cidr',
-    'port', 'port_range', 'process_name', 'package_name', 'rule_set', 'network_type',
-    'wifi_ssid', 'wifi_bssid',
-  ]) {
-    final list = rule[key];
-    if (list is List && list.isNotEmpty) conditions.add('$key(${list.length})');
+  final method = rule['reject_method']?.toString().trim() ?? '';
+  final strategy = rule['strategy']?.toString().trim() ?? '';
+  return switch (action) {
+    'route' || 'bypass' =>
+      '$action → ${outboundToken((rule['outbound_id'] as num?)?.toInt() ?? 0)}',
+    'reject' => method.isEmpty ? action : '$action ($method)',
+    'resolve' => strategy.isEmpty ? action : '$action ($strategy)',
+    _ => action,
+  };
+}
+
+/// The main conditions, Throne's `RouteTexts.ruleConditions`: "suffix:
+/// google.com +2 · rule-set: geosite-ir" — first value plus a count, the field
+/// tokens lowercase, in the same order the desktop lists them.
+String ruleConditions(BuildContext context, Json rule) {
+  String list(String label, String key) {
+    final raw = rule[key];
+    final items = raw is List
+        ? raw.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList()
+        : (raw?.toString().trim() is String && raw.toString().trim().isNotEmpty
+            ? [raw.toString().trim()]
+            : const <String>[]);
+    if (items.isEmpty) return '';
+    return '$label: ${items.first}${items.length > 1 ? ' +${items.length - 1}' : ''}';
   }
-  if (rule['network_is_expensive'] == true) conditions.add(context.tr('Metered'));
-  if (rule['invert'] == true) conditions.add(context.tr('Inverted'));
-  return conditions.isEmpty ? action : '$action · ${conditions.join(' ')}';
+
+  String scalar(String label, String key) {
+    final value = rule[key]?.toString().trim() ?? '';
+    return value.isEmpty ? '' : '$label: $value';
+  }
+
+  final parts = <String>[
+    list('suffix', 'domain_suffix'),
+    list('domain', 'domain'),
+    list('keyword', 'domain_keyword'),
+    list('regex', 'domain_regex'),
+    list('rule-set', 'rule_set'),
+    list('ip', 'ip_cidr'),
+    if (rule['ip_is_private'] == true) context.tr('Private IP'),
+    list('app', 'package_name'),
+    list('app regex', 'package_name_regex'),
+    list('process', 'process_name'),
+    list('path', 'process_path'),
+    list('path regex', 'process_path_regex'),
+    list('port', 'port'),
+    list('port range', 'port_range'),
+    scalar('protocol', 'protocol'),
+    scalar('network', 'network'),
+    scalar('ip version', 'ip_version'),
+    list('source ip', 'source_ip_cidr'),
+    if (rule['source_ip_is_private'] == true) context.tr('Private source IP'),
+    list('source port', 'source_port'),
+    list('source port range', 'source_port_range'),
+    list('inbound', 'inbound'),
+    list('network type', 'network_type'),
+    if (rule['network_is_expensive'] == true) context.tr('Metered'),
+    list('ssid', 'wifi_ssid'),
+    list('bssid', 'wifi_bssid'),
+  ].where((part) => part.isNotEmpty).toList();
+  if (parts.isEmpty) parts.add(context.tr('No conditions'));
+  if (rule['invert'] == true) parts.add(context.tr('Inverted'));
+  return parts.join(' · ');
+}
+
+/// The rule row's two lines, Throne's layout_route_rule_item: the action on
+/// top in its colour, the conditions under it in the secondary tone. One Text
+/// with the subtitle style the list rows already use, so the row reads like
+/// any other while the action line carries the route palette.
+Widget ruleRowSubtitle(BuildContext context, Json rule) {
+  final action = rule['action']?.toString() ?? 'route';
+  final actionColor = routeActionColor(
+      context, action, (rule['outbound_id'] as num?)?.toInt() ?? 0);
+  final base = context.listSubtitleStyle;
+  return Text.rich(
+    TextSpan(children: [
+      TextSpan(
+          text: ruleActionText(rule),
+          style: base.copyWith(color: actionColor, fontWeight: FontWeight.w500)),
+      TextSpan(
+          text: '\n${ruleConditions(context, rule)}',
+          style: base.copyWith(fontWeight: FontWeight.normal)),
+    ]),
+  );
 }
 
 /// The rules in drag order. The list *is* the profile's rule order, so a reorder saves the same
@@ -468,7 +570,7 @@ class _RuleOrderPageState extends State<RuleOrderPage> {
     child: ItemPositionProvider(position: ItemPosition.get(index, _rules.length),
       child: DecorationListItem(contentPadding: const EdgeInsets.only(left: 16),
         title: Text(ruleName(_rules[index], index)),
-        subtitle: Text(ruleSummary(context, _rules[index])),
+        subtitle: ruleRowSubtitle(context, _rules[index]),
         trailing: SortHandle(index: index))),
   );
 

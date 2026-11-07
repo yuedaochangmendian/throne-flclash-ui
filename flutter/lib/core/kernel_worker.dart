@@ -24,7 +24,6 @@ enum KernelCommand {
   start,
   stop,
   setHeartbeat,
-  instanceHandle,
   warpRegister,
   needWifiState,
   updateWifiState,
@@ -117,49 +116,6 @@ class KernelWorker {
 
   Future<void> setHeartbeat(bool enabled) =>
       _call(KernelCommand.setHeartbeat, enabled);
-
-  /// Resolves names through the running box's `dns-direct` transport — the same
-  /// lookup `dns.resolve` performs on the service side, which has no box in FFI mode.
-  ///
-  /// `ThroneMobile.resolveDomains` is one blocking native invocation — up to
-  /// ~5 s for a batch. It must not run on the worker isolate: that isolate owns the 1 s
-  /// heartbeat, and a blocked event loop would stop every status snapshot,
-  /// postpone the `lost` detection and queue any reload/stop behind the lookup.
-  /// The Go instance lives in a process-global handle table, so a short-lived
-  /// isolate can reopen libthrone.so and use the same handle. The worker only
-  /// answers with that handle; the blocking part gets its own event loop.
-  Future<Map<String, dynamic>> resolveDomains(List<String> domains) async {
-    final handle = await _call(KernelCommand.instanceHandle);
-    if (handle is! int) {
-      return <String, dynamic>{'running': false, 'results': const <Object?>[]};
-    }
-    final wanted = limitDomains(domains);
-    if (wanted.isEmpty) {
-      return <String, dynamic>{'running': false, 'results': const <Object?>[]};
-    }
-    try {
-      final result = await Isolate.run(
-        () => resolveDomainsInIsolate(handle, wanted),
-      ).timeout(const Duration(seconds: 15), onTimeout: () {
-        throw StateError('domain resolution timed out');
-      });
-      return asStringKeyedMap(result, context: 'dns.resolve result');
-    } catch (error) {
-      // Same wire shape as a refused lookup inside the core: one row per name,
-      // so the diagnostics page shows the reason instead of losing the screen.
-      return <String, dynamic>{
-        'running': true,
-        'results': [
-          for (final domain in wanted)
-            <String, dynamic>{
-              'domain': domain,
-              'addresses': const <String>[],
-              'error': error.toString(),
-            },
-        ],
-      };
-    }
-  }
 
   /// Whether the running config asks for Wi-Fi state at all (a Wi-Fi-scoped route,
   /// DNS or rule set). Asked after the start, when there is an instance to ask.
@@ -304,11 +260,6 @@ void _workerMain(List<Object> init) {
             data['tunnelType'] as String,
             asStringKeyedMap(data['params'], context: 'warp params'),
           ));
-        case KernelCommand.instanceHandle:
-          // The Go handle table is process-global: a short-lived isolate can
-          // reopen libthrone.so and use this numeric handle for a blocking
-          // lookup without stopping this isolate's heartbeat.
-          reply.send(instance?.handle);
         case KernelCommand.needWifiState:
           final current = instance;
           reply.send(current != null && current.needWIFIState());
@@ -356,99 +307,6 @@ ThroneStartOptions _startOptions(ThroneFFI ffi, Map<String, dynamic> built) {
     options.setXrayFullIdleSeconds(0);
   }
   return options;
-}
-
-/// How many names one lookup may carry: the core resolves 16 at a time at 5 s each,
-/// so 16 is a single batch — about five seconds in the worst case, on an isolate
-/// of its own. The old 32 meant two batches and a ten-second block on the worker.
-const _maxResolveDomains = 16;
-
-/// Dedupe and cap the request on the calling isolate, so the payload handed to
-/// the short-lived lookup isolate is already bounded.
-List<String> limitDomains(List<String> domains) {
-  final wanted = <String>[];
-  for (final raw in domains) {
-    final domain = raw.trim();
-    if (domain.isEmpty || wanted.contains(domain)) continue;
-    wanted.add(domain);
-    if (wanted.length == _maxResolveDomains) break;
-  }
-  return wanted;
-}
-
-/// Entry point for the short-lived lookup isolate. The Go handle table is
-/// process-global, so [instanceHandle] stays valid here; only the
-/// `DynamicLibrary` has to be reopened, because its handle is isolate-local.
-/// No message port is attached: this isolate makes one synchronous C call and
-/// returns, so it needs none of the Go-side Dart callbacks.
-Map<String, dynamic> resolveDomainsInIsolate(
-  int instanceHandle,
-  List<String> wanted,
-) {
-  final ffi = ThroneFFI(DynamicLibrary.open('libthrone.so'));
-  return _resolveDomains(ffi, instanceHandle, wanted);
-}
-
-/// The `dns.resolve` reply, assembled from the core's own `ResolveDomains` RPC.
-///
-/// Same wire shape as `BboxResolve.parse` so the diagnostics page reads either path:
-/// `{running, results: [{domain, addresses, error}]}`. `running` is false when no box
-/// is up or nothing was asked — the page then says "connect first" instead of showing
-/// the phone's resolver as the tunnel's answer.
-Map<String, dynamic> _resolveDomains(
-  ThroneFFI ffi,
-  int instanceHandle,
-  List<String> wanted,
-) {
-  if (wanted.isEmpty) {
-    return <String, dynamic>{'running': false, 'results': const <Object?>[]};
-  }
-  final request = ThroneResolveRequest.create(ffi);
-  ThroneResolvedDomainIterator? iterator;
-  try {
-    for (final domain in wanted) {
-      request.addDomain(domain);
-    }
-    iterator = ThroneMobile.resolveDomains(ffi, instanceHandle, request.handle);
-    if (iterator == null) {
-      return <String, dynamic>{'running': false, 'results': const <Object?>[]};
-    }
-    final rows = <Map<String, dynamic>>[];
-    while (iterator.hasNext()) {
-      final item = iterator.next();
-      if (item == null) break;
-      ThroneStringIterator? addresses;
-      try {
-        addresses = item.addresses();
-        rows.add(<String, dynamic>{
-          'domain': item.getDomain(),
-          'addresses': addresses?.toList() ?? <String>[],
-          'error': item.getError(),
-        });
-      } finally {
-        addresses?.release();
-        item.release();
-      }
-    }
-    return <String, dynamic>{'running': true, 'results': rows};
-  } catch (error) {
-    // A refused lookup is one row's error, not a failed screen: every requested
-    // domain answers with the reason so the page can show it next to the name.
-    return <String, dynamic>{
-      'running': true,
-      'results': [
-        for (final domain in wanted)
-          <String, dynamic>{
-            'domain': domain,
-            'addresses': const <String>[],
-            'error': error.toString(),
-          },
-      ],
-    };
-  } finally {
-    iterator?.release();
-    request.release();
-  }
 }
 
 Map<String, dynamic> _warpRegister(

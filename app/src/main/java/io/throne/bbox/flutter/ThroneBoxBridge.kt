@@ -48,7 +48,6 @@ import io.throne.bbox.bridge.BboxMemory
 import io.throne.bbox.bridge.BboxMode
 import io.throne.bbox.bridge.BboxProbeSession
 import io.throne.bbox.bridge.BboxProfiles
-import io.throne.bbox.bridge.BboxResolve
 import io.throne.bbox.bridge.BboxRoutes
 import io.throne.bbox.bridge.BboxScanChunks
 import io.throne.bbox.bridge.BboxTestSession
@@ -715,13 +714,6 @@ class ThroneBoxBridge(
                 // The outbound picker in the rule editor needs names, not rows: id and tag only.
                 "groups.nodes" -> result.respond {
                     mapOf("nodes" to nodesWire(BboxBridge.state.value))
-                }
-                // Domain resolution for the diagnostics screen: the lookups run in the core process
-                // against the running box's dns-direct transport, so the answer is the tunnel's and
-                // not the phone's. Blocks for up to ~10 s, hence respond() rather than success().
-                "dns.resolve" -> {
-                    val domains = call.argument<List<String>>("domains").orEmpty()
-                    result.respond { BboxResolve.resolve(domains) }
                 }
                 // What Wi-Fi rules need (location, background, services): the native walk-through
                 // runs its dialogs and answers whether everything was granted. The caller saves the

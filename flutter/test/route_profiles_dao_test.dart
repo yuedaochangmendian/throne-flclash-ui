@@ -112,6 +112,7 @@ void main() {
       final row = RouteProfileRow(
         id: 4,
         name: 'Work',
+        defaultOutbound: 'proxy',
         isRemote: true,
         isRaw: false,
         ruleCount: 9,
@@ -121,6 +122,7 @@ void main() {
       expect(row.toWire(4), {
         'id': 4,
         'name': 'Work',
+        'defaultOutbound': 'proxy',
         'current': true,
         'isRemote': true,
         'isRaw': false,
@@ -171,7 +173,7 @@ void main() {
       final profiles = wire['profiles']! as List;
       expect(profiles, hasLength(2));
       expect(profiles.first, {
-        'id': 1, 'name': 'Default', 'current': false,
+        'id': 1, 'name': 'Default', 'defaultOutbound': 'direct', 'current': false,
         'isRemote': false, 'isRaw': false,
         'ruleCount': 4, 'simpleRuleCount': 1,
       });

@@ -54,25 +54,5 @@ void main() {
       service.dispose();
     });
 
-    test('dnsResolve takes the channel while the driver is off', () async {
-      const channel = MethodChannel('test.kernel-dns');
-      final messenger =
-          TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-      addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
-      final calls = <MethodCall>[];
-      messenger.setMockMethodCallHandler(channel, (call) async {
-        calls.add(call);
-        return <String, dynamic>{'running': false, 'results': const <Object?>[]};
-      });
-
-      final controller = BoxController(channel: channel);
-      addTearDown(controller.dispose);
-      final reply = await controller.dnsResolve(<String>['example.com']);
-
-      expect(reply, isA<Map>());
-      expect(calls.map((call) => call.method), contains('dns.resolve'),
-          reason: 'bridge mode keeps the service-side lookup');
-      expect((calls.single.arguments as Map)['domains'], <String>['example.com']);
-    });
   });
 }
