@@ -83,6 +83,11 @@ object DataStore : OnPreferenceDataStoreChangeListener {
 
     var showGroupInNotification by configurationStore.boolean(Key.SHOW_GROUP_IN_NOTIFICATION)
     var showDirectSpeed by configurationStore.boolean(Key.SHOW_DIRECT_SPEED) { true }
+    var showTrafficTotal by configurationStore.boolean(Key.SHOW_TRAFFIC_TOTAL) { true }
+    // Empty = the service's default action set; ServiceNotification falls back to it.
+    var notificationActions by configurationStore.stringList(Key.NOTIFICATION_ACTIONS)
+    // Prepended to the service notification's title (profile name, "Switching…"), empty = off.
+    var notificationTitlePrefix by configurationStore.string(Key.NOTIFICATION_TITLE_PREFIX) { "" }
     var alwaysShowAddress by configurationStore.boolean(Key.ALWAYS_SHOW_ADDRESS)
     var compactProfileRows by configurationStore.boolean(Key.COMPACT_PROFILE_ROWS)
     var compactGroupCards by configurationStore.boolean(Key.COMPACT_GROUP_CARDS)

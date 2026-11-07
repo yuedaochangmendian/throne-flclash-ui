@@ -59,6 +59,7 @@ class ServiceNotification(
         private val ACTION_ORDER = listOf(ACTION_STOP, ACTION_PREVIOUS, ACTION_NEXT, ACTION_SWITCH, ACTION_RESET)
 
         fun notificationActions(): List<String> {
+            // null = never configured (defaults); an empty list is "every button deselected" and is honoured.
             val stored = DataStore.configurationStore.getStringList(Key.NOTIFICATION_ACTIONS) ?: return DEFAULT_ACTIONS
             return ACTION_ORDER.filter { it in stored }.take(3)
         }
@@ -103,20 +104,22 @@ class ServiceNotification(
                 )
                 it.setContentText(speedSimple)
             }
-            it.setSubText(
+            // The cumulative total under the rate line is optional: a minimal notification
+            // (rate only) reads cleaner on a lock screen that already shows a clock.
+            if (showTrafficTotal) it.setSubText(
                 service.getString(
                     R.string.traffic,
                     Formatter.formatFileSize(service, stats.txTotal),
                     Formatter.formatFileSize(service, stats.rxTotal)
                 )
-            )
+            ) else it.setSubText(null)
         }
         update()
     }
 
     suspend fun postNotificationTitle(newTitle: String) {
         useBuilder {
-            it.setContentTitle(newTitle)
+            it.setContentTitle(displayTitle(newTitle))
         }
         update()
     }
@@ -125,7 +128,7 @@ class ServiceNotification(
     suspend fun refresh(newTitle: String) {
         updateActions()
         useBuilder {
-            it.setContentTitle(newTitle)
+            it.setContentTitle(displayTitle(newTitle))
             it.setContentText(null)
             it.setSubText(null)
             it.setStyle(null)
@@ -150,10 +153,20 @@ class ServiceNotification(
 
     private val showDirectSpeed = DataStore.showDirectSpeed
 
+    /** Whether the cumulative up/down total shows as the notification's sub text. */
+    private val showTrafficTotal = DataStore.showTrafficTotal
+
+    /** A custom prefix the user asked for in front of every title (profile name, "Switching…"). */
+    private val titlePrefix = DataStore.notificationTitlePrefix.trim()
+
+    /** [title] with the user's prefix applied; "🚀 Tokyo 01" from prefix "🚀" and title "Tokyo 01". */
+    private fun displayTitle(title: String): String =
+        if (titlePrefix.isEmpty()) title else "$titlePrefix $title"
+
     private val builder = NotificationCompat.Builder(service as Context, channel)
         .setWhen(0)
         .setTicker(service.getString(R.string.forward_success))
-        .setContentTitle(title)
+        .setContentTitle(displayTitle(title))
         .setOnlyAlertOnce(true)
         .setContentIntent(SagerNet.configureIntent(service))
         .setSmallIcon(R.drawable.ic_throne_tile)

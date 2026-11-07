@@ -91,6 +91,10 @@ class GeneralPage extends StatelessWidget {
         // Both are read by the host on its next update, so they need no core restart.
         const NativeToggle('Show group name in the notification', 'showGroupInNotification', restart: false),
         const NativeToggle('Show direct speed', 'showDirectSpeed', restart: false),
+        const NativeToggle('Show traffic total', 'showTrafficTotal', restart: false),
+        const SettingText('Notification title prefix', 'notificationTitlePrefix',
+            hint: 'Shown in front of the title, for example 🚀', restart: false),
+        const NotificationActionsSetting(),
       ]),
       generateSection(title: context.tr('Connections'), items: [
         const NativeToggle('Reset connections on network change', 'networkChangeResetConnections', restart: false),
@@ -113,6 +117,102 @@ class GeneralPage extends StatelessWidget {
       ]),
     ]);
   }
+}
+
+/// The service notification's buttons. The host keeps a fixed order (stop, previous, next,
+/// switch, reset) and shows the first three enabled ones, so the picker is a checkbox list
+/// and whatever it saves is re-ordered and truncated by `ServiceNotification` itself.
+///
+/// An empty selection is valid and means "no buttons"; a missing key (older host) renders as
+/// the built-in default set.
+class NotificationActionsSetting extends StatelessWidget {
+  const NotificationActionsSetting({super.key});
+
+  /// The host's button ids in its `ACTION_ORDER`, with the label the dialog shows.
+  static const actions = <(String, String)>[
+    ('stop', 'Stop'),
+    ('previous', 'Previous'),
+    ('next', 'Next'),
+    ('switch', 'Switch…'),
+    ('reset', 'Reset connections'),
+  ];
+
+  static const defaults = <String>['stop', 'next', 'switch'];
+
+  @override
+  Widget build(BuildContext context) {
+    final box = context.box;
+    final raw = box.settings['notificationActions'];
+    final selected = raw is List ? raw.whereType<String>().toList() : defaults;
+    return ListItem(
+      title: Text(context.tr('Notification buttons')),
+      subtitle: Text(_summary(context, selected), maxLines: 1, overflow: TextOverflow.ellipsis),
+      onTap: () async {
+        final saved = await showDialog<List<String>>(
+          context: context,
+          builder: (context) => _NotificationActionsEditor(initial: selected),
+        );
+        if (saved != null) await box.setSetting('notificationActions', saved, restart: false);
+      },
+    );
+  }
+
+  String _summary(BuildContext context, List<String> selected) {
+    if (selected.isEmpty) return context.tr('None');
+    final names = selected.map((id) => _label(context, id));
+    return names.join(', ');
+  }
+
+  String _label(BuildContext context, String id) => context.tr(
+      actions.firstWhere((action) => action.$1 == id, orElse: () => (id, id)).$2);
+}
+
+class _NotificationActionsEditor extends StatefulWidget {
+  const _NotificationActionsEditor({required this.initial});
+
+  final List<String> initial;
+
+  @override
+  State<_NotificationActionsEditor> createState() => _NotificationActionsEditorState();
+}
+
+class _NotificationActionsEditorState extends State<_NotificationActionsEditor> {
+  late final Set<String> _selected = {...widget.initial};
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: Text(context.tr('Notification buttons')),
+    content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Text(context.tr('The first three of the enabled ones show, in a fixed order'),
+            style: AppTextStyle.caption1.of(context)),
+      ),
+      for (final (id, label) in NotificationActionsSetting.actions)
+        CheckboxListTile(
+          value: id in _selected,
+          title: Text(context.tr(label)),
+          controlAffinity: ListTileControlAffinity.leading,
+          contentPadding: EdgeInsets.zero,
+          onChanged: (value) => setState(() {
+            if (value == true) {
+              _selected.add(id);
+            } else {
+              _selected.remove(id);
+            }
+          }),
+        ),
+    ]),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: Text(context.tr('Cancel'))),
+      TextButton(
+        // Keep the host's order, not the dialog's: the save is what the service reads.
+        onPressed: () => Navigator.pop(context,
+            NotificationActionsSetting.actions.map((a) => a.$1).where(_selected.contains).toList()),
+        child: Text(context.tr('Save')),
+      ),
+    ],
+  );
 }
 
 class RemotePage extends StatefulWidget {

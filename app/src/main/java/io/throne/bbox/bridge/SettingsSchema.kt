@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.PowerManager
 import io.nekohasekai.sagernet.Key
 import io.nekohasekai.sagernet.ktx.app
+import io.nekohasekai.sagernet.bg.ServiceNotification
 import io.nekohasekai.sagernet.database.DataStore
 import kotlin.math.absoluteValue
 
@@ -128,6 +129,21 @@ object Settings {
             "showGroupInNotification",
             get = { DataStore.showGroupInNotification },
             set = { DataStore.showGroupInNotification = it },
+        ),
+        // The notification's own customisation set. All take effect on the service's next
+        // update cycle (or restart), so none needs Apply.Reload of the running core.
+        boolEntry("showTrafficTotal", get = { DataStore.showTrafficTotal }, set = { DataStore.showTrafficTotal = it }),
+        textEntry(
+            "notificationTitlePrefix",
+            Apply.None,
+            { DataStore.notificationTitlePrefix },
+            { DataStore.notificationTitlePrefix = it },
+        ),
+        listEntry(
+            "notificationActions",
+            Apply.None,
+            { DataStore.notificationActions.ifEmpty { ServiceNotification.DEFAULT_ACTIONS } },
+            { DataStore.notificationActions = it },
         ),
         boolEntry("allowBetaUpdate", get = { DataStore.allowBetaUpdate }, set = { DataStore.allowBetaUpdate = it }),
 

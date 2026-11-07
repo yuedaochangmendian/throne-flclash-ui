@@ -42,9 +42,12 @@ class SettingNumber extends StatelessWidget {
 }
 
 class SettingText extends StatelessWidget {
-  const SettingText(this.title, this.setting, {super.key, this.hint});
+  const SettingText(this.title, this.setting, {super.key, this.hint, this.restart = true});
   final String title, setting;
   final String? hint;
+  /// False when the host applies the value on its own next read (a notification text,
+  /// say) and no restart badge should appear for a running service.
+  final bool restart;
   @override Widget build(BuildContext context) {
     final value = (context.box.settings[setting] ?? '').toString();
     // The row carries the stored value; the hint (an example, an "empty means…") is the dialog's
@@ -54,7 +57,7 @@ class SettingText extends StatelessWidget {
       subtitle: value.isEmpty && hint != null ? Text(context.tr(hint!)) : null,
       dialogTitle: context.tr(title), value: value,
       hintText: hint == null ? null : context.tr(hint!),
-      onChanged: (value) { if (value != null) context.box.setSetting(setting, value); },
+      onChanged: (value) { if (value != null) context.box.setSetting(setting, value, restart: restart); },
     );
   }
 }

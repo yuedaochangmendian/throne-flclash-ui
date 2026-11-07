@@ -26,6 +26,8 @@ object Key {
     const val SHOW_DIRECT_SPEED = "showDirectSpeed"
     const val SHOW_GROUP_IN_NOTIFICATION = "showGroupInNotification"
     const val NOTIFICATION_ACTIONS = "notificationActions"
+    const val NOTIFICATION_TITLE_PREFIX = "notificationTitlePrefix"
+    const val SHOW_TRAFFIC_TOTAL = "showTrafficTotal"
 
     const val APPEND_HTTP_PROXY = "appendHttpProxy"
     const val HTTP_PROXY_BYPASS = "httpProxyBypass"
