@@ -191,8 +191,12 @@ void main() {
       expect(ruleEnumLabel('ip_version', 'ipv4'), 'ipv4');
       // A known value is never duplicated into the option list.
       expect(ruleEnumOptions('ip_version', '4').map((o) => o.value), ['', '4', '6']);
-      // An unknown field falls back to an empty option list without throwing.
-      expect(ruleEnumOptions('unknown_field', 'x'), isEmpty);
+      // An unknown field has no presets, but ensureValue still keeps its
+      // current value selectable instead of silently dropping it.
+      final unknown = ruleEnumOptions('unknown_field', 'x');
+      expect(unknown.map((o) => o.value), ['x']);
+      expect(unknown.single.label, 'x');
+      expect(ruleEnumOptions('unknown_field', ''), isEmpty);
     });
 
     test('empty values resolve to their unset label', () {
