@@ -2,6 +2,97 @@ import 'package:material_ui/material_ui.dart' as material;
 import '../widgets.dart';
 import '../components/form.dart';
 
+/// A `(stored value, display label)` pair for a rule field that Throne for
+/// Android exposes as a fixed `SimpleMenuPreference` instead of free text.
+typedef RuleEnumOption = ({String value, String label});
+
+/// The legal stored values, verbatim from Throne for Android's
+/// `res/values/arrays.xml` (`route_rule_*_values` / `domain_strategy_values`).
+/// The first entry is the empty string: the rule does not narrow the match on
+/// that field. `action` keeps this build's `bypass` and adds the `hijack-dns`
+/// value the upstream XML carries (additive only, so existing rules survive).
+const Map<String, List<RuleEnumOption>> ruleEnumValues = {
+  'ip_version': [
+    (value: '', label: 'Any'),
+    (value: '4', label: 'IPv4'),
+    (value: '6', label: 'IPv6'),
+  ],
+  'network': [
+    (value: '', label: 'Any'),
+    (value: 'tcp', label: 'tcp'),
+    (value: 'udp', label: 'udp'),
+    (value: 'icmp', label: 'icmp'),
+  ],
+  'protocol': [
+    (value: '', label: 'Any'),
+    (value: 'http', label: 'http'),
+    (value: 'tls', label: 'tls'),
+    (value: 'quic', label: 'quic'),
+    (value: 'stun', label: 'stun'),
+    (value: 'dns', label: 'dns'),
+    (value: 'bittorrent', label: 'bittorrent'),
+    (value: 'dtls', label: 'dtls'),
+    (value: 'ssh', label: 'ssh'),
+    (value: 'rdp', label: 'rdp'),
+    (value: 'ntp', label: 'ntp'),
+  ],
+  'reject_method': [
+    (value: '', label: 'Unset'),
+    (value: 'default', label: 'default'),
+    (value: 'drop', label: 'drop'),
+    (value: 'reply', label: 'reply'),
+  ],
+  'strategy': [
+    (value: '', label: 'Default'),
+    (value: 'ipv4_only', label: 'ipv4_only'),
+    (value: 'ipv6_only', label: 'ipv6_only'),
+    (value: 'prefer_ipv4', label: 'prefer_ipv4'),
+    (value: 'prefer_ipv6', label: 'prefer_ipv6'),
+  ],
+  'action': [
+    (value: 'route', label: 'route'),
+    (value: 'reject', label: 'reject'),
+    (value: 'hijack-dns', label: 'hijack-dns'),
+    (value: 'sniff', label: 'sniff'),
+    (value: 'resolve', label: 'resolve'),
+    (value: 'route-options', label: 'route-options'),
+    (value: 'bypass', label: 'bypass'),
+  ],
+};
+
+/// Throne's `RouteRuleActivity.ensureValue`: a stored value outside the preset
+/// list is appended as a selectable option, so opening and saving a rule from
+/// an older build never drops or silently rewrites that value.
+List<RuleEnumOption> ruleEnumOptions(String key, String current) {
+  final presets = ruleEnumValues[key] ?? const <RuleEnumOption>[];
+  if (current.isEmpty || presets.any((option) => option.value == current)) {
+    return presets;
+  }
+  return <RuleEnumOption>[...presets, (value: current, label: current)];
+}
+
+/// The label for [current]; an empty value resolves to the field's "unset"
+/// entry (Any / Unset / Default, depending on the field).
+String ruleEnumLabel(String key, String current) {
+  for (final option in ruleEnumOptions(key, current)) {
+    if (option.value == current) return option.label;
+  }
+  return current.isEmpty ? 'Any' : current;
+}
+
+/// Apply a menu selection. The empty option removes the field entirely instead
+/// of storing an empty-string key: Throne's SimpleMenuPreference writes an
+/// unset value, and the rule serializer treats a missing key the same way.
+Json ruleEnumApply(Json rule, String key, String value) {
+  final next = <String, dynamic>{...rule};
+  if (value.isEmpty) {
+    next.remove(key);
+  } else {
+    next[key] = value;
+  }
+  return next;
+}
+
 /// Route profiles: the named rule sets a configuration is built with, one of them the global choice.
 ///
 /// The list shows every profile and which one is current; the editor holds the name, the default
@@ -26,7 +117,10 @@ class _RouteProfilesPageState extends State<RouteProfilesPage> {
 
   Future<void> _load() async {
     try {
-      final data = json(await context.box.routeList());
+      // The source reads Room's file over dart:ffi and falls back to
+      // `routes.list` over the channel on any failure; the page does not care
+      // which one answered.
+      final data = json(await context.box.routeProfiles.list());
       if (!mounted) return;
       setState(() {
         _profiles = (data['profiles'] as List? ?? const []).map((item) => json(item)).toList();
@@ -117,12 +211,16 @@ class _RouteProfilesPageState extends State<RouteProfilesPage> {
     ]);
   }
 
+  /// Throne's profile_summary line: "Default: proxy · 3 rules", with the two
+  /// markers that mean something here appended (a raw profile is read-only, a
+  /// remote one is fetched).
   String _summary(Json profile) {
     final rules = (profile['ruleCount'] as num?)?.toInt() ?? 0;
     final marks = <String>[
-      if (profile['isRaw'] == true) context.tr('Read-only'),
-      if (profile['isRemote'] == true) context.tr('Remote'),
+      '${context.tr('Default')}: ${profile['defaultOutbound']?.toString() ?? 'direct'}',
       '$rules ${context.tr('rules')}',
+      if (profile['isRemote'] == true) context.tr('Remote'),
+      if (profile['isRaw'] == true) context.tr('Read-only'),
     ];
     return marks.join(' · ');
   }
@@ -169,7 +267,9 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
     final box = context.box;
     try {
       final data = json(await box.routeGet(widget.id));
-      final list = json(await box.routeList());
+      // Same source as the list page, so `currentId` agrees whichever path
+      // answered (SQLite or the channel fallback).
+      final list = json(await box.routeProfiles.list());
       if (!mounted) return;
       setState(() {
         _name.text = data['name']?.toString() ?? '';
@@ -358,7 +458,7 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
           for (final (index, rule) in _rules.indexed)
             ListItem(
               title: Text(ruleName(rule, index)),
-              subtitle: Text(ruleSummary(context, rule)),
+              subtitle: ruleRowSubtitle(context, rule),
               onTap: _isRaw ? null : () => _editRule(index),
             ),
           if (!_isRaw) ListItem(
@@ -377,7 +477,7 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
           ),
           if (!_isRaw) ListItem(
             leading: const GlyphIcon(AppGlyphs.importFile),
-            title: Text(context.tr('Batch add simple rules')),
+            title: Text(context.tr('Batch add simple rules'), style: AppTextStyle.title3.of(context, emphasized: true)),
             onTap: _batchAdd,
           ),
           if (!_isRaw) ListItem(
@@ -427,21 +527,119 @@ String ruleName(Json rule, int index) {
   return '#${index + 1}';
 }
 
-/// A rule's row subtitle: the action plus a count per non-empty match list.
-String ruleSummary(BuildContext context, Json rule) {
+/// The outbound side of "route → x", Throne's `RouteTexts.outboundName`: the
+/// fixed targets as their tokens, a server profile as its id (the picker that
+/// reads `groups.nodes` is the only name source, and the row stays synchronous).
+String outboundToken(int id) => switch (id) {
+  -1 => 'proxy',
+  -2 => 'direct',
+  -3 => 'block',
+  -5 => 'warp-bypass',
+  > 0 => '#$id',
+  _ => '$id',
+};
+
+/// The action line's colour, Throne's route palette (RouteTexts.kt +
+/// colors.xml): proxy blue, direct green, reject red, everything else the
+/// config purple. Night lifts each hue a Material step so it keeps contrast.
+Color routeActionColor(BuildContext context, String action, int outboundId) {
+  final dark = Theme.of(context).brightness == Brightness.dark;
+  return switch (action) {
+    'reject' => dark ? const Color(0xFFEF5350) : const Color(0xFFE53935),
+    'route' || 'bypass' => outboundId == -2
+        ? (dark ? const Color(0xFF66BB6A) : const Color(0xFF43A047))
+        : (dark ? const Color(0xFF42A5F5) : const Color(0xFF1E88E5)),
+    _ => dark ? const Color(0xFFAB47BC) : const Color(0xFF8E24AA),
+  };
+}
+
+/// The rule's effect line: "route → direct", "reject (drop)", "resolve
+/// (strategy)" — the tokens are the sing-box / desktop names, as upstream.
+String ruleActionText(Json rule) {
   final action = rule['action']?.toString() ?? 'route';
-  final conditions = <String>[];
-  for (final key in const [
-    'domain', 'domain_suffix', 'domain_keyword', 'domain_regex', 'ip_cidr', 'source_ip_cidr',
-    'port', 'port_range', 'process_name', 'package_name', 'rule_set', 'network_type',
-    'wifi_ssid', 'wifi_bssid',
-  ]) {
-    final list = rule[key];
-    if (list is List && list.isNotEmpty) conditions.add('$key(${list.length})');
+  final method = rule['reject_method']?.toString().trim() ?? '';
+  final strategy = rule['strategy']?.toString().trim() ?? '';
+  return switch (action) {
+    'route' || 'bypass' =>
+      '$action → ${outboundToken((rule['outbound_id'] as num?)?.toInt() ?? 0)}',
+    'reject' => method.isEmpty ? action : '$action ($method)',
+    'resolve' => strategy.isEmpty ? action : '$action ($strategy)',
+    _ => action,
+  };
+}
+
+/// The main conditions, Throne's `RouteTexts.ruleConditions`: "suffix:
+/// google.com +2 · rule-set: geosite-ir" — first value plus a count, the field
+/// tokens lowercase, in the same order the desktop lists them.
+String ruleConditions(BuildContext context, Json rule) {
+  String list(String label, String key) {
+    final raw = rule[key];
+    final items = raw is List
+        ? raw.map((e) => e.toString().trim()).where((e) => e.isNotEmpty).toList()
+        : (raw?.toString().trim() is String && raw.toString().trim().isNotEmpty
+            ? [raw.toString().trim()]
+            : const <String>[]);
+    if (items.isEmpty) return '';
+    return '$label: ${items.first}${items.length > 1 ? ' +${items.length - 1}' : ''}';
   }
-  if (rule['network_is_expensive'] == true) conditions.add(context.tr('Metered'));
-  if (rule['invert'] == true) conditions.add(context.tr('Inverted'));
-  return conditions.isEmpty ? action : '$action · ${conditions.join(' ')}';
+
+  String scalar(String label, String key) {
+    final value = rule[key]?.toString().trim() ?? '';
+    return value.isEmpty ? '' : '$label: $value';
+  }
+
+  final parts = <String>[
+    list('suffix', 'domain_suffix'),
+    list('domain', 'domain'),
+    list('keyword', 'domain_keyword'),
+    list('regex', 'domain_regex'),
+    list('rule-set', 'rule_set'),
+    list('ip', 'ip_cidr'),
+    if (rule['ip_is_private'] == true) context.tr('Private IP'),
+    list('app', 'package_name'),
+    list('app regex', 'package_name_regex'),
+    list('process', 'process_name'),
+    list('path', 'process_path'),
+    list('path regex', 'process_path_regex'),
+    list('port', 'port'),
+    list('port range', 'port_range'),
+    scalar('protocol', 'protocol'),
+    scalar('network', 'network'),
+    scalar('ip version', 'ip_version'),
+    list('source ip', 'source_ip_cidr'),
+    if (rule['source_ip_is_private'] == true) context.tr('Private source IP'),
+    list('source port', 'source_port'),
+    list('source port range', 'source_port_range'),
+    list('inbound', 'inbound'),
+    list('network type', 'network_type'),
+    if (rule['network_is_expensive'] == true) context.tr('Metered'),
+    list('ssid', 'wifi_ssid'),
+    list('bssid', 'wifi_bssid'),
+  ].where((part) => part.isNotEmpty).toList();
+  if (parts.isEmpty) parts.add(context.tr('No conditions'));
+  if (rule['invert'] == true) parts.add(context.tr('Inverted'));
+  return parts.join(' · ');
+}
+
+/// The rule row's two lines, Throne's layout_route_rule_item: the action on
+/// top in its colour, the conditions under it in the secondary tone. One Text
+/// with the subtitle style the list rows already use, so the row reads like
+/// any other while the action line carries the route palette.
+Widget ruleRowSubtitle(BuildContext context, Json rule) {
+  final action = rule['action']?.toString() ?? 'route';
+  final actionColor = routeActionColor(
+      context, action, (rule['outbound_id'] as num?)?.toInt() ?? 0);
+  final base = context.listSubtitleStyle;
+  return Text.rich(
+    TextSpan(children: [
+      TextSpan(
+          text: ruleActionText(rule),
+          style: base.copyWith(color: actionColor, fontWeight: FontWeight.w500)),
+      TextSpan(
+          text: '\n${ruleConditions(context, rule)}',
+          style: base.copyWith(fontWeight: FontWeight.normal)),
+    ]),
+  );
 }
 
 /// The rules in drag order. The list *is* the profile's rule order, so a reorder saves the same
@@ -463,7 +661,7 @@ class _RuleOrderPageState extends State<RuleOrderPage> {
     child: ItemPositionProvider(position: ItemPosition.get(index, _rules.length),
       child: DecorationListItem(contentPadding: const EdgeInsets.only(left: 16),
         title: Text(ruleName(_rules[index], index)),
-        subtitle: Text(ruleSummary(context, _rules[index])),
+        subtitle: ruleRowSubtitle(context, _rules[index]),
         trailing: SortHandle(index: index))),
   );
 
@@ -505,6 +703,10 @@ class RuleEditorPage extends StatefulWidget {
 class _RuleEditorPageState extends State<RuleEditorPage> {
   late Json _rule;
   bool _saving = false;
+  /// Whether the Advanced block is expanded. Collapsed by default so a custom
+  /// rule opens on Throne's two basic categories (Rule + Match), the way the
+  /// native editor hides `advancedCategory` behind `advancedToggle`.
+  bool _advancedOpen = false;
   String? _error;
 
   @override
@@ -594,6 +796,10 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
         : '';
     final typeLabel = isSimple ? _simpleKindName(simpleKind)
         : isEndpoint ? 'Endpoint preferred by' : 'Custom';
+    // A custom rule is the one Throne's full editor describes (Rule + Match +
+    // a collapsed Advanced block). Simple and endpoint rules keep their short
+    // dedicated layouts.
+    final custom = !isSimple && !isEndpoint;
     return FormPage(
       title: widget.index < 0 ? 'Add rule' : 'Edit rule',
       saving: _saving,
@@ -619,7 +825,7 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
             trailing: Text(context.tr(typeLabel)),
             onTap: () async {
               final picked = await showDialog<String>(context: context, builder: (context) => SimpleDialog(
-                title: Text(context.tr('Type')),
+                title: _dialogTitle(context, 'Type'),
                 children: [
                   for (final (value, label) in [
                     ('custom', 'Custom'), ('address', 'Simple address'),
@@ -628,7 +834,7 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
                   ])
                     SimpleDialogOption(
                       onPressed: () => Navigator.pop(context, value),
-                      child: Text(context.tr(label)),
+                      child: _optionText(context, label),
                     ),
                 ],
               ));
@@ -645,12 +851,12 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
             trailing: Text(context.tr(_simpleActionName(simpleAction))),
             onTap: () async {
               final picked = await showDialog<String>(context: context, builder: (context) => SimpleDialog(
-                title: Text(context.tr('Target')),
+                title: _dialogTitle(context, 'Target'),
                 children: [
                   for (final value in const ['proxy', 'bypass', 'block', 'warp_bypass'])
                     SimpleDialogOption(
                       onPressed: () => Navigator.pop(context, value),
-                      child: Text(context.tr(_simpleActionName(value))),
+                      child: _optionText(context, _simpleActionName(value)),
                     ),
                 ],
               ));
@@ -662,7 +868,15 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
             trailing: Text(_outboundName(outboundId)),
             onTap: () async {
               // The catalog the UI holds is counts-only; the picker asks for the names it shows.
-              final nodes = await context.box.groupNodes();
+              final List<Json> nodes;
+              try {
+                nodes = await context.box.groupNodes();
+              } catch (error) {
+                // A dead service or an old host: report like every other load
+                // on this page instead of dying as an uncaught async error.
+                if (context.mounted) context.box.report(error);
+                return;
+              }
               if (!context.mounted) return;
               final picked = await showDialog<int>(
                 context: context,
@@ -671,18 +885,31 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
               if (picked != null) _set('outbound_id', picked);
             },
           ),
+          // Throne's "Rule" category also carries action / reject method /
+          // strategy / override destination. They stay up top because they
+          // decide what the rule does, not which detail it matches on.
+          if (custom) ...[
+            _actionRow(),
+            _enumRow('Reject method', 'reject_method'),
+            _enumRow('Strategy', 'strategy'),
+            ListItem.toggle(
+              title: Text(context.tr('Sniff override destination')),
+              value: _rule['sniff_override_dest'] == true,
+              onChanged: (value) => _set('sniff_override_dest', value),
+            ),
+          ],
         ], footer: isSimple
             ? context.tr('Simple rules share one outbound and one action; the match goes in the fields below.')
             : isEndpoint
                 ? context.tr('This rule names one endpoint as preferred; it has no match conditions.')
                 : null),
-        if (!isEndpoint && (!isSimple || simpleKind == 'address')) generateSection(title: context.tr('Domains'), items: [
+        if (!custom && !isEndpoint && (!isSimple || simpleKind == 'address')) generateSection(title: context.tr('Domains'), items: [
           _csvRow('Domain', 'domain'),
           _csvRow('Domain suffix', 'domain_suffix'),
           _csvRow('Domain keyword', 'domain_keyword'),
           _csvRow('Domain regex', 'domain_regex'),
         ]),
-        if (!isEndpoint && (!isSimple || simpleKind == 'address')) generateSection(title: context.tr('IP and ports'), items: [
+        if (!custom && !isEndpoint && (!isSimple || simpleKind == 'address')) generateSection(title: context.tr('IP and ports'), items: [
           _csvRow('IP CIDR', 'ip_cidr'),
           _csvRow('Source IP CIDR', 'source_ip_cidr'),
           _ruleSetRow(),
@@ -701,7 +928,7 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
             onChanged: (value) => _set('ip_is_private', value),
           ),
         ]),
-        if (!isEndpoint && (!isSimple || simpleKind == 'process_name' || simpleKind == 'process_path'))
+        if (!custom && !isEndpoint && (!isSimple || simpleKind == 'process_name' || simpleKind == 'process_path'))
           generateSection(title: context.tr('Processes and apps'), items: [
             if (!isSimple || simpleKind == 'process_name') _csvRow('Process name', 'process_name'),
             if (!isSimple || simpleKind == 'process_path') _csvRow('Process path', 'process_path'),
@@ -711,71 +938,98 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
               _csvRow('Package name regex', 'package_name_regex'),
             ],
           ]),
-        if (!isSimple && !isEndpoint) generateSection(title: context.tr('Network'), items: [
-          _csvRow('Inbound', 'inbound'),
-          _networkTypeRow(),
-          _csvRow('Wi-Fi SSID', 'wifi_ssid'),
-          _csvRow('Wi-Fi BSSID', 'wifi_bssid'),
-          _textRow('IP version', 'ip_version', hint: 'ipv4 / ipv6'),
-          _textRow('Network', 'network', hint: 'tcp / udp'),
-          _textRow('Protocol', 'protocol'),
-          ListItem.toggle(
-            title: Text(context.tr('Network is expensive')),
-            value: _rule['network_is_expensive'] == true,
-            onChanged: (value) => _set('network_is_expensive', value),
-          ),
-          ListItem.toggle(
-            title: Text(context.tr('Invert the match')),
-            value: _rule['invert'] == true,
-            onChanged: (value) => _set('invert', value),
-          ),
-        ]),
-        if (!isSimple && !isEndpoint) generateSection(title: context.tr('Action'), items: [
-          ListItem(
-            title: Text(context.tr('Action')),
-            trailing: Text(_rule['action']?.toString() ?? 'route'),
-            onTap: () async {
-              final picked = await showDialog<String>(context: context, builder: (context) => SimpleDialog(
-                title: Text(context.tr('Action')),
-                children: [
-                  for (final value in const ['route', 'reject', 'sniff', 'resolve', 'route-options', 'bypass'])
-                    SimpleDialogOption(onPressed: () => Navigator.pop(context, value), child: Text(value)),
-                ],
-              ));
-              if (picked != null) _set('action', picked);
-            },
-          ),
-          // reject_method is a scalar string on RouteRule (STRING_FIELDS), not a list like the
-          // match conditions above: a csv row here saved it as "[drop]" through ruleFromMap's str().
-          _textRow('Reject method', 'reject_method', hint: 'default / drop / reply'),
-          ListItem.toggle(
-            title: Text(context.tr('No drop')),
-            value: _rule['no_drop'] == true,
-            onChanged: (value) => _set('no_drop', value),
-          ),
-          _textRow('Override address', 'override_address'),
-          _textRow('Override port', 'override_port'),
-          ListItem.toggle(
-            title: Text(context.tr('TLS fragment')),
-            value: _rule['tls_fragment'] == true,
-            onChanged: (value) => _set('tls_fragment', value),
-          ),
-          _textRow('TLS fragment fallback delay', 'tls_fragment_fallback_delay'),
-          ListItem.toggle(
-            title: Text(context.tr('TLS record fragment')),
-            value: _rule['tls_record_fragment'] == true,
-            onChanged: (value) => _set('tls_record_fragment', value),
-          ),
-          _textRow('TLS spoof', 'tls_spoof'),
-          _textRow('TLS spoof method', 'tls_spoof_method'),
-          _csvRow('Sniffers', 'sniffers'),
-          ListItem.toggle(
-            title: Text(context.tr('Sniff override destination')),
-            value: _rule['sniff_override_dest'] == true,
-            onChanged: (value) => _set('sniff_override_dest', value),
-          ),
-          _textRow('Strategy', 'strategy', hint: 'prefer_ipv4 / prefer_ipv6 / …'),
-        ]),
+        // Throne's native editor shows two basic categories (Rule, Match) and
+        // hides the long tail behind "Advanced". Same split here: the fields a
+        // rule is usually written with stay visible; everything else folds away
+        // until tapped, which is what keeps the page from reading as a wall of
+        // rows.
+        if (custom) ...[
+          generateSection(title: context.tr('Match'), items: [
+            _csvRow('Domain suffix', 'domain_suffix'),
+            _csvRow('Domain', 'domain'),
+            _csvRow('IP CIDR', 'ip_cidr'),
+            _ruleSetRow(),
+            _csvRow('Package name', 'package_name'),
+            _networkTypeRow(),
+          ]),
+          generateSection(items: [
+            ListItem(
+              title: Text(context.tr('Advanced')),
+              trailing: GlyphIcon(_advancedOpen ? AppGlyphs.chevronUp : AppGlyphs.chevronDown),
+              onTap: () => setState(() => _advancedOpen = !_advancedOpen),
+            ),
+          ]),
+          if (_advancedOpen) ...[
+            generateSection(title: context.tr('Domains'), items: [
+              _csvRow('Domain keyword', 'domain_keyword'),
+              _csvRow('Domain regex', 'domain_regex'),
+            ]),
+            generateSection(title: context.tr('IP and ports'), items: [
+              _csvRow('Source IP CIDR', 'source_ip_cidr'),
+              _csvRow('Port', 'port'),
+              _csvRow('Port range', 'port_range'),
+              _csvRow('Source port', 'source_port'),
+              _csvRow('Source port range', 'source_port_range'),
+              ListItem.toggle(
+                title: Text(context.tr('IP is private')),
+                value: _rule['ip_is_private'] == true,
+                onChanged: (value) => _set('ip_is_private', value),
+              ),
+              ListItem.toggle(
+                title: Text(context.tr('Source IP is private')),
+                value: _rule['source_ip_is_private'] == true,
+                onChanged: (value) => _set('source_ip_is_private', value),
+              ),
+            ]),
+            generateSection(title: context.tr('Processes and apps'), items: [
+              _csvRow('Process name', 'process_name'),
+              _csvRow('Process path', 'process_path'),
+              _csvRow('Process path regex', 'process_path_regex'),
+              _csvRow('Package name regex', 'package_name_regex'),
+            ]),
+            generateSection(title: context.tr('Network'), items: [
+              _csvRow('Inbound', 'inbound'),
+              _csvRow('Wi-Fi SSID', 'wifi_ssid'),
+              _csvRow('Wi-Fi BSSID', 'wifi_bssid'),
+              _enumRow('IP version', 'ip_version'),
+              _enumRow('Network', 'network'),
+              _enumRow('Protocol', 'protocol'),
+              ListItem.toggle(
+                title: Text(context.tr('Network is expensive')),
+                value: _rule['network_is_expensive'] == true,
+                onChanged: (value) => _set('network_is_expensive', value),
+              ),
+              ListItem.toggle(
+                title: Text(context.tr('Invert the match')),
+                value: _rule['invert'] == true,
+                onChanged: (value) => _set('invert', value),
+              ),
+            ]),
+            generateSection(title: context.tr('Action'), items: [
+              ListItem.toggle(
+                title: Text(context.tr('No drop')),
+                value: _rule['no_drop'] == true,
+                onChanged: (value) => _set('no_drop', value),
+              ),
+              _textRow('Override address', 'override_address'),
+              _textRow('Override port', 'override_port'),
+              ListItem.toggle(
+                title: Text(context.tr('TLS fragment')),
+                value: _rule['tls_fragment'] == true,
+                onChanged: (value) => _set('tls_fragment', value),
+              ),
+              _textRow('TLS fragment fallback delay', 'tls_fragment_fallback_delay'),
+              ListItem.toggle(
+                title: Text(context.tr('TLS record fragment')),
+                value: _rule['tls_record_fragment'] == true,
+                onChanged: (value) => _set('tls_record_fragment', value),
+              ),
+              _textRow('TLS spoof', 'tls_spoof'),
+              _textRow('TLS spoof method', 'tls_spoof_method'),
+              _csvRow('Sniffers', 'sniffers'),
+            ]),
+          ],
+        ],
       ],
     );
   }
@@ -839,6 +1093,71 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
     ),
   );
 
+  /// Dialogs on this page use the app's own type scale. Material's defaults
+  /// (a 24sp title over 14sp options) sat next to ListItem rows set in
+  /// AppTextStyle, so the popups read as a different app; title and options are
+  /// pinned here instead.
+  Widget _dialogTitle(BuildContext context, String title) =>
+      Text(context.tr(title), style: AppTextStyle.title3.of(context, emphasized: true));
+
+  Text _optionText(BuildContext context, String text, {bool translate = true}) =>
+      Text(translate ? context.tr(text) : text, style: AppTextStyle.body.of(context));
+
+  /// The action field, kept as a menu (Throne's `action` SimpleMenuPreference).
+  /// The stored value is the label here, so the row and the dialog agree.
+  Widget _actionRow() {
+    final current = _rule['action']?.toString() ?? 'route';
+    return ListItem(
+      title: Text(context.tr('Action')),
+      trailing: Text(context.tr(ruleEnumLabel('action', current))),
+      onTap: () async {
+        final picked = await showDialog<String>(
+          context: context,
+          builder: (context) => SimpleDialog(
+            title: _dialogTitle(context, 'Action'),
+            children: [
+              for (final option in ruleEnumOptions('action', current))
+                SimpleDialogOption(
+                  onPressed: () => Navigator.pop(context, option.value),
+                  child: _optionText(context, option.label),
+                ),
+            ],
+          ),
+        );
+        if (picked != null) setState(() => _rule = ruleEnumApply(_rule, 'action', picked));
+      },
+    );
+  }
+
+  /// A scalar field with a fixed set of legal values, shown as a menu the way
+  /// Throne for Android's `SimpleMenuPreference` does. The first (empty) option
+  /// clears the field. An unknown stored value is appended by [ruleEnumOptions]
+  /// so an old rule opened and saved unchanged keeps its value (ensureValue).
+  Widget _enumRow(String title, String key) {
+    final current = _rule[key]?.toString() ?? '';
+    final options = ruleEnumOptions(key, current);
+    return ListItem(
+      title: Text(context.tr(title)),
+      trailing: Text(context.tr(ruleEnumLabel(key, current))),
+      onTap: () async {
+        final picked = await showDialog<String>(
+          context: context,
+          builder: (context) => SimpleDialog(
+            title: _dialogTitle(context, title),
+            children: [
+              for (final option in options)
+                SimpleDialogOption(
+                  onPressed: () => Navigator.pop(context, option.value),
+                  child: _optionText(context, option.label),
+                ),
+            ],
+          ),
+        );
+        if (picked != null) setState(() => _rule = ruleEnumApply(_rule, key, picked));
+      },
+    );
+  }
+
   String _outboundName(int id) => switch (id) {
     -1 => 'Proxy',
     -3 => 'Block',
@@ -888,14 +1207,14 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
 
   Widget _outboundDialog(BuildContext context, List<Json> nodes) {
     return SimpleDialog(
-      title: Text(context.tr('Outbound')),
+      title: _dialogTitle(context, 'Outbound'),
       children: [
         for (final (id, label) in [(-1, 'Proxy'), (-2, 'Direct'), (-3, 'Block'), (-5, 'WARP bypass')])
-          SimpleDialogOption(onPressed: () => Navigator.pop(context, id), child: Text(context.tr(label))),
+          SimpleDialogOption(onPressed: () => Navigator.pop(context, id), child: _optionText(context, label)),
         for (final node in nodes)
           SimpleDialogOption(
             onPressed: () => Navigator.pop(context, (node['id'] as num?)?.toInt()),
-            child: Text('${node['tag']}'),
+            child: _optionText(context, '${node['tag']}', translate: false),
           ),
       ],
     );
@@ -921,7 +1240,7 @@ class _MultiChoiceDialogState extends State<_MultiChoiceDialog> {
 
   @override
   Widget build(BuildContext context) => material.AlertDialog(
-    title: Text(widget.title),
+    title: Text(widget.title, style: AppTextStyle.title3.of(context, emphasized: true)),
     content: Column(mainAxisSize: MainAxisSize.min, children: [
       for (final option in widget.options)
         ListItem.checkbox(
@@ -958,7 +1277,7 @@ class _BatchAddDialogState extends State<_BatchAddDialog> {
 
   @override
   Widget build(BuildContext context) => material.AlertDialog(
-    title: Text(context.tr('Batch add simple rules')),
+    title: Text(context.tr('Batch add simple rules'), style: AppTextStyle.title3.of(context, emphasized: true)),
     content: SizedBox(
       width: 360,
       child: TextField(
@@ -1027,7 +1346,7 @@ class _RuleSetDialogState extends State<_RuleSetDialog> {
   }
 
   @override Widget build(BuildContext context) => material.AlertDialog(
-    title: Text(context.tr('Throne preset rules')),
+    title: Text(context.tr('Throne preset rules'), style: AppTextStyle.title3.of(context, emphasized: true)),
     content: SizedBox(
       width: 420, height: 420,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

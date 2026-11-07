@@ -329,6 +329,10 @@ void main() {
       expect(find.descendant(of: details, matching: find.text('AS64500')), findsOneWidget);
       expect(find.descendant(of: details, matching: find.text('ident.me')), findsOneWidget);
       expect(find.descendant(of: details, matching: find.text(locale == 'zh' ? '商业' : 'Business')), findsOneWidget);
+      // The Bettbox on-demand block is gone, and the two source rows are one:
+      // only the source that answered is shown.
+      expect(find.descendant(of: details, matching: find.text('IP details & risk')), findsNothing);
+      expect(find.descendant(of: details, matching: find.text(locale == 'zh' ? '检测来源' : 'IP source')), findsOneWidget);
       expect(dashboard.calls.where((call) => call.method == 'dashboard.qualityCache.put'), hasLength(1));
       expect(tester.takeException(), isNull);
     });

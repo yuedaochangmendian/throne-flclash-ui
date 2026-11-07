@@ -72,7 +72,6 @@ translation, not a set of adapters bolted onto each screen.
 | `updateSubscription` | `SubscriptionQueue.refreshGroup(gid, showDiff = true)`. |
 | `deleteProfile` | `GroupRepo.delete` (its profiles go by the foreign key cascade). |
 | `openUrl` | `ACTION_VIEW` on the application context. |
-| `dns.resolve(domains)` | `DomainResolver` in `:bg` over the core's `ResolveDomains`, reached through `ICoreService.resolveDomains`. Lookups are pinned to the running box's `dns-direct` — the OS resolver is what a kill switch blocks, and a Tun answers it from fakeip — so 32 domains resolve 16 at a time at 5 s each, and no box up answers `running: false` instead of the phone's resolver pretending to be the tunnel. |
 | `groups.visible(visible)` | `BboxGroupsWire` through `ThroneBoxBridge.setGroupsVisible` | `ready` and the one-second pump carry group **counts** only (`nodeCount`, `timeouts`). The Proxies screen turns rows on while it is open and off when it closes, so the largest payload the bridge builds only exists while a screen renders it. |
 | `groups.nodes` | `BboxGroupsWire.nodes` | The rule editor's outbound picker: every node's id and tag, flat, without the per-node rows of the catalog event. |
 
@@ -99,13 +98,45 @@ The `:bg` process is untouched: it still builds configs, runs the core and persi
 in `:bg` when a config is built, from the same shared preference table, so a start triggered by the tile or a shortcut
 honours the mode as well.
 
-### The bridge runs the core; the FFI driver is switched off
+### The FFI driver runs the core; the bridge steps aside for the control plane
 
-Since 3.2.24 the service owns the core again: `KernelService.initialize()` returns before it touches `ffi.mode`,
-`BaseService` starts `ProxyInstance` through gomobile, and every control call takes its channel branch. Nothing on the
-Dart side opens `libthrone.so`, so the channel is the only source of `logs` and `rates`. The FFI driver (worker isolate,
-`throne_*` lifecycle calls, `serviceReload` routing) is intact behind `kFfiDriverEnabled` in `kernel_service.dart`; flip
-it back only after the heartbeat below is verified on a device.
+Since 3.3.0 the Dart driver owns the core again: `KernelService.initialize()` tells the bridge to stand aside
+(`ffi.mode`), opens `libthrone.so` in the worker isolate and drives start/stop/reload plus the status snapshot over
+the `throne_*` C ABI. The channel keeps the data plane — profile storage, `config.build`, subscriptions, test
+sessions — and Android duties (VpnService, notifications, the platform databases), exactly as ADR 0001 splits them.
+
+The driver still yields on its own when the rebuilt core is absent from the build: `ThroneKernel.isAvailable` is
+checked before `ffi.mode` is touched, so an AAR without the patch leaves `BaseService` starting `ProxyInstance`
+through gomobile and every control call on its channel branch. `kFfiDriverEnabled` in `kernel_service.dart` is the
+single switch for the whole path; turning it off restores the pre-3.3.0 operator without deleting the driver.
+
+### What the driver has to report back (FFI driver only)
+
+Four things the service used to do while it owned the core are now the driver's job, because they are answers only
+the running box can give:
+
+- **Running-config facts.** `state.markRunning` / `state.clearRunning` keep `DataStore.runningProfiles` and
+  `runningRouteId` in step with the box. `ProfileManager.runningUses` refuses to delete a node a running chain still
+  uses, and `RouteManager.runningRouteId` decides whether a group's routing change needs a reload; both read the
+  store, so a driver that never writes it silently disables two guards. The values come straight from `config.build`,
+  and they are written after `worker.start()` held — not when the config was built, which would leave stale facts
+  behind whenever the core refuses to come up.
+- **Domain resolution.** The diagnostics screen and its `dns.resolve` channel went away, and the AIDL method,
+  `DomainResolver` and the Dart driver path went with them. The C ABI's `Mobile.resolveDomains` stays in the core
+  patch (it is part of the throne_* surface, not something the UI owns); nothing calls it today. Subscription
+  filtering never needed any of this: its request carries a full test config, so the core builds a probe box when
+  no instance is passed.
+- **Wi-Fi rules.** The monitor has to live on the Android side (it owns the ConnectivityManager callback), but the
+  core that re-reads the SSID is Dart's. `wifi.watch` starts the monitor when the box says it needs Wi-Fi state;
+  each change comes back as a `wifi.state` event and the driver calls `Instance.updateWIFIState()`.
+- **Notification speed.** `TrafficLooper` needs a `ProxyInstance` for its `TrafficUpdater`, so in ffiMode it never
+  starts and the notification's speed line stays at zero. The driver pushes its status snapshot through
+  `state.stats` instead, which lands in the same `SpeedDisplayData` the looper would have produced.
+
+A service that comes up before Dart (START_STICKY, always-on VPN, a widget) has already built its own box by the time
+`ffi.mode` arrives. Two boxes on one tun fight over the same descriptor, so `BboxKernel.handOver()` stops the
+service-side one and restarts the service in place; the ffiMode branch keeps the notification and leaves the core to
+Dart, which rebuilds it from `KernelService.adoptService()` once the channel can answer `config.build`.
 
 ### The heartbeat is a liveness question, not a data question (FFI driver only)
 
@@ -119,6 +150,46 @@ Every lifecycle step writes a `[lifecycle] …` line into `core.log` (start, sto
 heartbeat loss, start failure), and the service writes `[service] state -> …` on each transition. The log screen tails
 that same file, so a restart loop reads as a sequence instead of a mystery.
 
+## The data plane moves to Dart
+
+`sager_net.db` is opened by Room, and Room opens it with `WRITE_AHEAD_LOGGING` — `SagerDatabase` says so and names
+the reason: a reader in one process runs while the other writes. Nothing stops a third connection in the Dart isolate
+from doing the same, so the data plane does not need a protocol between the two sides. It needs a path, which Dart
+cannot derive (`/data/data/<pkg>/databases` requires a package name it does not have), so `data.path` answers once —
+on the first route-list read, not at startup — with the file and the schema version Room actually opened at, read
+from the file, not from the annotation, because a downgrade makes those two disagree.
+
+The library is the platform's own `libsqlite3.so` over `dart:ffi`, not `sqflite`. That is not a preference: this
+module's AAR cannot register plugins. `flutter build aar` publishes a `GeneratedPluginRegistrant` the host loads by
+reflection and **swallows** on failure, which is why `BboxFlutterActivity.registerScannerPlugin` exists at all. A
+`DynamicLibrary` has no registrant. `flutter/lib/data/sqlite.dart` is the whole binding.
+
+What is live today is one table's **read**: `route_profiles`, joined to `route_rules` for the two counts and to
+`settings` for `current_route_id`, through `RouteProfilesDao`. `RouteProfilesSource` prefers it on the route list and
+the route editor and falls back to `routes.list` over the channel on every failure — no `libsqlite3.so`, no
+`data.path` answer, an unexpected schema, a SQL error, or an empty table. The empty case is deliberate: on the host
+side `RouteManager.all()` would call `ensureDefault()` and **write** a profile, which a read-only Dart connection
+must never do. The SQL reproduces `BboxRoutes.list()`'s wire shape, so the fallback is invisible to the screen.
+
+`groups` (through `GroupsDao`) remains the un-wired vertical slice: it proves that a second connection lives beside
+Room's and pins the column names, but no screen calls it and release AOT tree-shakes it. The remaining tables
+(`profiles`, `SettingEntry`, `MarkerEntity`) follow the same shape, table by table, with writes only after reads are
+trusted on a device.
+
+Two rules keep this from drifting:
+
+- `schema_audit.py` compares `@Database(version = …)` with `roomSchemaVersion` in `db.dart` on every push, and also
+  column-checks every SELECT in `flutter/lib/data/*_dao.dart` against Room's exported schema JSON
+  (`app/schemas/…/<version>.json`). A version bump on one side alone still compiles and still queries — it just reads
+  the wrong column, silently; so does a migration that renames or drops a column the SQL mentions by name (the query
+  throws, `RouteProfilesSource` catches, and the channel answers forever with no report). Both now fail the push.
+- `DataLayer.attach` answers null for every failure (no library, no path, unexpected schema). A null means "keep using
+  the channel", the same contract `ThroneKernel.isAvailable` has on the kernel side.
+
+What stays on the channel is what Dart cannot reach: the platform (`VpnService`, notifications, the widget, SAF,
+`PackageManager`, Logcat) and the host's own state machine (`DataStore.serviceState`, `ProfileManager`'s caches).
+Neither is a gap in the migration — they are the parts that were never data.
+
 ## Not wired yet
 
 These fall through the dispatch to the `unsupported` error. They are the B-box features Throne has
@@ -131,9 +202,9 @@ list needs no Shizuku grant.
 
 Wired since the earlier drafts of this file: the connections and logs screens (`BboxApi.connections`
 over the clash API, `BboxLogs` over `CoreLog`), profile import (`addProfile` and the scanner/file
-flows), the per-node probe (`dashboard.probe.*` with `dashboard.qualityCache.*`), and the
-domain-resolution tool (`dns.resolve`, whose `dnsResolve` capability is the one diagnostics entry
-that is on).
+flows) and the per-node probe (`dashboard.probe.*` with `dashboard.qualityCache.*`). The
+domain-resolution tool shipped here once and left with the diagnostics screen (see the driver note
+above).
 
 File payloads the platform hands the app land here too: `files.open` takes a `content://` or
 `file://` Uri and answers either with the `backup` envelope of a `.thrbackup` (the same shape

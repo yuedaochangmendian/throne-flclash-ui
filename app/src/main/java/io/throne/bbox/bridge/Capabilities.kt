@@ -33,7 +33,6 @@ object Capabilities {
         "perAppManaged" to false,  // no Shizuku-managed package list
         "rootQuery" to false,      // packages come from PackageManager only
         "dnsObject" to false,      // no raw DNS object editor
-        "dnsResolve" to true,      // dns.resolve: domains resolved through the running box, see BboxResolve
         "routes" to true,          // RouteManager over routes.list/get/save/delete, see BboxRoutes
         "autoSelector" to true,    // type=autoselector nodes over profiles.autoSelector*, see BboxProfiles
         "warp" to true,            // warp.register fills the mode's keys; the fields stay editable, see BboxWarp

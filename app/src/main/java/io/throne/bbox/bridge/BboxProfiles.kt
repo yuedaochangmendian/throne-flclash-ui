@@ -628,7 +628,15 @@ object BboxProfiles {
 
     /** The running selector's status (AutoSelectorStatus.toJson); the phase is "idle" when nothing runs. */
     suspend fun autoSelectorStatus(): String = withContext(Dispatchers.IO) {
-        AutoSelectorRuntime.statusJson(withMembers = true)
+        val json = AutoSelectorRuntime.statusJson(withMembers = true)
+        if (!BboxKernel.ffiMode) return@withContext json
+        // In ffiMode the selector runs inside the box Dart owns: this runtime never attaches to
+        // it, so the status is idle even while the core is ranking. Say who holds it instead of
+        // letting the page report "not running" for a selector that is working.
+        runCatching {
+            val root = org.json.JSONObject(json)
+            if (root.optString("phase") == "idle") root.put("driver", "ffi").toString() else json
+        }.getOrDefault(json)
     }
 
     /**

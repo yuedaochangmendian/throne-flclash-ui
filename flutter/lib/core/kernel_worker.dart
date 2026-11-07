@@ -25,6 +25,8 @@ enum KernelCommand {
   stop,
   setHeartbeat,
   warpRegister,
+  needWifiState,
+  updateWifiState,
   dispose,
 }
 
@@ -45,19 +47,37 @@ class KernelWorker {
   final SendPort _commands;
   final Stream<WorkerEvent> _events;
   final ReceivePort _eventsPort;
+  bool _disposed = false;
 
   Stream<WorkerEvent> get events => _events;
 
   static Future<KernelWorker> spawn() async {
     final events = ReceivePort();
     final ready = ReceivePort();
-    await Isolate.spawn(_workerMain, <Object>[events.sendPort, ready.sendPort]);
+    final Isolate isolate;
+    try {
+      isolate = await Isolate.spawn(
+          _workerMain, <Object>[events.sendPort, ready.sendPort]);
+    } catch (_) {
+      // The spawn itself failed before any cleanup path existed; without
+      // closing these the two native ports would leak.
+      events.close();
+      ready.close();
+      rethrow;
+    }
     late final SendPort commands;
     try {
       commands = await ready.first.timeout(
         const Duration(seconds: 20),
         onTimeout: () => throw StateError('the kernel worker did not start'),
       ) as SendPort;
+    } catch (_) {
+      // The worker never came up (a timeout, or its first message was not the
+      // command port). Without this, the isolate would live on holding
+      // libthrone.so open, with an events port nobody ever reads.
+      isolate.kill(priority: Isolate.beforeNextEvent);
+      events.close();
+      rethrow;
     } finally {
       ready.close();
     }
@@ -97,6 +117,14 @@ class KernelWorker {
   Future<void> setHeartbeat(bool enabled) =>
       _call(KernelCommand.setHeartbeat, enabled);
 
+  /// Whether the running config asks for Wi-Fi state at all (a Wi-Fi-scoped route,
+  /// DNS or rule set). Asked after the start, when there is an instance to ask.
+  Future<bool> needWifiState() async =>
+      (await _call(KernelCommand.needWifiState)) == true;
+
+  /// Tells the core to re-read the platform's SSID/BSSID (the Kotlin side reads it).
+  Future<void> updateWifiState() => _call(KernelCommand.updateWifiState);
+
   Future<Map<String, dynamic>> warpRegister(
     String tunnelType,
     Map<String, dynamic> params,
@@ -109,6 +137,8 @@ class KernelWorker {
   }
 
   Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
     try {
       await _call(KernelCommand.dispose);
     } finally {
@@ -230,6 +260,12 @@ void _workerMain(List<Object> init) {
             data['tunnelType'] as String,
             asStringKeyedMap(data['params'], context: 'warp params'),
           ));
+        case KernelCommand.needWifiState:
+          final current = instance;
+          reply.send(current != null && current.needWIFIState());
+        case KernelCommand.updateWifiState:
+          instance?.updateWIFIState();
+          reply.send(null);
         case KernelCommand.dispose:
           heartbeatEnabled = false;
           heartbeat?.cancel();

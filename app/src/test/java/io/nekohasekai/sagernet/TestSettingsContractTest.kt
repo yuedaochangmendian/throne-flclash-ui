@@ -11,12 +11,12 @@ class TestSettingsContractTest {
 
     @Test
     fun freshInstallDefaultsMatchThroneBaseline() {
-        assertEquals("http://cp.cloudflare.com/", SettingsRegistry.TEST_URL.default)
+        assertEquals("https://cp.cloudflare.com/", SettingsRegistry.TEST_URL.default)
         assertEquals(10, SettingsRegistry.TEST_CONCURRENT.default)
         assertEquals(3000, SettingsRegistry.URL_TEST_TIMEOUT_MS.default)
         assertEquals(SpeedTestSettings.FULL, SettingsRegistry.SPEED_TEST_MODE.default)
         assertEquals(5000, SettingsRegistry.SPEED_TEST_TIMEOUT_MS.default)
-        assertEquals("http://cachefly.cachefly.net/1mb.test", SettingsRegistry.SIMPLE_DL_URL.default)
+        assertEquals("https://cachefly.cachefly.net/1mb.test", SettingsRegistry.SIMPLE_DL_URL.default)
     }
 
     @Test

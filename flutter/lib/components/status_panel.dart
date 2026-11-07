@@ -20,7 +20,9 @@ class StatusPanel extends StatefulWidget {
 class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
   // FlClash common/constant.dart and providers/routed_probe.dart.
   static const _throttleDuration = Duration(seconds: 5);
-  static const _moveSettleDuration = Duration(milliseconds: 300);
+  // Long enough to swallow the burst of state changes a connect or a profile switch emits, short
+  // enough that the card is not visibly waiting: the probe starts as soon as the route is settled.
+  static const _moveSettleDuration = Duration(milliseconds: 120);
   bool _busy = false, _checking = false, _qualityChecking = false;
   Json? _egress;
   String? _error, _qualityError, _stamp;
@@ -403,7 +405,9 @@ class EgressDetails extends StatelessWidget {
     'Organization': info['organization'], if (info['isp'] != null) 'ISP': info['isp'], 'ASN': info['asn'],
     'Type': context.tr(info['type'] as String? ?? 'Unknown type'),
     if (info['quality'] != null) 'Quality': context.tr(info['quality'] as String),
-    'IP query source': info['ipSource'], 'Quality query source': info['source'],
+    // One row, not two: show the source that actually answered (the quality lookup
+    // when it ran, otherwise the egress probe), never both side by side.
+    'IP source': info['source'] ?? info['ipSource'],
     'Last checked': localDate(info['qualityCheckedAt'] ?? info['checkedAt'])}),
     if (info['qualityError'] != null) generateSection(title: context.tr('IP quality unavailable'), items: [
       for (final failure in rows(info['qualityFailures'])) ListItem(title: Text(failure['source'].toString()),

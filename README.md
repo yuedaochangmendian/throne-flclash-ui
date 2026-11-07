@@ -28,6 +28,11 @@ line — is owned here.
   verifies size and SHA-256 before offering the installer.
 - Releases from v2.0.0 on are signed with a key that Android refuses to install over a 1.x release (signature
   conflict): uninstall the old release first and import subscriptions again.
+- **Preview builds (`-pre.N`) are one-way.** Their `versionCode` is always below the stable release of the same
+  version (`X.Y.Z` stable is `*999`, previews are `*001..*998`), so Android refuses to install a preview over the
+  stable release it belongs to (`INSTALL_FAILED_VERSION_DOWNGRADE`). Installing a preview over an older release or
+  an older preview works; going back from stable to preview requires uninstalling first. The in-app updater only
+  offers stable releases and never suggests a downgrade.
 
 ## Features
 

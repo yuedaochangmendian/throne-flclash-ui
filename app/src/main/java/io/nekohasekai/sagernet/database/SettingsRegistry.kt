@@ -263,7 +263,7 @@ object SettingsRegistry {
 
     // ------------------------------------------------------------------------------------------------ testing
 
-    @JvmField val TEST_URL = string("test_url", "http://cp.cloudflare.com/") { it.isNotBlank() }
+    @JvmField val TEST_URL = string("test_url", "https://cp.cloudflare.com/") { it.isNotBlank() }
     @JvmField val URL_TEST_TIMEOUT_MS = int("url_test_timeout_ms", 3000) { it > 0 }
     @JvmField val TEST_CONCURRENT = int("test_concurrent", 10) { it > 0 }
     @JvmField val DIRECT_TEST_URL = string("direct_test_url", "")
@@ -274,7 +274,7 @@ object SettingsRegistry {
     /** 0 download + upload, 1 download, 2 upload, 3 simple download, 4 country (Const.hpp:39-49). */
     @JvmField val SPEED_TEST_MODE = int("speed_test_mode", 0) { it in 0..4 }
     @JvmField val SPEED_TEST_TIMEOUT_MS = int("speed_test_timeout_ms", 5000) { it > 0 }
-    @JvmField val SIMPLE_DL_URL = string("simple_dl_url", "http://cachefly.cachefly.net/1mb.test") {
+    @JvmField val SIMPLE_DL_URL = string("simple_dl_url", "https://cachefly.cachefly.net/1mb.test") {
         SpeedTestSettings.isValidHttpUrl(it)
     }
 
@@ -370,7 +370,9 @@ object SettingsRegistry {
     val ANDROID_KEYS: Set<String> = setOf(
         Key.SERVICE_MODE, Key.PROXY_APPS, Key.BYPASS_MODE, Key.INDIVIDUAL, Key.APPEND_HTTP_PROXY, Key.HTTP_PROXY_BYPASS,
         Key.METERED_NETWORK, Key.ALLOW_BYPASS, Key.WAKE_RESET_CONNECTIONS, Key.NETWORK_CHANGE_RESET_CONNECTIONS,
-        Key.SHOW_DIRECT_SPEED, Key.SHOW_GROUP_IN_NOTIFICATION, Key.NOTIFICATION_ACTIONS,
+        Key.SHOW_DIRECT_SPEED, Key.SHOW_PROXY_SPEED, Key.SHOW_GROUP_IN_NOTIFICATION, Key.NOTIFICATION_ACTIONS,
+        Key.NOTIFICATION_TITLE_PREFIX, Key.NOTIFICATION_TITLE_TEMPLATE, Key.NOTIFICATION_CONTENT_TEMPLATE,
+        Key.SHOW_TRAFFIC_TOTAL,
         Key.USE_SYSTEM_THEME, Key.APP_THEME, Key.NIGHT_THEME, Key.AMOLED_THEME, Key.APP_LANGUAGE,
         Key.ALWAYS_SHOW_ADDRESS, Key.GROUP_LAYOUT_MODE, Key.COMPACT_PROFILE_ROWS, Key.COMPACT_GROUP_CARDS,
         Key.HIDE_FROM_RECENT_APPS, Key.LOG_BUF_SIZE, Key.LOG_FONT_SIZE, Key.APP_TLS_VERSION,

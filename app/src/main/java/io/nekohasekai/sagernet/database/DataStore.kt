@@ -82,7 +82,17 @@ object DataStore : OnPreferenceDataStoreChangeListener {
     var serviceMode by configurationStore.string(Key.SERVICE_MODE) { Key.MODE_VPN }
 
     var showGroupInNotification by configurationStore.boolean(Key.SHOW_GROUP_IN_NOTIFICATION)
+    var showProxySpeed by configurationStore.boolean(Key.SHOW_PROXY_SPEED) { true }
     var showDirectSpeed by configurationStore.boolean(Key.SHOW_DIRECT_SPEED) { true }
+    var showTrafficTotal by configurationStore.boolean(Key.SHOW_TRAFFIC_TOTAL) { true }
+    // Empty = the service's default action set; ServiceNotification falls back to it.
+    var notificationActions by configurationStore.stringList(Key.NOTIFICATION_ACTIONS)
+    // Legacy prefix, kept so an upgrading user's prefix survives; the template supersedes it.
+    var notificationTitlePrefix by configurationStore.string(Key.NOTIFICATION_TITLE_PREFIX) { "" }
+    // `{title}` is the profile name (or "Switching…"); everything else is literal.
+    var notificationTitleTemplate by configurationStore.string(Key.NOTIFICATION_TITLE_TEMPLATE) { "" }
+    // Empty keeps the built-in rate/detail lines; otherwise `{up}` etc. are filled from the stats.
+    var notificationContentTemplate by configurationStore.string(Key.NOTIFICATION_CONTENT_TEMPLATE) { "" }
     var alwaysShowAddress by configurationStore.boolean(Key.ALWAYS_SHOW_ADDRESS)
     var compactProfileRows by configurationStore.boolean(Key.COMPACT_PROFILE_ROWS)
     var compactGroupCards by configurationStore.boolean(Key.COMPACT_GROUP_CARDS)

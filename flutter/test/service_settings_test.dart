@@ -35,10 +35,12 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(GeneralPage), findsOneWidget);
     expect(find.text('Apply service changes'), findsNothing);
+    // The notification toggles are a page of their own now; these are the
+    // rows that stayed on General, close enough to the top to be on screen.
     for (final (title, key, value, restarts) in [
       ('Always show the address', 'alwaysShowAddress', true, false),
-      ('Show group name in the notification', 'showGroupInNotification', true, false),
-      ('Show direct speed', 'showDirectSpeed', true, false),
+      ('Reset connections on network change', 'networkChangeResetConnections', true, false),
+      ('Reset connections when waking up', 'wakeResetConnections', true, false),
     ]) {
       await tester.tap(find.text(title));
       await tester.pumpAndSettle();

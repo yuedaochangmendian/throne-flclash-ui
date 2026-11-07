@@ -18,6 +18,7 @@ import android.os.Build
 import android.os.Debug
 import io.nekohasekai.sagernet.Key
 import io.nekohasekai.sagernet.database.DataStore
+import io.nekohasekai.sagernet.database.SagerDatabase
 import io.nekohasekai.sagernet.utils.CrashStore
 import io.nekohasekai.sagernet.database.DnsServerHistory
 import io.nekohasekai.sagernet.database.GroupRepo
@@ -47,7 +48,6 @@ import io.throne.bbox.bridge.BboxMemory
 import io.throne.bbox.bridge.BboxMode
 import io.throne.bbox.bridge.BboxProbeSession
 import io.throne.bbox.bridge.BboxProfiles
-import io.throne.bbox.bridge.BboxResolve
 import io.throne.bbox.bridge.BboxRoutes
 import io.throne.bbox.bridge.BboxScanChunks
 import io.throne.bbox.bridge.BboxTestSession
@@ -215,11 +215,15 @@ class ThroneBoxBridge(
         // sample per second (`tick1s`), so an idle tunnel scrolls to zero instead of freezing on
         // its last peak. A sample is pushed every second while the service runs, and not at all
         // while it is stopped — the window belongs to the session that produced it.
+        //
+        // In ffiMode this side owns no TrafficUpdater, so the meter stays at zero and a sample
+        // would only push those zeros: the FFI driver's status feed is the sparkline's source
+        // then, and the two would alternate on screen once a second.
         ratesTick?.cancel()
         ratesTick = scope.launch {
             while (isActive) {
                 delay(1_000)
-                if (DataStore.serviceState.connected) pushState(sampleRate = true)
+                if (!BboxKernel.ffiMode && DataStore.serviceState.connected) pushState(sampleRate = true)
             }
         }
     }
@@ -327,6 +331,33 @@ class ThroneBoxBridge(
     }
 
     /**
+     * [respond] for the handlers whose work is disk-bound: the block runs on [Dispatchers.IO] and the
+     * reply is sent back on the scope's main-thread dispatcher, because a `MethodChannel.Result` reply
+     * belongs on the thread the call arrived on. Use this for a block that opens a database or is the
+     * first to touch a preferences file — `data.path`'s Room open can migrate on disk, and a cold
+     * `settings.get` loads the JSON document. Keep [respond] for blocks that touch UI, services or
+     * single-threaded host state; blocks that mix both should take [respond] and switch inside.
+     */
+    private fun MethodChannel.Result.respondIo(block: suspend () -> Any?) {
+        if (!scope.isActive) {
+            error("cancelled", "Activity closed", null)
+            return
+        }
+        scope.launch {
+            try {
+                val answer = withContext(Dispatchers.IO) { block() }
+                success(answer)
+            } catch (e: CancellationException) {
+                error("cancelled", e.message ?: "Operation cancelled", null)
+                throw e
+            } catch (e: Exception) {
+                Logs.w(e)
+                error("failed", e.message ?: e.javaClass.simpleName, null)
+            }
+        }
+    }
+
+    /**
      * Starts the background service and, in VPN mode, waits until it exists before answering.
      *
      * `SagerNet.startService()` only posts a startForegroundService intent, so it returns before
@@ -345,7 +376,9 @@ class ThroneBoxBridge(
             if (System.currentTimeMillis() > deadline) {
                 error("VpnService did not start within ${SERVICE_READY_TIMEOUT_MS / 1000}s")
             }
-            delay(50)
+            // The service is created in a few hundred milliseconds; a 50 ms poll added up to
+            // that again in quantization on a path the user is watching.
+            delay(10)
         }
     }
 
@@ -361,6 +394,15 @@ class ThroneBoxBridge(
                     if (DataStore.serviceState.canStop) SagerNet.stopService()
                     result.success(null)
                 }
+                // Read-only state the FFI driver polls while adopting a service that
+                // started before Dart did. `registered` says the VpnService is back
+                // after handOver()'s in-place restart; the core must not ask it for
+                // a tun before that. No side effects: this never starts or stops.
+                "service.state" -> result.success(mapOf(
+                    "state" to DataStore.serviceState.name,
+                    "registered" to (DataStore.baseService != null),
+                    "ffiMode" to BboxKernel.ffiMode,
+                ))
                 "service.reload" -> {
                     if (DataStore.serviceState.canStop) SagerNet.reloadService()
                     result.success(null)
@@ -608,7 +650,9 @@ class ThroneBoxBridge(
                     val values = call.argument<Map<String, Any?>>("value").orEmpty()
                     result.success(writePreferences(values))
                 }
-                "settings.get" -> result.success(settingsWire())
+                // A cold read loads the JSON document from disk and walks DataStore; a warm one is
+                // memory. Either way it touches no UI and no service, so it can go to IO.
+                "settings.get" -> result.respondIo { settingsWire() }
                 "settings.set" -> {
                     val key = call.argument<String>("key") ?: error("Missing key")
                     applySettings(mapOf(key to call.argument<Any>("value")))
@@ -670,13 +714,6 @@ class ThroneBoxBridge(
                 // The outbound picker in the rule editor needs names, not rows: id and tag only.
                 "groups.nodes" -> result.respond {
                     mapOf("nodes" to nodesWire(BboxBridge.state.value))
-                }
-                // Domain resolution for the diagnostics screen: the lookups run in the core process
-                // against the running box's dns-direct transport, so the answer is the tunnel's and
-                // not the phone's. Blocks for up to ~10 s, hence respond() rather than success().
-                "dns.resolve" -> {
-                    val domains = call.argument<List<String>>("domains").orEmpty()
-                    result.respond { BboxResolve.resolve(domains) }
                 }
                 // What Wi-Fi rules need (location, background, services): the native walk-through
                 // runs its dialogs and answers whether everything was granted. The caller saves the
@@ -869,14 +906,54 @@ class ThroneBoxBridge(
 
                 // --- the FFI path's slim surface (BboxKernel): Dart drives the kernel
                 // directly over dart:ffi and only DB/build work crosses here. ---
+                // The one platform fact Dart cannot derive: where Room keeps its file.
+                // `/data/data/<pkg>/databases` needs the package name, which the Dart side
+                // has no way to learn, so it asks once at startup and then opens the file
+                // itself. This is the last data-plane call on the channel.
+                // STATUS: WIRED. `BoxController.routeProfiles` asks for this once, on the
+                // first route-list read, and `DataLayer.attach` opens the file read-only.
+                // `RouteProfilesSource` falls back to `routes.list` over the channel when
+                // this call fails, libsqlite3 is absent, or the schema does not match.
+                "data.path" -> {
+                    // Reading `version` forces Room to open (and migrate) the file, which is
+                    // what makes the answer trustworthy: the annotation could disagree with
+                    // the file after a downgrade, and Dart would then map columns by position.
+                    // That open (and a migration) is disk work, so it must not block the main
+                    // thread — this call sits ahead of the first route-profile screen.
+                    result.respondIo {
+                        val file = activity.getDatabasePath(Key.DB_PROFILE)
+                        val version = SagerDatabase.instance.openHelper.readableDatabase.version
+                        mapOf("path" to file.absolutePath, "version" to version)
+                    }
+                }
                 "ffi.mode" -> {
-                    BboxKernel.ffiMode = call.argument<Boolean>("enabled") == true
+                    val enabled = call.argument<Boolean>("enabled") == true
+                    BboxKernel.ffiMode = enabled
                     // Non-Dart reloads (widget/tile/notification) reach the FFI driver as events.
                     BboxKernel.onReloadWanted = if (BboxKernel.ffiMode) {
                         { emit("serviceReload", true) }
                     } else {
                         null
                     }
+                    // A service that came up before Dart (START_STICKY, always-on VPN) already
+                    // built its own box. Two boxes on one tun fight over the same descriptor,
+                    // so the service-side one is stopped and the service restarted in place:
+                    // with ffiMode now true, that start keeps the notification and leaves the
+                    // core to Dart, which rebuilds it from the dashboard state it finds.
+                    val handedOver = if (enabled) BboxKernel.handOver() else false
+                    result.success(mapOf("handedOver" to handedOver))
+                }
+                // Wi-Fi rules in ffiMode: Dart asks the core whether the config needs Wi-Fi
+                // state and enables the monitor here. Only the Android callback stays on this
+                // side; every change is announced so the core re-reads the SSID/BSSID.
+                "wifi.watch" -> {
+                    val enabled = call.argument<Boolean>("enabled") == true
+                    BboxKernel.onWifiChanged = if (enabled) {
+                        { emit("wifi.state", true) }
+                    } else {
+                        null
+                    }
+                    DataStore.baseService?.watchWifiRules(enabled)
                     result.success(null)
                 }
                 // Lifecycle breadcrumbs from the FFI driver, written into the same core.log the
@@ -900,6 +977,32 @@ class ThroneBoxBridge(
                 )
                 "state.setMode" -> {
                     BboxKernel.setMode(call.argument<String>("mode") ?: error("Missing mode"))
+                    result.success(null)
+                }
+                // The service used to write these two right after proxy.init(); the FFI driver
+                // owns the start now, so it reports them once the core is actually up.
+                "state.markRunning" -> {
+                    val ids = (call.argument<List<*>>("involvedProfileIds") ?: emptyList<Any?>())
+                        .mapNotNull { (it as? Number)?.toLong() }
+                    BboxKernel.markRunning(ids, (call.argument<Number>("routeId"))?.toLong() ?: 0L)
+                    result.success(null)
+                }
+                "state.clearRunning" -> {
+                    BboxKernel.clearRunning()
+                    result.success(null)
+                }
+                // The FFI driver's status snapshot, where TrafficLooper would have written it.
+                // Nothing on the service side polls the core in ffiMode, so without this the
+                // notification's speed line and the widget stay at zero all session.
+                "state.stats" -> {
+                    DataStore.baseService?.publishKernelStats(
+                        io.nekohasekai.sagernet.aidl.SpeedDisplayData(
+                            txRateProxy = (call.argument<Number>("txRate"))?.toLong() ?: 0L,
+                            rxRateProxy = (call.argument<Number>("rxRate"))?.toLong() ?: 0L,
+                            txTotal = (call.argument<Number>("txTotal"))?.toLong() ?: 0L,
+                            rxTotal = (call.argument<Number>("rxTotal"))?.toLong() ?: 0L,
+                        ),
+                    )
                     result.success(null)
                 }
                 "state.saveWarpKeys" -> result.respond {
@@ -1074,8 +1177,8 @@ class ThroneBoxBridge(
         if (!visible) return
         memoryJob = scope.launch {
             while (isActive) {
-                // The core's HTTP call inside runs off the main thread, or it throws there and the
-                // runCatching in memoryWire keeps the core figure at zero forever.
+                // memoryWire() only calls Debug.getMemoryInfo and Runtime (no HTTP
+                // any more), but a 2 s sample still belongs off the main looper.
                 emit("memory", withContext(Dispatchers.IO) { memoryWire() })
                 delay(2000)
             }
@@ -1083,37 +1186,39 @@ class ThroneBoxBridge(
     }
 
     /**
-     * What the memory panel shows. `rss` is the whole process — ART heap, native allocations and the
-     * core's own Go heap — so it is a container, never a third addend next to `app` and `core`.
-     * `total` is the ART heap ceiling, not device RAM: it bounds `app` alone, and is kept only so a
-     * remote core that reports a single figure still has somewhere to put it.
+     * What the memory panel shows, all of it from Android's own accounting.
      *
-     * The core reports one number (`inuse`) and no breakdown, so `heapInuse`/`heapIdle` describe the
-     * ART heap, not the core. Labelling them under "Core" used to divide a 64 MiB heap by a 4 MiB
-     * core and print 1600%.
+     * `Debug.MemoryInfo` reports PSS — what the process actually has resident — and splits it by
+     * allocator: `dalvikPss` for the ART heap, `nativePss` for native allocations (the Go runtime is
+     * one) and `otherPss` for the rest. The three add up to `totalPss`, so the panel can show four
+     * numbers that agree with each other without any arithmetic of its own.
+     *
+     * The core used to grade itself instead: `Status().Memory` is the heap the Go runtime has
+     * *mapped*, which is a different quantity from resident memory and can exceed RSS. On a 286 MB
+     * process it read 319 MB, and every way of folding it into the panel produced a part larger
+     * than the whole.
+     *
+     * `heapInuse`/`heapIdle` stay the ART heap's own counters: they answer "how full is the heap",
+     * which PSS cannot.
      */
     private fun memoryWire(): Map<String, Any?> {
         val runtime = Runtime.getRuntime()
         val heapUsed = runtime.totalMemory() - runtime.freeMemory()
-        val core = runCatching { BboxApi.memory() }.getOrNull()
+        val info = Debug.MemoryInfo()
+        Debug.getMemoryInfo(info)
+        fun kb(value: Int) = value.toLong() * 1024
         return mapOf(
             "total" to runtime.maxMemory(),
-            "app" to heapUsed,
-            "core" to (core ?: 0L),
-            "rss" to processPss(),
+            "app" to kb(info.dalvikPss),
+            "core" to kb(info.nativePss),
+            "other" to kb(info.otherPss),
+            "rss" to kb(info.totalPss),
             "running" to DataStore.serviceState.connected,
             "remote" to false,
             "heapInuse" to heapUsed,
             "heapIdle" to (runtime.totalMemory() - heapUsed),
         )
     }
-
-    /** `totalPss` counts a shared page once, which is what "resident" has to mean for a whole process. */
-    private fun processPss(): Long = runCatching {
-        val info = Debug.MemoryInfo()
-        Debug.getMemoryInfo(info)
-        info.totalPss.toLong() * 1024
-    }.getOrDefault(0L)
 
     // -------------------------------------------------------------------------------------------- probes and egress
 
@@ -1164,7 +1269,10 @@ class ThroneBoxBridge(
             "type" to info.type,
             "direct" to direct,
             "ipSource" to (info.source?.substringAfter("://")?.substringBefore('/') ?: "ipwho.is"),
-            "checkedAt" to System.currentTimeMillis(),
+            // A fresh probe just updated the cache time; a served-from-cache or
+            // failure-path answer carries the moment it was actually measured.
+            "checkedAt" to (BboxEgress.cachedAt(direct).takeIf { it > 0 }
+                ?: System.currentTimeMillis()),
         )
     }
 
