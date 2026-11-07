@@ -667,7 +667,15 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
             trailing: Text(_outboundName(outboundId)),
             onTap: () async {
               // The catalog the UI holds is counts-only; the picker asks for the names it shows.
-              final nodes = await context.box.groupNodes();
+              final List<Json> nodes;
+              try {
+                nodes = await context.box.groupNodes();
+              } catch (error) {
+                // A dead service or an old host: report like every other load
+                // on this page instead of dying as an uncaught async error.
+                if (context.mounted) context.box.report(error);
+                return;
+              }
               if (!context.mounted) return;
               final picked = await showDialog<int>(
                 context: context,

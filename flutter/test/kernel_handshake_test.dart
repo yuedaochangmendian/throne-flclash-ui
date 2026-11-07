@@ -92,6 +92,18 @@ class FakeWorker implements KernelWorker {
   }
 }
 
+/// A worker whose [start] hangs until the test releases it, so a second
+/// lifecycle command can land while the first one is still unwinding.
+class GatedWorker extends FakeWorker {
+  final startGate = Completer<void>();
+
+  @override
+  Future<void> start() async {
+    calls.add('start');
+    await startGate.future;
+  }
+}
+
 /// One mock channel per test (the handlers are global per channel name).
 class ChannelLog {
   ChannelLog(this.name);
@@ -201,6 +213,118 @@ void main() {
           reason: 'the start failed before the slow build was awaited');
       expect(log.calls, contains('service.stop'));
       expect(service.active, isFalse);
+    });
+  });
+
+  group('lifecycle serialization', () {
+    test('a reload behind an unwinding start restarts the live instance',
+        () async {
+      final log = ChannelLog('test.handshake.reload-behind-start');
+      log.install(defaultReply);
+      addTearDown(log.tearDown);
+
+      final kernel = FakeKernel();
+      final worker = GatedWorker();
+      final service = KernelService(log.box);
+      service.debugAttach(kernel, worker);
+      addTearDown(() {
+        service.dispose();
+        kernel.close();
+      });
+
+      final startDone = service.startService();
+      final reloadDone = service.reloadService(reason: 'test');
+      worker.startGate.complete();
+      await startDone;
+      await reloadDone;
+
+      expect(
+        worker.calls,
+        // start (gated), heartbeat on — then the queued reload tears the live
+        // instance down and starts a fresh one, instead of silently closing
+        // the instance the start was still bringing up.
+        [
+          'createInstance', 'start', 'setHeartbeat', //
+          'setHeartbeat', 'stop', //
+          'createInstance', 'start', 'setHeartbeat',
+        ],
+      );
+      expect(service.active, isTrue,
+          reason: 'the reload must leave a running core behind');
+    });
+
+    test('a stop behind an unwinding start takes the tunnel down', () async {
+      final log = ChannelLog('test.handshake.stop-behind-start');
+      log.install(defaultReply);
+      addTearDown(log.tearDown);
+
+      final kernel = FakeKernel();
+      final worker = GatedWorker();
+      final service = KernelService(log.box);
+      service.debugAttach(kernel, worker);
+      addTearDown(() {
+        service.dispose();
+        kernel.close();
+      });
+
+      final startDone = service.startService();
+      final stopDone = service.stopService();
+      worker.startGate.complete();
+      await startDone;
+      await stopDone;
+
+      expect(worker.calls, [
+        'createInstance', 'start', 'setHeartbeat', //
+        'setHeartbeat', 'stop',
+      ]);
+      expect(log.calls, contains('service.stop'));
+      expect(service.active, isFalse);
+    });
+
+    test('a second start while the core runs does not orphan the instance',
+        () async {
+      final log = ChannelLog('test.handshake.double-start');
+      log.install(defaultReply);
+      addTearDown(log.tearDown);
+
+      final kernel = FakeKernel();
+      final worker = FakeWorker();
+      final service = KernelService(log.box);
+      service.debugAttach(kernel, worker);
+      addTearDown(() {
+        service.dispose();
+        kernel.close();
+      });
+
+      await service.startService();
+      await service.startService();
+
+      expect(
+        worker.calls.where((call) => call == 'createInstance'),
+        hasLength(1),
+        reason: 'overwriting the handle would leak the live instance',
+      );
+      expect(service.active, isTrue);
+    });
+
+    test('a reload while stopped does not pull the tunnel up', () async {
+      final log = ChannelLog('test.handshake.reload-stopped');
+      log.install(defaultReply);
+      addTearDown(log.tearDown);
+
+      final kernel = FakeKernel();
+      final worker = FakeWorker();
+      final service = KernelService(log.box);
+      service.debugAttach(kernel, worker);
+      addTearDown(() {
+        service.dispose();
+        kernel.close();
+      });
+
+      await service.reloadService(reason: 'stale selection change');
+
+      expect(worker.calls, isEmpty);
+      expect(log.calls, isNot(contains('service.start')));
     });
   });
 

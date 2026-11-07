@@ -49,7 +49,7 @@ jobs:
       - name: Prism UI drift check
         run: |
           python3 tools/diagnostics/prism_drift.py check --json prism_drift.json \
-            --fail-on removed --max-diverged 1
+            --fail-on removed --max-diverged 1 --expect-diverged banner.dart
       - name: Upload Prism UI drift report
         if: ${{ always() }}
         uses: actions/upload-artifact@v7

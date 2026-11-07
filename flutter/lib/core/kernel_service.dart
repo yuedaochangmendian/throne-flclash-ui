@@ -47,6 +47,20 @@ class KernelService {
   bool _starting = false;
   bool _stopping = false;
   bool _recovering = false;
+
+  /// Lifecycle commands (start/stop/reload) run one at a time through this
+  /// chain: a reload or stop that arrives while a start is still unwinding
+  /// waits for it instead of tearing down the instance that start is about to
+  /// produce. Each queued op re-validates the world when it runs, so a stop
+  /// that landed behind a start still wins, and a reload behind a stop does
+  /// not pull the tunnel back up.
+  Future<void>? _lifecycle;
+
+  /// Bumped by every lifecycle op that actually runs. A delayed recovery
+  /// compares the epoch it saw when the core was lost against the current one,
+  /// so a stop-and-restart by the user while the backoff runs cancels the
+  /// recovery instead of reloading a tunnel the user just brought up.
+  int _epoch = 0;
   bool _disposed = false;
   bool _initializing = false;
   bool _statsInFlight = false;
@@ -165,7 +179,7 @@ class KernelService {
     if (_disposed || _kernel == null) return;
     note('adopt: the service came up before the driver, rebuilding its core');
     _recoveryAttempts = 0;
-    await _startCore(bringUpService: true);
+    await _enqueue(() => _startCore(bringUpService: true));
   }
 
   /// A hand-over restarts the service in place: `handOver()` stops the box, and
@@ -215,6 +229,32 @@ class KernelService {
     await _rollbackToBridge();
   }
 
+  /// Serializes one lifecycle op behind everything already queued. The chain
+  /// itself never throws: ops report their own failures, and a failed op must
+  /// not strand the ones behind it.
+  Future<void> _enqueue(Future<void> Function() op) {
+    final previous = _lifecycle;
+    Future<void> run() async {
+      if (previous != null) {
+        try {
+          await previous;
+        } catch (_) {
+          // The chain never fails its awaiters; the op below decides what a
+          // failed predecessor means for the current world.
+        }
+      }
+      if (_disposed || _kernel == null) return;
+      _epoch++;
+      await op();
+    }
+    final future = run();
+    _lifecycle = future;
+    // Keep an observed copy so a rejected op never surfaces as an unhandled
+    // async error; callers that await get the real outcome.
+    unawaited(future.catchError((Object _) {}));
+    return future;
+  }
+
   /// Starts the foreground service (Android duty) and the core itself.
   ///
   /// The two only meet when the core asks the platform for a tun, so they run at the same
@@ -227,25 +267,35 @@ class KernelService {
     note('start: user asked for the tunnel');
     // A start the user asked for is a fresh incident, whatever the last one cost.
     _recoveryAttempts = 0;
-    await _startCore(bringUpService: true);
+    await _enqueue(() => _startCore(bringUpService: true));
   }
 
   Future<void> stopService() async {
     if (_kernel == null) return;
     note('stop: user asked to stop');
-    await _stopCore();
-    await box.call('service.stop');
-    _emitDashboard('Stopped');
+    await _enqueue(() async {
+      await _stopCore();
+      try {
+        await box.call('service.stop');
+      } catch (error) {
+        note('stop: $error');
+      }
+      _emitDashboard('Stopped');
+    });
   }
 
   /// Rebuilds the config and restarts the core in place (the foreground service stays).
-  /// Only restarts if the core was running — a stopped service must not be pulled up
-  /// by a stale selection-change or mode-switch event.
+  /// Only restarts if the core is actually running — a stopped service must not be pulled
+  /// up by a stale selection-change or mode-switch event, and a start still unwinding
+  /// finishes first, so the check below sees its real outcome.
   Future<void> reloadService({String reason = 'reload'}) async {
-    if (_kernel == null || !active) return;
+    if (_kernel == null) return;
     note('reload: $reason');
-    await _stopCore(clearRunning: false);
-    await _startCore();
+    await _enqueue(() async {
+      if (!active) return;
+      await _stopCore(clearRunning: false);
+      await _startCore();
+    });
   }
 
   /// Persists the running-config facts for the code that reads them off the store
@@ -308,6 +358,13 @@ class KernelService {
     if (_kernel == null || _starting || _disposed) return;
     final worker = _worker;
     if (worker == null) return;
+    // A start requested while a core already runs (double tap, a queued second
+    // start) must not overwrite `_instanceHandle` and orphan the live instance
+    // inside the worker — the old one would never be closed.
+    if (active) {
+      note('start: the core is already running');
+      return;
+    }
     _starting = true;
     _emitDashboard('Starting');
     final beganAt = DateTime.now();
@@ -549,12 +606,18 @@ class KernelService {
     _recovering = true;
     final attempt = _recoveryAttempts;
     _recoveryAttempts++;
+    // The world when the core was lost: if any lifecycle command runs while the
+    // backoff sleeps (the user stopped, or stopped and restarted), the epoch no
+    // longer matches and this recovery stands down instead of reloading a
+    // tunnel the user just brought up.
+    final epochAtLoss = _epoch;
     try {
       if (attempt > 0) {
         _emitDashboard('Starting');
         await Future<void>.delayed(
             attempt == 1 ? const Duration(seconds: 10) : const Duration(seconds: 30));
         if (!active) return; // the user stopped it while waiting
+        if (_epoch != epochAtLoss) return; // ...or stopped and restarted it
       }
       await reloadService(reason: 'heartbeat lost, attempt ${attempt + 1}');
       if (active) report('the kernel was restarted automatically');

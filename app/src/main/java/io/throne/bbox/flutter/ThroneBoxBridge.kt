@@ -1277,7 +1277,10 @@ class ThroneBoxBridge(
             "type" to info.type,
             "direct" to direct,
             "ipSource" to (info.source?.substringAfter("://")?.substringBefore('/') ?: "ipwho.is"),
-            "checkedAt" to System.currentTimeMillis(),
+            // A fresh probe just updated the cache time; a served-from-cache or
+            // failure-path answer carries the moment it was actually measured.
+            "checkedAt" to (BboxEgress.cachedAt(direct).takeIf { it > 0 }
+                ?: System.currentTimeMillis()),
         )
     }
 

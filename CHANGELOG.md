@@ -1,3 +1,24 @@
+#### 3.3.1-pre.14
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. This one is the review round over the whole branch: three parallel reviews covered the Kotlin host and the FFI boundary, the Dart data layer and its tests, and the UI-kit rename plus the tooling. No feature change.
+
+The kernel lifecycle is the one that mattered. A reload that arrived while a start was still unwinding used to tear down the instance that start was about to produce and then silently do nothing — the dashboard said Started, the tunnel was dead, and no heartbeat would ever notice (the stop had turned the heartbeat off). Three findings shared that root:
+
+* Lifecycle commands (`start` / `stop` / `reload`) now run **one at a time** through a serialized chain in `KernelService`: a command that lands while another unwinds waits for it and re-validates the world when its turn comes, so a stop behind a start still stops, a reload behind a start restarts the live instance, and a reload behind a stop does not pull the tunnel back up. A double start while the core runs is a no-op instead of overwriting the instance handle (which orphaned the live core inside the worker). A delayed heartbeat recovery compares the epoch it recorded when the core was lost against the current one, so a stop-and-restart by the user while the backoff sleeps cancels the recovery instead of reloading a tunnel the user just brought up. Four new tests pin the sequence
+* The route-profile source had the same shape of bug on the data side: two concurrent first reads (two route screens opening at once) each ran the attach, and the loser's SQLite connection was cached over and never closed. The attach is now memoized into one in-flight future every caller joins. A reader that fails mid-read is closed and demoted to the channel for the rest of the run (SQL cannot heal inside a process), instead of staying cached and throwing on every read
+* `kernel_worker` no longer leaks the spawned isolate when startup times out (it keeps the handle now and kills it, closing the events port), and the per-domain address iterator is released explicitly like every other temporary wrapper in the FFI layer
+* The outbound picker on the rule editor reports a failed `groupNodes` through the box instead of dying as an uncaught async error
+
+Three gates or sources were quietly broken:
+
+* The **ip-api.com quality source** was switched to `https://` in the governance round — but the free endpoint answers 403 with "SSL unavailable for this endpoint" (verified live), so the source has been dead since, hedging away a request in the first wave on every lookup. It is back on `http://` with a comment that states the trade (the egress lookup's ip-api provider already makes the same one; the reply carries no secret), and the comment that claimed it "may refuse" and sat "in the last wave" — both false — is gone
+* **`prism_drift.py` check mode now fails closed**: an emptied or mis-counted baseline manifest used to make every category zero and pass CI. It validates `files` is non-empty, `file_count` matches, and the commit is recorded, and a new `--expect-diverged banner.dart` turns the budget check into an identity check — a second patched file traded for banner.dart no longer fits under `--max-diverged 1`
+* **`release.yml`'s tag dedup classifies `git ls-remote`'s exit codes**: 2 = free (proceed), 0 = exists (refuse), anything else retries three times and refuses to publish — a TLS blip used to read as "tag is free" and a re-dispatch could have clobbered a live release
+
+Smaller honesties: the egress card's "last checked" reports when the answer was actually measured (a served-from-cache or failure-path answer used to be stamped "just now"); the notification template renders placeholders in one pass, so a profile name containing `{up}` can no longer be eaten by the rate substitution; `CONTRIBUTING.md`'s local coverage gate matches CI's `--min 40`; and the changelog's preview-coexistence sentence now describes what actually happens instead of contradicting itself.
+
+Still open by decision: a Flutter-engine death leaves the Dart-owned core unowned (the widget's stop button cannot close it until the process dies — adopting the numeric handle into the host is the fix and changes a contract, so it wants its own round), `resolveDomains` on a stale handle after a stop leans on the Go side's panic guards being total, and the vendored AAR's view channels (`io.flrone/ghostty|openconnect|terminal`) have no in-repo counterpart to audit — an AAR string scan in CI is the answer when it lands.
+
 #### 3.3.1-pre.13
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. This one fixes the notification buttons dialog that pre.12 shipped broken, and turns the notification text into something the user writes.
@@ -312,7 +333,7 @@ Release plumbing, needed before a preview can be published safely:
 
 * `release.yml` derives the `preview` channel and GitHub prerelease flag from a `-pre.<n>` version, feeds the matching build number into `android-build`, and refuses a tag whose base version disagrees with `nb4a.properties`
 * `publish_release.sh` marks preview releases with `--prerelease`, keeping them off `releases/latest` and out of the self-update channel
-* Preview builds keep the normal package name, so they can be installed alongside the stable build only if you uninstall first; the signature is unchanged from 3.2.x
+* A tagged preview keeps the normal package name, so installing it replaces the stable build (same signature); the workflow-dispatch previews are the ones with the separate debug package name, and only those install alongside. The signature is unchanged from 3.2.x throughout
 
 Repository governance: multi-language README index, `SIGNING-POLICY.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, PR template, Dependabot config, issue-template config, rewritten `AUTHORS`, CI coverage and generated-model guards, and fixes to stale version/packaging claims in the planning docs.
 

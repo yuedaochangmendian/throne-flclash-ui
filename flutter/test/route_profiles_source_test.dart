@@ -70,6 +70,56 @@ void main() {
       expect(reader.reads, 1);
     });
 
+    test('concurrent first reads share one attach', () async {
+      final wire = validWire();
+      final reader = FakeReader(wire);
+      var attaches = 0;
+      final source = RouteProfilesSource(
+        resolvePath: () async => {'path': '/tmp/x.db', 'version': 19},
+        channelFallback: () async => channelWire,
+        attach: (_, {onFailure}) async {
+          attaches++;
+          // A real attach awaits the channel; let the second read overlap it.
+          await Future<void>.delayed(const Duration(milliseconds: 5));
+          return reader;
+        },
+      );
+
+      final first = source.list();
+      final second = source.list();
+      expect(await first, same(wire));
+      expect(await second, same(wire));
+      expect(attaches, 1,
+          reason: 'the loser of the attach race used to leak its connection');
+      expect(reader.reads, 2);
+    });
+
+    test('a reader that fails mid-read is closed and never retried', () async {
+      final bad = FakeReader(validWire(), throwOnRead: true);
+      var attaches = 0;
+      var channelCalls = 0;
+      final source = RouteProfilesSource(
+        resolvePath: () async => {'path': '/tmp/x.db', 'version': 19},
+        channelFallback: () async {
+          channelCalls++;
+          return channelWire;
+        },
+        attach: (_, {onFailure}) async {
+          attaches++;
+          return bad;
+        },
+      );
+
+      expect(await source.list(), same(channelWire));
+      expect(bad.closes, 1, reason: 'a broken reader must not stay cached');
+
+      // SQL cannot heal inside this run: no re-attach, the channel answers.
+      expect(await source.list(), same(channelWire));
+      expect(attaches, 1);
+      expect(bad.reads, 1);
+      expect(channelCalls, 2);
+    });
+
     test('attach answering null falls back to the channel', () async {
       final source = RouteProfilesSource(
         resolvePath: () async => null,

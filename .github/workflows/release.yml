@@ -43,10 +43,29 @@ jobs:
             TAG="v$VERSION_NAME"
           fi
           test -n "$VERSION_NAME"
-          if [ "$PUBLISH" = "true" ] && [ "${GITHUB_REF_TYPE:-}" != "tag" ] \
-              && git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
-            echo "::error::$TAG already exists: raise VERSION_NAME in nb4a.properties for a new release"
-            exit 1
+          if [ "$PUBLISH" = "true" ] && [ "${GITHUB_REF_TYPE:-}" != "tag" ]; then
+            # 0 = the tag exists, 2 = no matching tag, anything else is a
+            # transport failure. A failure must not be read as "tag is free":
+            # publishing over a possibly existing tag would clobber a live
+            # release, so it retries and then refuses to continue.
+            ls_rc=0
+            for _ in 1 2 3; do
+              if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
+                ls_rc=0
+              else
+                ls_rc=$?
+              fi
+              if [ "$ls_rc" -eq 0 ] || [ "$ls_rc" -eq 2 ]; then break; fi
+              echo "::warning::git ls-remote could not reach origin (exit $ls_rc); retrying"
+              sleep 5
+            done
+            if [ "$ls_rc" -eq 0 ]; then
+              echo "::error::$TAG already exists: raise VERSION_NAME in nb4a.properties for a new release"
+              exit 1
+            elif [ "$ls_rc" -ne 2 ]; then
+              echo "::error::could not verify whether $TAG exists (git ls-remote exit $ls_rc); retry the dispatch"
+              exit 1
+            fi
           fi
           # A versionName containing "-pre." is a preview build: it must use the
           # preview channel (release_assets.py refuses a -pre. name on stable)

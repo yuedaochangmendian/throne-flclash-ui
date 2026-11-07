@@ -54,13 +54,21 @@ class KernelWorker {
   static Future<KernelWorker> spawn() async {
     final events = ReceivePort();
     final ready = ReceivePort();
-    await Isolate.spawn(_workerMain, <Object>[events.sendPort, ready.sendPort]);
+    final isolate = await Isolate.spawn(
+        _workerMain, <Object>[events.sendPort, ready.sendPort]);
     late final SendPort commands;
     try {
       commands = await ready.first.timeout(
         const Duration(seconds: 20),
         onTimeout: () => throw StateError('the kernel worker did not start'),
       ) as SendPort;
+    } catch (_) {
+      // The worker never came up (a timeout, or its first message was not the
+      // command port). Without this, the isolate would live on holding
+      // libthrone.so open, with an events port nobody ever reads.
+      isolate.kill(priority: Isolate.beforeNextEvent);
+      events.close();
+      rethrow;
     } finally {
       ready.close();
     }
@@ -397,14 +405,16 @@ Map<String, dynamic> _resolveDomains(
     while (iterator.hasNext()) {
       final item = iterator.next();
       if (item == null) break;
+      ThroneStringIterator? addresses;
       try {
-        final addresses = item.addresses()?.toList() ?? <String>[];
+        addresses = item.addresses();
         rows.add(<String, dynamic>{
           'domain': item.getDomain(),
-          'addresses': addresses,
+          'addresses': addresses?.toList() ?? <String>[],
           'error': item.getError(),
         });
       } finally {
+        addresses?.release();
         item.release();
       }
     }

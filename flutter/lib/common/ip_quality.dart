@@ -141,11 +141,12 @@ IpQualitySourceStatus _statusOf(Object error) => switch (error) {
 String _urlOf(IpQualitySource source, String ip) {
   return switch (source) {
     IpQualitySource.identMe => 'https://ident.me/json',
-    // ip-api.com serves HTTPS only on its paid plan, so the free endpoint used
-    // here may refuse HTTPS requests (TLS handshake / connection failure). It is
-    // kept in the last wave of _waves to keep that risk off the fast path.
+    // ip-api.com's free endpoint is HTTP-only: HTTPS answers 403 with "SSL
+    // unavailable for this endpoint" (verified live, not a maybe). Cleartext is
+    // the same trade the egress lookup's ip-api provider already makes — the
+    // reply carries no secret, only the IP's own quality facts.
     IpQualitySource.ipApiCom =>
-      'https://ip-api.com/json/$ip?fields=status,isp,org,as,mobile,proxy,hosting',
+      'http://ip-api.com/json/$ip?fields=status,isp,org,as,mobile,proxy,hosting',
     IpQualitySource.ipQuery => 'https://api.ipquery.io/$ip?format=json',
     IpQualitySource.ipLocate => 'https://iplocate.io/api/lookup/$ip',
     IpQualitySource.proxyCheck => 'https://proxycheck.io/v3/$ip',

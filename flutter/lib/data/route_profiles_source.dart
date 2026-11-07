@@ -11,9 +11,11 @@
 // by a checkpoint). A permanent failure is never retried — the schema cannot
 // change while the host process is alive. A transient one is retried a bounded
 // number of times, one attempt per read, and `retryFailed()` (called by the
-// controller on app resume) restarts that budget. `invalidate()` drops a
-// healthy connection so the next read re-asks `data.path` and re-checks the
-// schema, for the flows that replace the database file under a live app.
+// controller on app resume) restarts that budget. A reader that fails mid-read
+// is closed and demoted the same way: SQL is fixed text, so the failure cannot
+// heal inside this run. `invalidate()` drops a healthy connection so the next
+// read re-attaches — kept for the day a flow replaces the database file under
+// a live app; no production flow calls it today.
 //
 // This file does not depend on `box.dart`. It takes two callbacks so the data
 // plane keeps pointing one way (channel -> data) and can be tested without a
@@ -71,6 +73,12 @@ class RouteProfilesSource {
   final RouteProfilesAttach _attach;
 
   RouteProfilesReader? _reader;
+
+  /// The attach currently running, if any. Concurrent first reads (two route
+  /// screens opening at once) join it instead of each opening a connection —
+  /// the loser of that race used to leak its reader with no close path.
+  Future<RouteProfilesReader?>? _attaching;
+
   bool _disposed = false;
 
   /// Set when the failure cannot change inside this app run: a schema version
@@ -114,18 +122,37 @@ class RouteProfilesSource {
           return wire;
         }
       } catch (_) {
-        // A SQL error, a moved column, a bad row: fall through to the channel.
-        // Nothing here is allowed to reach the screen as an error.
+        // A SQL error, a moved column, a bad row: the connection is not
+        // trusted again. SQL is fixed text, so this failure cannot heal inside
+        // this process — close the reader, fall through to the channel, and
+        // stop re-attaching (the same class the header calls permanent).
+        reader.close();
+        _reader = null;
+        _permanent = true;
       }
     }
     return await channelFallback();
   }
 
-  Future<RouteProfilesReader?> _attached() async {
+  Future<RouteProfilesReader?> _attached() {
     final cached = _reader;
-    if (cached != null) return cached;
-    if (_disposed || _permanent) return null;
-    if (_transientAttempts >= _maxTransientAttempts) return null;
+    if (cached != null) return Future.value(cached);
+    final inFlight = _attaching;
+    if (inFlight != null) return inFlight;
+    if (_disposed || _permanent) return Future.value();
+    if (_transientAttempts >= _maxTransientAttempts) return Future.value();
+    return _attaching = _doAttach();
+  }
+
+  Future<RouteProfilesReader?> _doAttach() async {
+    try {
+      return await _attachOnce();
+    } finally {
+      _attaching = null;
+    }
+  }
+
+  Future<RouteProfilesReader?> _attachOnce() async {
     AttachFailure? failure;
     final RouteProfilesReader? reader;
     try {
@@ -139,8 +166,8 @@ class RouteProfilesSource {
       return null;
     }
     if (reader != null) {
-      if (_disposed) {
-        // dispose() won the race with the async attach.
+      if (_disposed || _permanent) {
+        // dispose() or a demotion won the race with the async attach.
         reader.close();
         return null;
       }
@@ -169,9 +196,13 @@ class RouteProfilesSource {
 
   /// Drops the attached reader — if any — so the next read re-attaches from
   /// scratch: a fresh `data.path`, a fresh schema check, a fresh connection.
-  /// For the flows that replace the database file under a live app (backup
-  /// restore). A plain resume does not need this: `PRAGMA user_version` cannot
-  /// change while the host process that owns the schema is alive.
+  ///
+  /// No production flow calls this today: backup restore writes through Room
+  /// in place, and a WAL read connection sees those commits without a re-attach.
+  /// It stays for the day a flow replaces the database file under a live app —
+  /// and for the tests that pin this contract. A plain resume does not need it:
+  /// `PRAGMA user_version` cannot change while the host process that owns the
+  /// schema is alive.
   void invalidate() {
     final reader = _reader;
     _reader = null;

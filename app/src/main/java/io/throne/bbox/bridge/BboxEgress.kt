@@ -143,6 +143,9 @@ object BboxEgress {
 
     fun cached(direct: Boolean = false): Info = if (direct) cachedDirect else cached
 
+    /** When [cached] was measured; 0 when there is none. A served-from-cache answer carries its real time, so the card's "last checked" stays honest. */
+    fun cachedAt(direct: Boolean = false): Long = if (direct) cachedDirectAt else cachedAt
+
     /**
      * Probes the egress, through the mixed inbound unless [direct]. Returns the cached answer while it is fresh unless
      * [force]; a failure keeps the previous answer and reports the error through [onError].
