@@ -1,3 +1,15 @@
+#### 3.3.1-pre.11
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one starts reading route profiles straight from Room over `dart:ffi`, with a transparent fallback to the existing channel.
+
+The data layer had a `GroupsDao` but no route-profile access, while `RouteProfilesPage` still read through `routes.list`. This adds a `RouteProfilesDao` that reproduces the host's `list()` in SQL, and one `RouteProfilesSource` entry point: prefer a read-only SQLite connection at the path returned by `data.path`, and fall back to `routes.list` on any failure so the page never sees an error.
+
+* `route_profiles` left-joined to `route_rules` for `ruleCount` / `simpleRuleCount`, and `current_route_id` decoded from `settings.value`; the wire shape matches `BboxRoutes.list()` field for field, so the fallback is invisible to the UI
+* Read-only `DataLayer.attach`, a schema-version check, and total fallback — including an empty `route_profiles` table, which the host would otherwise seed on read
+* `BoxController` owns the connection and closes it on dispose; `data.path` is wired on both the Dart and Kotlin sides
+* The `NOT WIRED` comments, `docs/bbox-bridge.md` and the `3.3.1-pre.1` changelog note now describe the real state
+* New DAO, source and fallback unit tests. CI is green end to end: `flutter analyze --fatal-infos`, `flutter test --coverage`, the coverage floor, Kotlin unit tests and the debug build, AAR API scan and cgo preamble checks. Physical-device checks — WAL concurrency with Room, the `data.path` version and migrated column names — remain open
+
 #### 3.3.1-pre.10
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one lands the code review's fixes — the failed start, the hand-over timing and the blocking DNS lookup — with tests for the parts that had none.
