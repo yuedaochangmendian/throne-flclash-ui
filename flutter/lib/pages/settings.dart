@@ -191,27 +191,30 @@ class _NotificationActionsEditorState extends State<_NotificationActionsEditor> 
         child: Text(context.tr('Save')),
       ),
     ],
-    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Padding(
-        padding: const EdgeInsets.only(bottom: 12),
-        child: Text(context.tr('The first three of the enabled ones show, in a fixed order'),
-            style: AppTextStyle.caption1.of(context)),
-      ),
-      for (final (id, label) in NotificationActionsSetting.actions)
-        CheckboxListTile(
-          value: _selected.contains(id),
-          title: Text(context.tr(label)),
-          controlAffinity: ListTileControlAffinity.leading,
-          contentPadding: EdgeInsets.zero,
-          onChanged: (value) => setState(() {
-            if (value == true) {
-              _selected.add(id);
-            } else {
-              _selected.remove(id);
-            }
-          }),
+    child: Material(
+      type: MaterialType.transparency,
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(context.tr('The first three of the enabled ones show, in a fixed order'),
+              style: AppTextStyle.caption1.of(context)),
         ),
-    ]),
+        for (final (id, label) in NotificationActionsSetting.actions)
+          CheckboxListTile(
+            value: _selected.contains(id),
+            title: Text(context.tr(label)),
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: EdgeInsets.zero,
+            onChanged: (value) => setState(() {
+              if (value == true) {
+                _selected.add(id);
+              } else {
+                _selected.remove(id);
+              }
+            }),
+          ),
+      ]),
+    ),
   );
 }
 

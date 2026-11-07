@@ -87,8 +87,9 @@ void main() {
     expect(find.text('Shown in front of the title, for example 🚀'), findsOneWidget);
     await tester.tap(find.text('Notification title prefix'));
     await tester.pumpAndSettle();
-    await tester.enterText(find.byType(TextField), '🚀');
-    await tester.tap(find.text('Save'));
+    await tester.enterText(find.descendant(of: find.byType(InputDialog),
+        matching: find.byType(EditableText)).first, '🚀');
+    await tester.tap(find.text('Submit'));
     await tester.pumpAndSettle();
     expect(edits.last, {'key': 'notificationTitlePrefix', 'value': '🚀'});
     // Running service, but the notification text needs no restart: no badge.
