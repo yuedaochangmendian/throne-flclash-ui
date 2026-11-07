@@ -81,6 +81,9 @@ class ServiceNotification(
         // built-in line, so a user who wrote their own text is never second-guessed.
         val customBody = if (contentTemplate.isEmpty()) null else render(contentTemplate, contentValues(stats))
         useBuilder {
+            // Re-render the title too: a template change reaches the notification on this same
+            // update, without waiting for the next profile switch.
+            it.setContentTitle(displayTitle(currentTitle))
             if (customBody != null) {
                 it.setContentText(customBody)
                 it.setStyle(if ('\n' in customBody) NotificationCompat.BigTextStyle().bigText(customBody) else null)
@@ -92,7 +95,7 @@ class ServiceNotification(
                         it.setStyle(null)
                     }
                     showDirectSpeed -> {
-                        val speedDetail = (service as Context).getString(
+                        val speedDetail = ctx.getString(
                             R.string.speed_detail, speed(stats.txRateProxy), speed(stats.rxRateProxy),
                             speed(stats.txRateDirect), speed(stats.rxRateDirect)
                         )
@@ -100,7 +103,7 @@ class ServiceNotification(
                         it.setContentText(speedDetail)
                     }
                     else -> {
-                        val speedSimple = (service as Context).getString(
+                        val speedSimple = ctx.getString(
                             R.string.traffic, speed(stats.txRateProxy), speed(stats.rxRateProxy)
                         )
                         it.setContentText(speedSimple)
@@ -110,10 +113,10 @@ class ServiceNotification(
                 // The cumulative total under the rate line is optional: a minimal notification
                 // (rate only) reads cleaner on a lock screen that already shows a clock.
                 if (showTrafficTotal) it.setSubText(
-                    (service as Context).getString(
+                    ctx.getString(
                         R.string.traffic,
-                        Formatter.formatFileSize(service, stats.txTotal),
-                        Formatter.formatFileSize(service, stats.rxTotal)
+                        Formatter.formatFileSize(ctx, stats.txTotal),
+                        Formatter.formatFileSize(ctx, stats.rxTotal)
                     )
                 ) else it.setSubText(null)
             }
@@ -157,24 +160,27 @@ class ServiceNotification(
         update()
     }
 
-    private val showProxySpeed = DataStore.showProxySpeed
-    private val showDirectSpeed = DataStore.showDirectSpeed
+    // Read through on every update rather than captured at construction: the General page
+    // promises these apply on the service's next notification update, with no restart.
+    private val showProxySpeed get() = DataStore.showProxySpeed
+    private val showDirectSpeed get() = DataStore.showDirectSpeed
 
     /** Whether the cumulative up/down total shows as the notification's sub text. */
-    private val showTrafficTotal = DataStore.showTrafficTotal
+    private val showTrafficTotal get() = DataStore.showTrafficTotal
 
     /**
      * The title template. `{title}` is the profile name (or "Switching…"); everything else is
      * literal, so "🚀 {title}" reads "🚀 Tokyo 01". Empty falls back to `{title}`, and an older
      * build's `notificationTitlePrefix` is folded in as "<prefix> {title}" so an upgrade keeps it.
      */
-    private val titleTemplate: String = DataStore.notificationTitleTemplate.trim().ifEmpty {
-        val legacy = DataStore.notificationTitlePrefix.trim()
-        if (legacy.isEmpty()) "{title}" else "$legacy {title}"
-    }
+    private val titleTemplate: String
+        get() = DataStore.notificationTitleTemplate.trim().ifEmpty {
+            val legacy = DataStore.notificationTitlePrefix.trim()
+            if (legacy.isEmpty()) "{title}" else "$legacy {title}"
+        }
 
     /** A full body template; empty keeps the built-in rate/detail lines and the speed toggles. */
-    private val contentTemplate = DataStore.notificationContentTemplate.trim()
+    private val contentTemplate get() = DataStore.notificationContentTemplate.trim()
 
     /** The latest title, so a content template can echo it while the rates update. */
     private var currentTitle: String = title
@@ -189,8 +195,11 @@ class ServiceNotification(
         return out
     }
 
+    /** The service as a Context; `Interface` is not one, so every formatter call goes through here. */
+    private val ctx: Context get() = service as Context
+
     private fun speed(rate: Long): String =
-        (service as Context).getString(R.string.speed, Formatter.formatFileSize(service, rate))
+        ctx.getString(R.string.speed, Formatter.formatFileSize(ctx, rate))
 
     private fun contentValues(stats: SpeedDisplayData) = mapOf(
         "title" to currentTitle,
@@ -198,8 +207,8 @@ class ServiceNotification(
         "down" to speed(stats.rxRateProxy),
         "directUp" to speed(stats.txRateDirect),
         "directDown" to speed(stats.rxRateDirect),
-        "totalUp" to Formatter.formatFileSize(service, stats.txTotal),
-        "totalDown" to Formatter.formatFileSize(service, stats.rxTotal),
+        "totalUp" to Formatter.formatFileSize(ctx, stats.txTotal),
+        "totalDown" to Formatter.formatFileSize(ctx, stats.rxTotal),
     )
 
     private val builder = NotificationCompat.Builder(service as Context, channel)
