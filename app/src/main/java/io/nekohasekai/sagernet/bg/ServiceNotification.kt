@@ -64,9 +64,8 @@ class ServiceNotification(
             return ACTION_ORDER.filter { it in stored }.take(3)
         }
 
-        /** `{key}` placeholders; ASCII keys only, so the regex stays ICU-safe. */
-        val PLACEHOLDER = Regex("\\{([A-Za-z]+)}")
-
+        // Template rendering lives in NotificationTemplate: no Android types, so
+        // it is unit-testable, and a bad pattern cannot fail this class's <clinit>.
         fun genTitle(ent: ProxyEntity): String {
             val gn = if (DataStore.showGroupInNotification)
                 SagerDatabase.groupDao.getById(ent.groupId)?.displayName() else null
@@ -193,12 +192,8 @@ class ServiceNotification(
 
     /** Replaces every `{key}` in [template]; unknown placeholders stay as written. */
     private fun render(template: String, values: Map<String, String>): String {
-        // One pass over the template: sequential `replace` would let a value
-        // that itself contains `{up}` (a profile name can) be substituted by a
-        // later key, and a lambda replacement is never re-scanned.
-        return PLACEHOLDER.replace(template) { match ->
-            values[match.groupValues[1]] ?: match.value
-        }
+        // One pass, and no second scan of substituted values; see NotificationTemplate.
+        return NotificationTemplate.render(template, values)
     }
 
     /** The service as a Context; `Interface` is not one, so every formatter call goes through here. */

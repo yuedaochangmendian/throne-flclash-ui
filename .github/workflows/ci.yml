@@ -67,6 +67,8 @@ jobs:
           # copy in db.dart. A bump on one side alone still compiles and still
           # queries — it just reads the wrong column.
           python3 tools/diagnostics/schema_audit.py
+          # The JVM accepts regexes Android's ICU rejects; see the pre.17 crash.
+          python3 tools/diagnostics/kotlin_regex_audit.py
           python3 tools/diagnostics/py_syntax_check.py tools/diagnostics/*.py tools/bindgen/*.py buildScript/*.py
       # Locale completeness is a report, not a gate: the 885 known gaps across 19 locales
       # predate this job and are burned down incrementally. `continue-on-error` keeps the
