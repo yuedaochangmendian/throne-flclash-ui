@@ -1,3 +1,11 @@
+#### 3.3.1-pre.22
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. This one fixes the two things found on pre.21: a row that stood out on the rules screen, and an IP card that held its result back.
+
+* **The batch-add row reads like its neighbours**: `Batch add simple rules` carried the dialog title's style — 20dp emphasized — while the rows around it (Add rule, Reorder rules, Restore default rules) are 17dp list titles, so one row of the rules section stood out bigger and heavier. It is a list title now, and the dialog keeps the title3 style every dialog on these pages uses
+* **The IP card shows each quality answer as it lands**: the six-source chain delivered one result at the end, so the type and quality chips sat behind skeleton pills — and on a refresh hid the answer the card already had — until the chain converged. `lookupIpQuality` now reports the answer it would deliver as it arrives: the first inferred one as soon as a source speaks, then the precise one that replaces it. The chips update in place the moment anything is known, and a running lookup refines what is on the card instead of blanking it. The lookup's own outcome is unchanged — the future still completes with the precise answer or the first inferred one, so cache writes, expiry and the failure cooldown read the same record — and a new `ip_quality_test` pins the two-stage report
+* **Checked**: `flutter analyze --fatal-infos` clean, **383 tests pass**, CI green on both jobs. On a device: the rules screen's four rows at one size, and the status card's chips appearing as soon as a source answers and staying put through a refresh
+
 #### 3.3.1-pre.21
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. This one is the font-size fix on the settings rows, and nothing else.
