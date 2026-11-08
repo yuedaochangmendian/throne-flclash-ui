@@ -15,7 +15,7 @@
 | 合并后 | 删除源分支（仓库设置 `delete_branch_on_merge=true`）；已合并分支不留残枝 |
 | 保护 | `main` 应配置保护：禁止强制推送与删除、要求经 PR、要求 CI 全绿。**启用前必须确认 CI 依赖可用**，否则会把 `main` 锁死（见第 7 节） |
 
-> **当前偏差（2026-11-08）**：3.3.1 的整条开发线在 `feat/ffi`（PR #11，48 提交，长期开放），`main` 停在 3.3.0 基线加两个 dependabot 合并；所有 3.3.1 预览版与转正后的发行版 tag 都指向 `feat/ffi` 的提交。这与本节及 `CONTRIBUTING.md` 第 3 节不符，收口步骤见第 9 节。
+> **当前偏差（2026-11-08）**：`main` 无分支保护，`CONTRIBUTING.md` 第 3 节要求的 PR-only 目前靠约定而非仓库设置强制。3.3.1 开发线已于同日以 PR #11 合回 `main`（原偏差已收口，见第 9 节）；`v3.3.1-pre.*` 的 tag 仍指向合并前的提交，属已发布历史的正常结果，不回填。
 
 ## 2. Pull Request
 
@@ -53,7 +53,7 @@
 
 ## 5. 更新器与签名契约
 
-- `UpdateChecker.REPOSITORY` **必须指向本仓库** `yuedaochangmendian/throne-flclash-ui`；常量曾指向上游 `throneproj/ThroneForAndroid`，导致本仓库发布的 `throne-update.json` 根本不被应用内更新器读取。本次已在 `main` 与 `feat/ffi` 修复，**已发布 APK 需重新构建才生效**。
+- `UpdateChecker.REPOSITORY` **必须指向本仓库** `yuedaochangmendian/throne-flclash-ui`；常量曾指向上游 `throneproj/ThroneForAndroid`，导致本仓库发布的 `throne-update.json` 根本不被应用内更新器读取。本次已在 `main` 修复（此前另在 `feat/ffi` 修过一次，该分支已合并删除），**已发布 APK 需重新构建才生效**。
 - `throne-update.json`（`schema=1`）字段：`packageName`、`channel`、`versionName`、`versionCode`、`coreRef`、`minSdk`、`signerSha256`、`assets`（每个 ABI 的 `name` / `size` / `sha256`）。三个 ABI 必须同一签名者、同一 `versionCode`，且与实际 APK / `SHA256SUMS` 一致。
 - 签名固定值来自仓库 secrets，发布前按 `SIGNING-POLICY.md` 核对 `signerSha256`；`UpdateVerifier` 会校验文件大小、SHA-256、包名、`versionCode` 递增、签名一致与 pin。
 - `release_assets.py` 只在 stable 通道生成清单；preview 产物不得携带清单。
@@ -88,11 +88,12 @@
 
 | 项 | 现状 | 建议动作 | 影响 |
 |---|---|---|---|
-| `feat/ffi` / PR #11 | 48 提交、长期开放，3.3.1 线未进 `main` | 拆分或整体合并 PR #11，使 `main` 成为 3.3.1 基线 | 高，合并前需 CI 可用 |
 | `main` 分支保护 | 无保护、无 ruleset | CI 恢复后配置：禁强推/删除、要求 PR 与 CI 全绿 | 高，启用早于 CI 恢复会锁死 `main` |
 | 标准 `v3.3.1` | 未发；当前 latest 是转正的 preview 构建 | CDN 恢复后按第 3 节补发，tag 用干净 `v3.3.1` | 高，会产生新 release |
 | CHANGELOG `#### 3.3.1` | 缺失 | 在发版分支补写正式版段落 | 中 |
 | 6 个 debug release | 曾标 stable、资产不齐 | 已改标 `prerelease`（可逆）；或删除 | 中 |
 | 5 个 preview 带清单 | v3.2.18–v3.2.22 | 移除 `throne-update.json` 资产，或列入基线保留 | 中 |
 | 3 个 `wip-bbox-*` tag | 无对应 release | 删除调试 tag | 低 |
-| 已合并残枝 / 陈旧 dependabot PR | 分支保留、PR #6/#9 开放 | 清理分支、关闭或合并 PR | 低 |
+| 已合并残枝 / 陈旧 dependabot PR | 分支保留、PR #6/#9 开放、PR #16 已随基线变更改指向 `main` | 清理分支、关闭或合并 PR | 低 |
+
+**已收口（2026-11-08）**：PR #11 以 merge commit `05ef51b7` 合入 `main`（62 提交、115 文件、+9543/−1882），`main` 自此是 3.3.1 基线，`VERSION_NAME` 由 3.3.0 变为 3.3.1。`feat/ffi` 随 `delete_branch_on_merge` 一并删除，其内容已在 `main` 上，后续 `feat/*` 从 `main` 切出。真机走查（`docs/device-checklist.md`）仍未做，须在补写 CHANGELOG `#### 3.3.1` 正式段落前完成。
