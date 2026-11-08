@@ -59,7 +59,9 @@ void main() {
     expect(find.text('DNS rules to add'), findsOneWidget);
     expect(find.text('Route rules to add'), findsNothing);
 
-    await tester.tap(find.byTooltip('Import'));
+    // The importer now opens as a form sheet: its confirmation moves to the
+    // sheet's foot as a text button, so there is no Import tooltip to tap.
+    await tester.tap(find.text('Import').last);
     await tester.pumpAndSettle();
 
     expect(edits, hasLength(1));
@@ -117,7 +119,9 @@ void main() {
     // The rule is reported with where it belongs, and nothing is importable.
     expect(find.text('Route rules belong to a route profile'), findsOneWidget);
     expect(find.text('Open a route profile to import those.'), findsOneWidget);
-    await tester.tap(find.byTooltip('Import'));
+    // The importer now opens as a form sheet: its confirmation moves to the
+    // sheet's foot as a text button, so there is no Import tooltip to tap.
+    await tester.tap(find.text('Import').last);
     await tester.pumpAndSettle();
     expect(edits, isEmpty);
     expect(tester.takeException(), isNull);
