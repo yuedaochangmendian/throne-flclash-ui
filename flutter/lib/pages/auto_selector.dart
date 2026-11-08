@@ -190,7 +190,7 @@ class _AutoSelectorPageState extends State<AutoSelectorPage> with WidgetsBinding
           if (_info['balance'] == true) ...[
             ListItem(
               title: Text(context.tr('Balance mode')),
-              trailing: Text(context.tr(_balanceName('${_info['balanceMode'] ?? 'rotate'}'))),
+              trailing: Text(context.tr(_balanceName('${_info['balanceMode'] ?? 'rotate'}')), style: context.listValueStyle),
               onTap: () async {
                 final picked = await showDialog<String>(context: context, builder: (context) => SimpleDialog(
                   title: Text(context.tr('Balance mode')),
@@ -266,11 +266,11 @@ class _AutoSelectorPageState extends State<AutoSelectorPage> with WidgetsBinding
     final pinnedId = (_status['pinned_id'] as num?)?.toInt() ?? -1;
     return [
       generateSection(title: context.tr('Status'), items: [
-        ListItem(title: Text(context.tr('Phase')), trailing: Text('${_status['core_phase'] ?? phase}')),
+        ListItem(title: Text(context.tr('Phase')), trailing: Text('${_status['core_phase'] ?? phase}', style: context.listValueStyle)),
         ListItem(title: Text(context.tr('Selected')),
           subtitle: Text('${_status['selected_name'] ?? ''}')),
         ListItem(title: Text(context.tr('Pinned')),
-          trailing: Text(pinnedId < 0 ? context.tr('Automatic') : '#$pinnedId'),
+          trailing: Text(pinnedId < 0 ? context.tr('Automatic') : '#$pinnedId', style: context.listValueStyle),
           onTap: () => _pin(-1)),
         ListItem(title: Text(context.tr('Members')), subtitle: Text(
           '${_status['members_alive'] ?? 0} alive · ${_status['members_qualified'] ?? 0} qualified · ${_status['members_cooldown'] ?? 0} cooldown')),

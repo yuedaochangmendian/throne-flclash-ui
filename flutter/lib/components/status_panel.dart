@@ -11,6 +11,7 @@ import 'dashboard_chip.dart';
 import '../common/ip_quality.dart';
 import '../common/ip_quality_cache.dart';
 import '../common/routed_ip_probe.dart';
+import 'form.dart';
 
 /// Mobile layout from FlClash's current_outbound.dart, with sing-box data.
 class StatusPanel extends StatefulWidget {
@@ -412,7 +413,7 @@ class EgressDetails extends StatelessWidget {
     if (info['qualityError'] != null) generateSection(title: context.tr('IP quality unavailable'), items: [
       for (final failure in rows(info['qualityFailures'])) ListItem(title: Text(failure['source'].toString()),
         trailing: Text(context.tr({'noType': 'No type data', 'timeout': 'Timeout', 'rateLimited': 'Rate limited',
-          'failed': 'Unavailable', 'ipMismatch': 'IP mismatch'}[failure['status']] ?? 'Unavailable'))),
+          'failed': 'Unavailable', 'ipMismatch': 'IP mismatch'}[failure['status']] ?? 'Unavailable'), style: context.listValueStyle)),
     ]),
   ]);
 }

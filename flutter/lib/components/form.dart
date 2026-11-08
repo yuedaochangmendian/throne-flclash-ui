@@ -4,6 +4,16 @@ import '../widgets.dart';
 
 // Grouped form rows adapted from FlClash v0.9.2 features/form.
 
+/// The value half of a settings row: as large as the row's title, in the
+/// secondary colour. `ListRow` sizes trailing for side marks (caption2
+/// emphasized — the size a chevron wants), which reads as a footnote next to a
+/// body-size title; this is the size [ListItem.options] shows its value at, so
+/// hand-built rows match the picker rows around them.
+extension ListRowValue on BuildContext {
+  TextStyle get listValueStyle =>
+      listTitleStyle.copyWith(color: colorScheme.onSurfaceVariant);
+}
+
 class FormPage extends StatelessWidget {
   const FormPage({super.key, required this.title, this.onSave, required this.children,
     this.error, this.saving = false, this.actions = const []});

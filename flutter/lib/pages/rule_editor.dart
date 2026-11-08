@@ -162,7 +162,7 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
       ),
       ListItem(
         title: Text(context.tr('Type')),
-        trailing: Text(context.tr(_typeLabel)),
+        trailing: Text(context.tr(_typeLabel), style: context.listValueStyle),
         onTap: () async {
           final picked = await showDialog<String>(context: context, builder: (context) => SimpleDialog(
             title: _dialogTitle(context, 'Type'),
@@ -188,7 +188,7 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
       ),
       if (_isSimple) ListItem(
         title: Text(context.tr('Target')),
-        trailing: Text(context.tr(_simpleActionName(_simpleAction))),
+        trailing: Text(context.tr(_simpleActionName(_simpleAction)), style: context.listValueStyle),
         onTap: () async {
           final picked = await showDialog<String>(context: context, builder: (context) => SimpleDialog(
             title: _dialogTitle(context, 'Target'),
@@ -205,7 +205,7 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
       ),
       if (!_isSimple) ListItem(
         title: Text(context.tr(_isEndpoint ? 'Preferred endpoint' : 'Outbound')),
-        trailing: Text(_outboundName(outboundId)),
+        trailing: Text(_outboundName(outboundId), style: context.listValueStyle),
         onTap: () async {
           // The catalog the UI holds is counts-only; the picker asks for the names it shows.
           final List<Json> nodes;
@@ -460,7 +460,7 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
     final current = _rule['action']?.toString() ?? 'route';
     return ListItem(
       title: Text(context.tr('Action')),
-      trailing: Text(context.tr(ruleEnumLabel('action', current))),
+      trailing: Text(context.tr(ruleEnumLabel('action', current)), style: context.listValueStyle),
       onTap: () async {
         final picked = await showDialog<String>(
           context: context,
@@ -489,7 +489,7 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
     final options = ruleEnumOptions(key, current);
     return ListItem(
       title: Text(context.tr(title)),
-      trailing: Text(context.tr(ruleEnumLabel(key, current))),
+      trailing: Text(context.tr(ruleEnumLabel(key, current)), style: context.listValueStyle),
       onTap: () async {
         final picked = await showDialog<String>(
           context: context,

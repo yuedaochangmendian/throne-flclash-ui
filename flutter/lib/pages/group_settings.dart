@@ -216,7 +216,7 @@ class _GroupSettingsPageState extends State<GroupSettingsPage> {
   }
 
   Widget _menuRow(String title, String label, Future<void> Function() onPick) => ListItem(
-    title: Text(title), trailing: Text(label),
+    title: Text(title), trailing: Text(label, style: context.listValueStyle),
     onTap: () async { setState(() => _attempted = false); await onPick(); },
   );
 
@@ -271,7 +271,7 @@ class _GroupSettingsPageState extends State<GroupSettingsPage> {
           FormRow(title: context.tr('Name'), invalid: issue?.field == 'name',
             trailing: FormRowTextField(controller: _name, hintText: context.tr('Required'),
               textInputAction: TextInputAction.next, onChanged: _changed)),
-          ListItem(title: Text(context.tr('Type')), trailing: Text(context.tr(_subscription ? 'Subscription' : 'Basic'))),
+          ListItem(title: Text(context.tr('Type')), trailing: Text(context.tr(_subscription ? 'Subscription' : 'Basic'), style: context.listValueStyle)),
           if (_subscription) FormRow(title: context.tr('URL'), invalid: issue?.field == 'url',
             trailing: FormRowTextField(controller: _url, hintText: context.tr('Required'),
               keyboardType: TextInputType.text, textInputAction: TextInputAction.next,

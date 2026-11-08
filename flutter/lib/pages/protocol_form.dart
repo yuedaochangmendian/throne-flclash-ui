@@ -601,7 +601,7 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
         final label = choices.firstWhere((choice) => choice.$1 == current,
             orElse: () => (current, current)).$2;
         return ListItem(title: Text(context.tr(field.label)), trailing: Text(label,
-          maxLines: 1, overflow: TextOverflow.ellipsis),
+          maxLines: 1, overflow: TextOverflow.ellipsis, style: context.listValueStyle),
           onTap: () async {
             final picked = await showDialog<String>(context: context, builder: (context) => SimpleDialog(
               title: Text(context.tr(field.label)),

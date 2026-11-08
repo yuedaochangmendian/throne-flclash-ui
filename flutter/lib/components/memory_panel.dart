@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import '../widgets.dart';
 import 'data_subscription.dart';
+import 'form.dart';
 
 /// FlClash's memory summary with same-process accounting from libbox.
 class MemoryPanel extends StatelessWidget {
@@ -87,14 +88,14 @@ class _MemoryDetailsState extends State<MemoryDetails> {
       Text(context.tr(remote ? 'Memory reported by the remote core. Detailed accounting is unavailable.'
         : "The total is the process's resident memory (PSS), split by allocator: the app's heap, native allocations — the core runs there — and the rest."), style: context.listCaptionStyle),
       if (!remote) generateSection(title: context.tr('App'), items: [
-        ListItem(title: Text(context.tr('Process RSS')), trailing: Text(bytes(memory['rss'] as num? ?? 0))),
-        ListItem(title: Text(context.tr('Heap in use')), trailing: Text(bytes(memory['heapInuse'] as num? ?? 0))),
-        ListItem(title: Text(context.tr('Retained idle heap')), trailing: Text(bytes(memory['heapIdle'] as num? ?? 0))),
+        ListItem(title: Text(context.tr('Process RSS')), trailing: Text(bytes(memory['rss'] as num? ?? 0), style: context.listValueStyle)),
+        ListItem(title: Text(context.tr('Heap in use')), trailing: Text(bytes(memory['heapInuse'] as num? ?? 0), style: context.listValueStyle)),
+        ListItem(title: Text(context.tr('Retained idle heap')), trailing: Text(bytes(memory['heapIdle'] as num? ?? 0), style: context.listValueStyle)),
       ]),
       generateSection(title: context.tr('Core'), items: [
         if (!remote && memory['running'] != true) ListItem(title: Text(context.tr('Not running'))),
-        ListItem(title: Text(context.tr('Core memory')), trailing: Text(bytes(memory['core'] as num? ?? 0))),
-        if (!remote) ListItem(title: Text(context.tr('Other')), trailing: Text(bytes(memory['other'] as num? ?? 0))),
+        ListItem(title: Text(context.tr('Core memory')), trailing: Text(bytes(memory['core'] as num? ?? 0), style: context.listValueStyle)),
+        if (!remote) ListItem(title: Text(context.tr('Other')), trailing: Text(bytes(memory['other'] as num? ?? 0), style: context.listValueStyle)),
       ]),
     ]));
   }

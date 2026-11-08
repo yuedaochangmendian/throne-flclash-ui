@@ -189,7 +189,7 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
           )),
           ListItem(
             title: Text(context.tr('Default outbound')),
-            trailing: Text(context.tr(_outboundLabel(_defaultOutbound))),
+            trailing: Text(context.tr(_outboundLabel(_defaultOutbound)), style: context.listValueStyle),
             onTap: () async {
               final picked = await showDialog<String>(context: context, builder: (context) => SimpleDialog(
                 title: Text(context.tr('Default outbound')),
