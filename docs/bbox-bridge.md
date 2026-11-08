@@ -165,8 +165,8 @@ from the file, not from the annotation, because a downgrade makes those two disa
 
 The library is the platform's own `libsqlite3.so` over `dart:ffi`, not `sqflite`. That is not a preference: this
 module's AAR cannot register plugins. `flutter build aar` publishes a `GeneratedPluginRegistrant` the host loads by
-reflection and **swallows** on failure, which is why `BboxFlutterActivity.registerScannerPlugin` exists at all. A
-`DynamicLibrary` has no registrant. `flutter/lib/data/sqlite.dart` is the whole binding.
+reflection and **swallows** on failure — the same reason QR scanning runs in a host activity rather than in a
+Flutter plugin. A `DynamicLibrary` has no registrant. `flutter/lib/data/sqlite.dart` is the whole binding.
 
 What is live today is one table's **read**: `route_profiles`, joined to `route_rules` for the two counts and to
 `settings` for `current_route_id`, through `RouteProfilesDao`. `RouteProfilesSource` prefers it on the route list and

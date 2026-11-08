@@ -47,9 +47,7 @@
 -dontwarn org.openjsse.net.ssl.OpenJSSE
 -dontwarn java.beans.PropertyVetoException
 
-# The Flutter module AAR registers plugins through io.flutter.plugins.GeneratedPluginRegistrant,
-# which Flutter loads by reflection; the plugin classes it instantiates are only reachable from
-# there. A release build that shrinks either away leaves the channel without an implementation
-# (MissingPluginException) instead of failing loudly, so both are kept.
+# GeneratedPluginRegistrant is loaded by reflection; shrinking it away would leave any plugin
+# channel without an implementation. QR scanning is a host activity now, not a Flutter plugin,
+# so no per-plugin keep rule is needed here.
 -keep class io.flutter.plugins.** { *; }
--keep class dev.steenbakker.mobile_scanner.** { *; }

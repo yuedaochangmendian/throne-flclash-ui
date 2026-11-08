@@ -240,12 +240,13 @@ const _zh = <String, String>{
   'Thanks for the migration approach': '感谢迁移思路',
   'Network quality': '网络质量', 'STUN test': 'STUN 测试',
   'Domain resolution': '域名解析',
-  'Starting the camera…': '正在启动相机…',
-  'Try again': '重试',
+  'The camera opens in the scanning screen. Point it at a configuration QR code.':
+      '相机将在扫码界面打开，请将配置二维码对准取景框。',
+  'Waiting for a QR code…': '等待识别二维码…',
   'The camera permission is denied. Grant it in the system settings, then try again.':
       '相机权限被拒绝。请在系统设置中允许使用相机后重试。',
-  'The camera is taking longer than usual. If this stays black, check that the app may use the camera in the system settings.':
-      '相机启动比平时慢。如果画面一直是黑的，请检查系统设置里是否允许本应用使用相机。',
+  'Scanning was cancelled. Tap retry to open the camera again.':
+      '已取消扫码。点击重试可再次打开相机。',
   'One domain per line; commas work too': '每行一个域名，也可用逗号分隔',
   "Lookups use the tunnel's direct DNS and time out after 5 seconds each.": '解析走隧道的直连 DNS，单条超时 5 秒。',
   'Resolve': '解析', 'Resolving': '解析中', 'Results': '结果', 'No address': '无解析结果',

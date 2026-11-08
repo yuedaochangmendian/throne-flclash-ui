@@ -211,9 +211,12 @@ extension UrlApi on BoxController {
 }
 
 extension PermissionsApi on BoxController {
-  /// Asks the host for the camera permission; the scan screen calls this before starting the
-  /// scanner so a refusal comes back as `false` instead of a preview that never leaves black.
+  /// Asks the host for the camera permission before the host's scanner opens.
   Future<bool> ensureCameraPermission() async => await call('permissions.camera') == true;
+
+  /// Opens the host's ZXing scan activity and returns the decoded payload. Multi-frame
+  /// symbols are assembled on the host; null means the activity was dismissed.
+  Future<String?> scanQrCode() async => await call('scan.qr') as String?;
 }
 
 extension DocumentApi on BoxController {
