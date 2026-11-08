@@ -26,7 +26,7 @@ import java.io.InputStream
  */
 object UpdateChecker {
 
-    const val REPOSITORY = "throneproj/ThroneForAndroid"
+    const val REPOSITORY = "yuedaochangmendian/throne-flclash-ui"
     const val RELEASES_PAGE = "https://github.com/$REPOSITORY/releases"
     private const val RELEASES_API = "https://api.github.com/repos/$REPOSITORY/releases?per_page=20"
 
