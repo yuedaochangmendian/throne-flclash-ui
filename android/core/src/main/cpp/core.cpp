@@ -272,6 +272,16 @@ Java_io_throne_bbox_core_Core_updateNetworkPath(JNIEnv *env, jobject,
     throne_InterfaceUpdateListener_updateNetworkPath(listener, p);
 }
 
+// The host closes a kernel Instance it adopted from Dart after the Flutter
+// engine died. throne_Instance_close releases the handle itself; an already
+// released handle panics inside Go's guardExport and only sets last_error.
+extern "C"
+JNIEXPORT void JNICALL
+Java_io_throne_bbox_core_Core_closeInstance(JNIEnv *, jobject, const jlong handle) {
+    if (handle == 0) return;
+    throne_Instance_close(handle);
+}
+
 extern "C"
 JNIEXPORT jstring JNICALL
 Java_io_throne_bbox_core_Core_tunSpecJson(JNIEnv *env, jobject, const jlong handle) {

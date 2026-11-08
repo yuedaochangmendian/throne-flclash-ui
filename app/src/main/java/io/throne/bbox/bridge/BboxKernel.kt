@@ -12,6 +12,7 @@ import io.nekohasekai.sagernet.bg.proto.BoxInstance
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.SagerDatabase
 import io.nekohasekai.sagernet.database.ProxyEntity
+import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.ui.warp.WarpClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -37,6 +38,46 @@ object BboxKernel {
      */
     @Volatile
     var onWifiChanged: (() -> Unit)? = null
+
+    /**
+     * The numeric Instance handle Dart registered for the running core. The Go
+     * handle table is process-wide, so it survives the Dart isolate: after a
+     * Flutter-engine death the host is the only side that can still close it.
+     * Dart clears it on every stop and failed start; a stale registration is
+     * exactly the case the host must take over. 0 means no adopted core.
+     */
+    @Volatile
+    var kernelHandle: Long = 0L
+
+    /** Dart -> host: register the running core's handle, or clear it. */
+    fun adoptHandle(handle: Long?) {
+        kernelHandle = handle?.takeIf { it > 0L } ?: 0L
+    }
+
+    /**
+     * Closes the core whose Dart owner is gone. Read-and-clear first so only one
+     * stop uses the handle; a second stop must not close it twice. A core that is
+     * already gone only sets last_error on the Go side — never a failed stop.
+     */
+    fun closeAdoptedCore() {
+        val handle = kernelHandle
+        if (handle == 0L) return
+        kernelHandle = 0L
+        try {
+            io.throne.bbox.core.Core.closeInstance(handle)
+            Logs.i("[lifecycle] host closed adopted core handle=$handle")
+        } catch (error: Throwable) {
+            Logs.w("adopted core handle=$handle could not be closed: ${error.message}")
+        }
+    }
+
+    /**
+     * How a non-Dart stop (widget/tile/notification) reaches the FFI driver:
+     * true when the UI is attached and was told to close the core itself, false
+     * when the engine is gone and the host must close the adopted handle.
+     */
+    @Volatile
+    var onStopWanted: (() -> Boolean)? = null
 
     /**
      * Builds the StartOptions payload for the selected profile exactly as the

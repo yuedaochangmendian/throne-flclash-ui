@@ -657,6 +657,11 @@ class BoxController extends ChangeNotifier {
         // A widget/tile/notification reload reached the FFI driver (BboxKernel.onReloadWanted).
         unawaited(kernel.reloadService(reason: 'widget/tile/notification reload'));
         return;
+      case 'serviceStop':
+        // A widget/tile/notification stop in ffiMode: the service is already
+        // stopping, so the driver only closes the core it owns.
+        unawaited(kernel.stopCoreFromHost());
+        return;
       case 'wifi.state':
         // The Android monitor saw the SSID/BSSID change (BboxKernel.onWifiChanged); the core
         // that owns the routing rules is Dart's, so the re-read happens here.
