@@ -11,11 +11,15 @@ import '../components/form.dart';
 import '../ui/json/engine/json_tree.dart';
 import '../widgets.dart';
 
-/// Imports a sing-box JSON fragment into route profile [profileId]. Returns true when something was
-/// added, so the profile editor reloads its rules.
+/// Imports a sing-box JSON fragment. From a route profile it takes route rules into the profile and
+/// DNS rules into the DNS object; from Settings, DNS it takes the DNS rules alone and says where a
+/// route rule it finds belongs. Returns true when something was added.
 class RuleImportPage extends StatefulWidget {
-  const RuleImportPage({super.key, required this.profileId});
-  final int profileId;
+  const RuleImportPage({super.key, this.profileId});
+
+  /// The route profile the route rules join; null is the DNS page's own sheet.
+  final int? profileId;
+
   @override State<RuleImportPage> createState() => _RuleImportPageState();
 }
 
@@ -23,11 +27,16 @@ class _RuleImportPageState extends State<RuleImportPage> {
   final _text = JsonCodeController();
   final _undo = UndoHistoryController();
   Timer? _debounce;
-  RuleImportKind _kind = RuleImportKind.route;
+  RuleImportKind _pickedKind = RuleImportKind.route;
   RuleImportResult? _result;
   Map<String, int> _outboundIds = const {};
   bool _saving = false;
   String? _error;
+
+  /// The DNS page has no profile to add route rules to, so it only ever reads `dns.rules`.
+  bool get _dnsOnly => widget.profileId == null;
+
+  RuleImportKind get _kind => _dnsOnly ? RuleImportKind.dns : _pickedKind;
 
   @override
   void initState() {
@@ -46,8 +55,10 @@ class _RuleImportPageState extends State<RuleImportPage> {
   }
 
   /// The server tags a rule may name as its outbound; a dead service only leaves them unresolvable,
-  /// which the preview then reports per rule instead of failing the whole import.
+  /// which the preview then reports per rule instead of failing the whole import. The DNS sheet
+  /// never converts route rules, so it asks for nothing.
   Future<void> _load() async {
+    if (_dnsOnly) return;
     try {
       final nodes = await context.box.groupNodes();
       if (!mounted) return;
@@ -81,19 +92,21 @@ class _RuleImportPageState extends State<RuleImportPage> {
 
   bool get _canImport {
     final result = _result;
-    return !_saving && result != null && result.error == null && result.total > 0;
+    if (_saving || result == null || result.error != null) return false;
+    return _dnsOnly ? result.dnsRules.isNotEmpty : result.total > 0;
   }
 
   Future<void> _import() async {
     final result = _result;
     if (result == null || !_canImport) return;
     final box = context.box;
+    final profileId = widget.profileId;
     setState(() { _saving = true; _error = null; });
     try {
-      if (result.routeRules.isNotEmpty) {
-        final existing = json(await box.routeRules(widget.profileId));
+      if (profileId != null && result.routeRules.isNotEmpty) {
+        final existing = json(await box.routeRules(profileId));
         final rules = [...rows(existing['rules']), ...result.routeRules];
-        await box.routeSaveRules(widget.profileId, rules);
+        await box.routeSaveRules(profileId, rules);
       }
       if (result.dnsRules.isNotEmpty) await _appendDnsRules(box, result.dnsRules);
       if (mounted) context.safeNestedPop(true);
@@ -127,7 +140,7 @@ class _RuleImportPageState extends State<RuleImportPage> {
   Widget build(BuildContext context) {
     final result = _result;
     return Scaffold(
-      title: context.tr('Import rules'),
+      title: context.tr(_dnsOnly ? 'Import DNS rules' : 'Import rules'),
       isLoading: _saving,
       confirmationAction: IconButtonData(
         glyph: AppGlyphs.check, tooltip: context.tr('Import'),
@@ -136,7 +149,8 @@ class _RuleImportPageState extends State<RuleImportPage> {
       body: Padding(
         padding: EdgeInsets.only(top: context.appBarInset),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          generateSection(items: [
+          // The DNS sheet reads `dns.rules` only, so there is no kind to choose.
+          if (!_dnsOnly) generateSection(items: [
             ListItem(
               title: Text(context.tr('Rule kind')),
               subtitle: Text(context.tr(
@@ -175,7 +189,7 @@ class _RuleImportPageState extends State<RuleImportPage> {
       ),
     );
     if (picked == null || !mounted) return;
-    setState(() => _kind = picked);
+    setState(() => _pickedKind = picked);
     await _parse();
   }
 
@@ -195,16 +209,31 @@ class _RuleImportPageState extends State<RuleImportPage> {
           title: Text(context.tr('Not a rule fragment')),
           subtitle: Text(result.error!),
         ) else ...[
-          ListItem(
-            leading: const GlyphIcon(AppGlyphs.check),
-            title: Text(context.tr('Route rules to add')),
-            trailing: Text('${result.routeRules.length}', style: context.listValueStyle),
-          ),
-          ListItem(
-            leading: const GlyphIcon(AppGlyphs.dns),
-            title: Text(context.tr('DNS rules to add')),
-            trailing: Text('${result.dnsRules.length}', style: context.listValueStyle),
-          ),
+          if (_dnsOnly) ...[
+            // Said out loud rather than dropped: these rules are real, they just live elsewhere.
+            if (result.routeRules.isNotEmpty) ListItem(
+              leading: GlyphIcon(AppGlyphs.info, color: context.colorScheme.tertiary),
+              title: Text(context.tr('Route rules belong to a route profile')),
+              subtitle: Text(context.tr('Open a route profile to import those.')),
+              trailing: Text('${result.routeRules.length}', style: context.listValueStyle),
+            ),
+            ListItem(
+              leading: const GlyphIcon(AppGlyphs.dns),
+              title: Text(context.tr('DNS rules to add')),
+              trailing: Text('${result.dnsRules.length}', style: context.listValueStyle),
+            ),
+          ] else ...[
+            ListItem(
+              leading: const GlyphIcon(AppGlyphs.check),
+              title: Text(context.tr('Route rules to add')),
+              trailing: Text('${result.routeRules.length}', style: context.listValueStyle),
+            ),
+            ListItem(
+              leading: const GlyphIcon(AppGlyphs.dns),
+              title: Text(context.tr('DNS rules to add')),
+              trailing: Text('${result.dnsRules.length}', style: context.listValueStyle),
+            ),
+          ],
           if (usesDns) ListItem(
             leading: GlyphIcon(AppGlyphs.info, color: context.colorScheme.tertiary),
             title: Text(context.tr('DNS rules wait for the DNS object')),

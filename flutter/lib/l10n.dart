@@ -812,6 +812,12 @@ const _zh = <String, String>{
   'They are stored in the DNS object, which Settings, DNS has switched off; turn it on for them to apply.': '这些规则保存在 DNS 对象中，而「设置 → DNS」当前未启用该对象；启用后才会生效。',
   'The schema rejects part of this fragment': 'schema 校验未通过',
   'Fix the underlined fields before importing.': '请先修正带下划线的字段再导入。',
+  'Import DNS rules': '导入 DNS 规则',
+  'Paste a sing-box fragment with dns.rules; it is checked against the schema first.': '粘贴含 dns.rules 的 sing-box 片段，导入前会先做 schema 校验。',
+  'Route rules belong to a route profile': '路由规则属于路由配置',
+  'Open a route profile to import those.': '请打开对应的路由配置导入这些规则。',
+  'Imported rules are appended to the DNS object above.': '导入的规则会追加到上方的 DNS 对象中。',
+  'Imported rules are kept in the DNS object, which is switched off here; turn it on for them to apply.': '导入的规则保存在 DNS 对象中，此处该对象已关闭；启用后才会生效。',
 };
 
 extension BoxLocalization on BuildContext {

@@ -437,6 +437,18 @@ class DnsPage extends StatelessWidget {
           SettingText('Query timeout', 'dnsQueryTimeout', hint: 'e.g. 5s, empty to use the core default'),
         ]),
       ],
+      // The DNS rules of a fragment land in the DNS object's `rules` — the one place this build
+      // keeps them — so the sheet lives here next to that object, not on a route profile.
+      generateSection(title: context.tr('Rules'), items: [
+        ListItem(
+          leading: const GlyphIcon(AppGlyphs.code),
+          title: Text(context.tr('Import DNS rules')),
+          subtitle: Text(context.tr('Paste a sing-box fragment with dns.rules; it is checked against the schema first.')),
+          onTap: () => openPage<bool>(context, const RuleImportPage()),
+        ),
+      ], footer: useObject
+          ? context.tr('Imported rules are appended to the DNS object above.')
+          : context.tr('Imported rules are kept in the DNS object, which is switched off here; turn it on for them to apply.')),
     ]);
   }
 }
