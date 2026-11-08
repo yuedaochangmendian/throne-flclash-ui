@@ -10,6 +10,8 @@
 
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show visibleForTesting;
+
 import '../box.dart';
 import 'kernel_worker.dart';
 import 'platform_value.dart';
@@ -17,12 +19,16 @@ import 'throne_kernel.dart';
 
 /// Drives the core through dart:ffi instead of the Android service.
 ///
-/// Off: the bridge is the operator. `BaseService` starts `ProxyInstance` with
-/// gomobile, the channel reports its state and traffic, and every control call
-/// in [BoxApi] takes the channel branch. This is the path that kept the tunnel
-/// up; the FFI driver is kept intact behind this switch instead of deleted, so
-/// it can be brought back once its lifecycle is trusted on a real device.
-const bool kFfiDriverEnabled = false;
+/// On: Dart opens `libthrone.so` and owns the Instance lifecycle — start, stop,
+/// reload and the status snapshot all cross the C ABI directly, and the bridge
+/// is told to stand aside for the control plane only.
+///
+/// The driver still stands down on its own when the rebuilt core is absent from
+/// the build (`ThroneKernel.isAvailable == false`): it returns before it asks
+/// the bridge to yield, so `BaseService` keeps starting `ProxyInstance` through
+/// gomobile and every control call takes its channel branch. Flipping this off
+/// hands the core back to the service without deleting the driver.
+const bool kFfiDriverEnabled = true;
 
 class KernelService {
   KernelService(this.box);
@@ -43,8 +49,36 @@ class KernelService {
   bool _starting = false;
   bool _stopping = false;
   bool _recovering = false;
+
+  /// Set when the worker reports the core lost, until a start holds or a stop
+  /// acknowledges it. A lost core leaves `_instanceHandle` pointing at the dead
+  /// instance on purpose — the recovery path reads it — so `active` alone says
+  /// "running" when the truth is "dead": the start guard consults this flag to
+  /// let a user's manual start through during the recovery backoff instead of
+  /// silently swallowing it (and dissolving the recovery with a no-op epoch).
+  bool _instanceLost = false;
+
+  /// Bumped by every effective core lifecycle transition (a start that builds
+  /// an instance, a stop that closes one). Guarded no-ops do not count, so a
+  /// swallowed command cannot make a delayed recovery think the user moved.
+  int _epoch = 0;
+
+  /// Lifecycle commands (start/stop/reload) run one at a time through this
+  /// chain: a reload or stop that arrives while a start is still unwinding
+  /// waits for it instead of tearing down the instance that start is about to
+  /// produce. Each queued op re-validates the world when it runs, so a stop
+  /// that landed behind a start still wins, and a reload behind a stop does
+  /// not pull the tunnel back up.
+  Future<void>? _lifecycle;
+
   bool _disposed = false;
   bool _initializing = false;
+  bool _statsInFlight = false;
+
+  /// Set when the bridge stopped a service-side box to hand the control plane over
+  /// (the service came up before Dart did). [adoptService] rebuilds the core once the
+  /// channel is ready; until then the tunnel is deliberately down rather than doubled.
+  bool handoverPending = false;
 
   /// Automatic restarts spent on the current incident; reset by a run that holds.
   int _recoveryAttempts = 0;
@@ -62,108 +96,436 @@ class KernelService {
 
   // --- lifecycle ----------------------------------------------------------
 
+  /// Test-only: reaches the state [initialize] would leave after a successful
+  /// hand-over without a native library or a spawned worker isolate. The tests
+  /// pass signature-level fakes; only channel calls and the worker's lifecycle
+  /// methods are exercised.
+  void debugAttach(ThroneKernel kernel, KernelWorker worker) => _attach(kernel, worker);
+
+  /// Test-only: drives the host-handle adoption without a native library.
+  @visibleForTesting
+  Future<void> debugAdoptHostHandle(int handle) => _adoptHostHandle(handle);
+
+  /// Wires the worker's event stream and the kernel's status feed to this
+  /// driver. Both entry points — [initialize] and the tests' [debugAttach] —
+  /// subscribe the same way, so they cannot drift apart.
+  void _attach(ThroneKernel kernel, KernelWorker worker) {
+    _kernel = kernel;
+    _worker = worker;
+    _workerSub = worker.events.listen(_onWorkerEvent, onError: report);
+    // The Go side pushes a "status" event for every aggregate snapshot; the
+    // worker heartbeat triggers it and uses the return value to detect loss.
+    _statusSub = kernel.events
+        .where((event) => event['method'] == 'status')
+        .listen(_onKernelStatus, onError: report);
+  }
+
+  /// Drops both subscriptions and the worker after a failed start-up. A worker
+  /// that never came up is disposed on a best-effort basis: there is nothing
+  /// left to tear down when the isolate did not start.
+  Future<void> _detach() async {
+    await _workerSub?.cancel();
+    await _statusSub?.cancel();
+    _workerSub = null;
+    _statusSub = null;
+    final worker = _worker;
+    _worker = null;
+    _kernel = null;
+    if (worker == null) return;
+    try {
+      await worker.dispose();
+    } catch (_) {
+      // The worker never came up; nothing to tear down.
+    }
+  }
+
   Future<void> initialize() async {
     // Bridge mode: no FFI library is opened, no worker isolate is spawned, and
     // the bridge is never told to stand aside. Everything below belongs to the
     // FFI driver and must stay out of the way when it is switched off.
     if (!kFfiDriverEnabled) return;
     if (_kernel != null || _initializing) return;
+    // Nothing to drive when the rebuilt core is absent: leave the bridge in
+    // charge rather than ask it to stand aside for a library that is not there.
+    if (!ThroneKernel.isAvailable) return;
     _initializing = true;
     try {
       // Tell the bridge the FFI path drives the core from now on, then open the ABI.
-      await box.call('ffi.mode', {'enabled': true});
+      // The reply says whether a service-side box had to be stopped to get here.
+      final reply = await box.call('ffi.mode', {'enabled': true});
+      handoverPending = reply is Map && reply['handedOver'] == true;
+      // The host kept the numeric handle when the previous engine died; adopt
+      // that core instead of building a second box on the same tun.
+      final hostHandle =
+          reply is Map ? (reply['handle'] as num?)?.toInt() : null;
       final kernel = ThroneKernel.ensure();
       if (kernel == null) {
-        await box.call('ffi.mode', {'enabled': false});
+        await _rollbackToBridge();
         return;
       }
+      // Set before the spawn: `adoptService` reads it to decide whether a
+      // pending hand-over still has a driver to rebuild the core for.
       _kernel = kernel;
       try {
-        final worker = await KernelWorker.spawn();
-        _worker = worker;
-        _workerSub = worker.events.listen(_onWorkerEvent, onError: report);
-        // The Go side pushes a "status" event for every aggregate snapshot; the
-        // worker heartbeat triggers it and uses the return value to detect loss.
-        _statusSub = kernel.events
-            .where((event) => event['method'] == 'status')
-            .listen(_onKernelStatus, onError: report);
+        _attach(kernel, await KernelWorker.spawn());
       } catch (_) {
-        await _workerSub?.cancel();
-        await _statusSub?.cancel();
-        _workerSub = null;
-        _statusSub = null;
-        final worker = _worker;
-        _worker = null;
-        _kernel = null;
-        if (worker != null) {
-          try {
-            await worker.dispose();
-          } catch (_) {
-            // The worker never came up; nothing to tear down.
-          }
-        }
+        await _detach();
         // Hand control back to the channel path so the app is still usable.
-        await box.call('ffi.mode', {'enabled': false});
+        await _rollbackToBridge();
         rethrow;
+      }
+      if (hostHandle != null && hostHandle > 0) {
+        await _adoptHostHandle(hostHandle);
       }
     } finally {
       _initializing = false;
     }
   }
 
-  /// Starts the foreground service (Android duty) and then the core itself.
+  /// Registers the running core's numeric handle with the host, or clears it.
+  /// The host closes that handle when a stop arrives after the Flutter engine
+  /// died. A failed write costs the takeover, not the start itself.
+  Future<void> _publishHandle(int? handle) async {
+    try {
+      await box.call('ffi.handle', {'handle': handle});
+    } catch (error) {
+      note('handle registration: $error');
+    }
+  }
+
+  /// Takes back a core the host adopted when the previous Flutter engine died.
+  /// The service is still up and the Go handle table is process-wide, so the
+  /// numeric handle remains valid; building a new instance here would put a
+  /// second box on the same tun.
+  Future<void> _adoptHostHandle(int handle) async {
+    final worker = _worker;
+    if (worker == null || _disposed) return;
+    bool alive;
+    try {
+      alive = await worker.adoptInstance(handle);
+    } catch (error) {
+      note('adopt: could not take over the host handle: $error');
+      alive = false;
+    }
+    if (!alive) {
+      note('adopt: the host handle is gone, clearing the registration');
+      await _publishHandle(null);
+      return;
+    }
+    _instanceHandle = handle;
+    _startedAt = DateTime.now();
+    _instanceLost = false;
+    await worker.setHeartbeat(true);
+    _emitDashboard('Started');
+    await _watchWifiRules(worker);
+    note('adopt: took over the core left by the previous engine');
+  }
+
+  /// Gives the core back to the service after the FFI driver failed to come up. A
+  /// hand-over has already stopped the service-side box, so the service is asked to
+  /// build one again — otherwise the app would sit "connected" with nothing running.
+  Future<void> _rollbackToBridge() async {
+    final rebuild = handoverPending;
+    handoverPending = false;
+    try {
+      await box.call('ffi.mode', {'enabled': false});
+      if (rebuild) await box.call('service.reload');
+    } catch (error) {
+      note('hand-over rollback: $error');
+    }
+  }
+
+  /// Rebuilds the core after the bridge handed the control plane over: the service had
+  /// started its own box before Dart attached and stopped it to avoid two on one tun.
+  /// That close runs on the service's coroutine, so this waits for it to release the
+  /// tun before opening the same one again.
+  Future<void> adoptService() async {
+    if (!handoverPending) return;
+    handoverPending = false;
+    if (_kernel == null) return;
+    await _awaitServiceRelease();
+    if (_disposed || _kernel == null) return;
+    note('adopt: the service came up before the driver, rebuilding its core');
+    _recoveryAttempts = 0;
+    await _enqueue(() => _startCore(bringUpService: true));
+  }
+
+  /// A hand-over restarts the service in place: `handOver()` stops the box, and
+  /// `startProxy` re-registers the VpnService under ffiMode. A fixed one-second
+  /// delay was a guess — too short when the close is still running on a slow
+  /// device, and a wasted second on a fast one. Poll the read-only service state
+  /// instead, with a hard ceiling so a host that cannot answer never hangs the
+  /// hand-over.
+  static const _handoverTimeout = Duration(seconds: 5);
+  static const _handoverPollInterval = Duration(milliseconds: 50);
+
+  Future<void> _awaitServiceRelease() async {
+    final deadline = DateTime.now().add(_handoverTimeout);
+    while (!_disposed) {
+      try {
+        final state = asStringKeyedMap(
+          await box.call('service.state'),
+          context: 'service.state',
+        );
+        // Registered again, in ffiMode, and Connected: the tun the core asks for
+        // belongs to a service that has finished its restart.
+        if (state['registered'] == true &&
+            state['ffiMode'] == true &&
+            state['state'] == 'Connected') {
+          return;
+        }
+      } catch (_) {
+        // The channel is still coming up (or an older host has no `service.state`);
+        // polling is the answer, not an error. The deadline below is the ceiling.
+      }
+      if (DateTime.now().isAfter(deadline)) {
+        note('adopt: the service did not report ready in '
+            '${_handoverTimeout.inSeconds}s, rebuilding anyway');
+        return;
+      }
+      await Future<void>.delayed(_handoverPollInterval);
+    }
+  }
+
+  /// A `ready` that failed cannot build a config, so a pending hand-over must not
+  /// be left pending: the service sits Connected under ffiMode with no core and
+  /// nothing will ever rebuild it. Give control back to the bridge, which rebuilds
+  /// its own box on `service.reload` (the same path as a failed initialization).
+  Future<void> abandonHandover() async {
+    if (!handoverPending) return;
+    note('hand-over abandoned: the channel could not become ready');
+    await _rollbackToBridge();
+  }
+
+  /// Serializes one lifecycle op behind everything already queued. The chain
+  /// itself never throws: ops report their own failures, and a failed op must
+  /// not strand the ones behind it.
+  Future<void> _enqueue(Future<void> Function() op) {
+    final previous = _lifecycle;
+    Future<void> run() async {
+      if (previous != null) {
+        try {
+          await previous;
+        } catch (_) {
+          // The chain never fails its awaiters; the op below decides what a
+          // failed predecessor means for the current world.
+        }
+      }
+      if (_disposed || _kernel == null) return;
+      await op();
+    }
+    final future = run();
+    _lifecycle = future;
+    // Keep an observed copy so a rejected op never surfaces as an unhandled
+    // async error; callers that await get the real outcome.
+    unawaited(future.catchError((Object _) {}));
+    return future;
+  }
+
+  /// Starts the foreground service (Android duty) and the core itself.
+  ///
+  /// The two only meet when the core asks the platform for a tun, so they run at the same
+  /// time: Android creating the service and Dart building the config have nothing to say to
+  /// each other. Sequenced, the whole service bring-up (a process start, a notification, a
+  /// VpnService instance) sat in front of a config build that then ran alone, and the user
+  /// waited for the sum instead of the larger of the two.
   Future<void> startService() async {
     if (_kernel == null) return;
     note('start: user asked for the tunnel');
-    await box.call('service.start'); // foreground only in ffiMode
     // A start the user asked for is a fresh incident, whatever the last one cost.
     _recoveryAttempts = 0;
-    await _startCore();
+    await _enqueue(() => _startCore(bringUpService: true));
   }
 
   Future<void> stopService() async {
     if (_kernel == null) return;
     note('stop: user asked to stop');
-    await _stopCore();
-    await box.call('service.stop');
-    _emitDashboard('Stopped');
+    await _enqueue(() async {
+      await _stopCore();
+      // The core is down either way and the dashboard must say so; the channel
+      // failure still propagates so callers see the service stop failed (the
+      // pre-serialization behavior their bool checks rely on).
+      Object? serviceFailure;
+      try {
+        await box.call('service.stop');
+      } catch (error) {
+        note('stop: $error');
+        serviceFailure = error;
+      }
+      _emitDashboard('Stopped');
+      if (serviceFailure != null) throw serviceFailure;
+    });
+  }
+
+  /// A non-Dart stop (widget/tile/notification) reached the driver through the
+  /// host event. The service is already stopping, so only the core is closed —
+  /// calling `service.stop` again would bounce the stopRunner we are answering.
+  Future<void> stopCoreFromHost() async {
+    if (_kernel == null) return;
+    note('stop: host asked the driver to close the core');
+    await _enqueue(() => _stopCore());
   }
 
   /// Rebuilds the config and restarts the core in place (the foreground service stays).
-  /// Only restarts if the core was running — a stopped service must not be pulled up
-  /// by a stale selection-change or mode-switch event.
+  /// Only restarts if the core is actually running — a stopped service must not be pulled
+  /// up by a stale selection-change or mode-switch event, and a start still unwinding
+  /// finishes first, so the check below sees its real outcome.
   Future<void> reloadService({String reason = 'reload'}) async {
-    if (_kernel == null || !active) return;
+    if (_kernel == null) return;
     note('reload: $reason');
-    await _stopCore();
-    await _startCore();
+    await _enqueue(() async {
+      if (!active) return;
+      await _stopCore(clearRunning: false);
+      await _startCore();
+    });
   }
 
-  Future<void> _startCore() async {
+  /// Persists the running-config facts for the code that reads them off the store
+  /// (`ProfileManager.runningUses`, `RouteManager.runningRouteId`). The values come
+  /// straight from `config.build`, so this never re-derives what the native side
+  /// already computed. A failure is a breadcrumb, not a failed start: the tunnel
+  /// works without them, the two guards above just go quiet.
+  Future<void> _markRunning(Map<String, dynamic> built) async {
+    final raw = built['involvedProfileIds'];
+    final ids = raw is List
+        ? raw.whereType<num>().map((value) => value.toInt()).toList()
+        : <int>[];
+    final routeId = (built['routeId'] as num?)?.toInt() ?? 0;
+    try {
+      await box.call('state.markRunning', {'involvedProfileIds': ids, 'routeId': routeId});
+    } catch (error) {
+      note('running state: $error');
+    }
+  }
+
+  Future<void> _clearRunning() async {
+    try {
+      await box.call('state.clearRunning');
+    } catch (error) {
+      note('running state: $error');
+    }
+  }
+
+  /// Asks the core whether the running config needs Wi-Fi state, and turns the Android
+  /// monitor on or off accordingly. Both halves matter: an unnecessary monitor keeps a
+  /// ConnectivityManager callback alive, and a missing one silently drops every rule
+  /// scoped to an SSID.
+  Future<void> _watchWifiRules(KernelWorker worker) async {
+    var needed = false;
+    try {
+      needed = await worker.needWifiState();
+    } catch (error) {
+      note('wifi rules: $error');
+    }
+    try {
+      await box.call('wifi.watch', {'enabled': needed});
+    } catch (error) {
+      note('wifi rules: $error');
+    }
+  }
+
+  /// An SSID/BSSID change announced by the Android monitor; the core re-reads the
+  /// platform's state through the same `CorePlatform` implementation as always.
+  Future<void> updateWifiState() async {
+    final worker = _worker;
+    if (worker == null || !active) return;
+    try {
+      await worker.updateWifiState();
+    } catch (error) {
+      note('wifi state: $error');
+    }
+  }
+
+  Future<void> _startCore({bool bringUpService = false}) async {
     if (_kernel == null || _starting || _disposed) return;
     final worker = _worker;
     if (worker == null) return;
+    // A start requested while a core already runs (double tap, a queued second
+    // start) must not overwrite `_instanceHandle` and orphan the live instance
+    // inside the worker — the old one would never be closed. A lost core
+    // leaves the handle pointing at a dead instance, so `active` alone would
+    // swallow a user's manual start during the recovery backoff; the lost
+    // flag tells the two apart.
+    if (active && !_instanceLost) {
+      note('start: the core is already running');
+      return;
+    }
     _starting = true;
+    _epoch++;
     _emitDashboard('Starting');
     final beganAt = DateTime.now();
+    final clock = Stopwatch()..start();
+    var serviceMs = 0;
+    var configMs = 0;
     try {
       // The native DB owns the selection (DataStore.selectedProxy). The Flutter
       // preference store holds UI settings only, so mining it for an id used to
       // send 0 here and fail every start with "profile 0 is gone".
+      final build = box.call('config.build', configBuildArgs())
+          .whenComplete(() => configMs = clock.elapsedMilliseconds);
+      // Android's half runs alongside the build above: in ffiMode the service owns the
+      // VpnService the core asks for a tun, and nothing in the config depends on it.
+      final serviceUp = bringUpService
+          ? box.call('service.start')
+              .whenComplete(() => serviceMs = clock.elapsedMilliseconds)
+          : null;
+      // Both are already in flight. Await the service half first: when Android refuses
+      // the VPN (no permission, always-on conflict) there is no reason to make the
+      // user sit through a slow xray/config build before seeing the error. The build
+      // is still awaited below on the success path, and observed here on failure so
+      // its resources are released rather than completing unobserved.
+      if (serviceUp != null) {
+        try {
+          await serviceUp;
+        } catch (error) {
+          unawaited(() async {
+            try {
+              await build;
+            } catch (buildError) {
+              note('config.build after a failed service start: $buildError');
+            }
+          }());
+          rethrow;
+        }
+      }
       // The channel reply is a `Map<String, dynamic>` after BoxController.call
       // normalizes it. Use a checked conversion so a future codec change fails
       // with a readable message instead of a bare type-cast exception.
-      final built = asStringKeyedMap(
-        await box.call('config.build', configBuildArgs()),
-        context: 'config.build',
-      );
+      final built = asStringKeyedMap(await build, context: 'config.build');
+      final readyMs = clock.elapsedMilliseconds;
       final handle = await worker.createInstance(built);
       _instanceHandle = handle;
+      final instanceMs = clock.elapsedMilliseconds;
       await worker.start();
+      // The start held: whatever the worker reported lost before is replaced
+      // by a core that is answering again.
+      _instanceLost = false;
       await worker.setHeartbeat(true);
+      // The host owns this handle if the engine dies before the next stop.
+      await _publishHandle(handle);
+      final startMs = clock.elapsedMilliseconds;
       _startedAt = DateTime.now();
-      note('core started in ${DateTime.now().difference(beganAt).inMilliseconds}ms');
+      // Split by phase: the total alone cannot say whether the next second should be spent on
+      // Android's service, on the config build, or inside the core's own start.
+      final phases = [
+        if (bringUpService) 'service $serviceMs',
+        'config $configMs',
+        'instance ${instanceMs - readyMs}',
+        'start ${startMs - instanceMs}',
+      ].join(', ');
+      note('core started in ${DateTime.now().difference(beganAt).inMilliseconds}ms ($phases)');
       _emitDashboard('Started');
+      // What the service used to write right after proxy.init(). Running a chain is not only the
+      // box's business: ProfileManager.runningUses refuses to delete a node a running config still
+      // uses, and RouteManager.runningRouteId decides whether a group's routing change needs a
+      // reload. Both read the store, so the facts are reported here once the start held — after
+      // the screen has been told the tunnel is up, since it reads none of them, and the two guards
+      // above are only consulted when the user edits a profile or a route.
+      await _markRunning(built);
+      // Wi-Fi-scoped routes, DNS and rule sets need the core re-read whenever the SSID
+      // changes. The monitor is Android's (it owns the callback); whether one is needed at
+      // all is the core's answer, so ask the box that just started.
+      await _watchWifiRules(worker);
     } catch (error) {
       note('core start FAILED: $error');
       report(error);
@@ -171,18 +533,54 @@ class KernelService {
       // createInstance does not silently orphan it inside the worker isolate.
       try { await worker.stop(); } catch (_) { /* Already stopped or never started. */ }
       _instanceHandle = null;
+      await _publishHandle(null);
+      // A failed start leaves nothing running, and a reload that kept the old facts
+      // would otherwise describe a core that is not there.
+      await _clearRunning();
+      // In ffiMode BaseService announces `Connected` as soon as the service starts
+      // (startProxy), before any core exists. A failed build must not leave the
+      // notification, tile and VPN icon claiming a tunnel that is not there — and
+      // with `active == false` the watchdog will not recover it. Stop the service
+      // too, in the same order as stopService(). Best effort: a channel failure
+      // here must not hide the original start error.
+      try {
+        await box.call('service.stop');
+      } catch (stopError) {
+        note('core start FAILED: could not stop the service: $stopError');
+      }
       _emitDashboard('Stopped');
     } finally {
       _starting = false;
     }
   }
 
-  Future<void> _stopCore() async {
+  Future<void> _stopCore({bool clearRunning = true}) async {
     final handle = _instanceHandle;
     _instanceHandle = null;
     _startedAt = null;
+    // A stop acknowledges a loss even when the lost instance never gets to be
+    // closed: the world is going down either way, so a pending recovery is
+    // moot and an epoch bump here (a real transition) is what the delayed
+    // recovery's staleness check reads.
+    _instanceLost = false;
+    // Cleared before the box closes: nothing reads "still running" while it
+    // shuts down, and a stop with no UI attached must not leave the host
+    // holding a handle the driver is about to release.
+    await _publishHandle(null);
+    // A reload keeps the facts: the next start writes them again a moment later, and the gap is
+    // not a stop the user asked for. The Wi-Fi monitor follows the same rule — it is useless
+    // without a box, and rebuilding it on every reload would drop a change that lands between.
+    if (clearRunning) {
+      await _clearRunning();
+      try {
+        await box.call('wifi.watch', {'enabled': false});
+      } catch (error) {
+        note('wifi rules: $error');
+      }
+    }
     final worker = _worker;
     if (handle == null || worker == null) return;
+    _epoch++;
     _stopping = true;
     _emitDashboard('Stopping');
     try {
@@ -242,6 +640,33 @@ class KernelService {
       if (value != null) snapshot[entry.key.toString()] = value;
     }
     _emitStatus(snapshot);
+    _publishStats(snapshot);
+  }
+
+  /// The notification's speed line and the widget read the service's own counters, and in
+  /// FFI mode nothing on that side polls the core — `TrafficLooper` needs a ProxyInstance.
+  /// Push the same snapshot it would have produced; the screen-off rule is already handled
+  /// on the Kotlin side by `listenPostSpeed`.
+  void _publishStats(Map<String, int> snapshot) {
+    // One status snapshot per second, but a busy main thread can leave a channel
+    // call in flight for longer. Drop the overlap instead of piling up replies
+    // that would all describe an older second anyway.
+    if (_disposed || _statsInFlight) return;
+    _statsInFlight = true;
+    unawaited(() async {
+      try {
+        await box.call('state.stats', {
+          'txRate': snapshot['uplink'] ?? 0,
+          'rxRate': snapshot['downlink'] ?? 0,
+          'txTotal': snapshot['uplinkTotal'] ?? 0,
+          'rxTotal': snapshot['downlinkTotal'] ?? 0,
+        });
+      } catch (_) {
+        // A notification that cannot be updated is not a reason to lose the status stream.
+      } finally {
+        _statsInFlight = false;
+      }
+    }());
   }
 
   void _onWorkerEvent(WorkerEvent event) {
@@ -250,6 +675,7 @@ class KernelService {
     report(StateError(reason is String && reason.isNotEmpty
         ? 'the kernel stopped responding: $reason'
         : 'the kernel stopped responding'));
+    _instanceLost = true;
     _emitDashboard('Stopped');
     _recoverOnce();
   }
@@ -271,12 +697,17 @@ class KernelService {
     _recovering = true;
     final attempt = _recoveryAttempts;
     _recoveryAttempts++;
+    // The world when the core was lost: if any lifecycle command runs while the
+    // backoff sleeps (the user stopped, or stopped and restarted), the epoch no
+    // longer matches and this recovery stands down instead of reloading a
+    // tunnel the user just brought up.
+    final epochAtLoss = _epoch;
     try {
       if (attempt > 0) {
         _emitDashboard('Starting');
-        await Future<void>.delayed(
-            attempt == 1 ? const Duration(seconds: 10) : const Duration(seconds: 30));
+        await Future<void>.delayed(recoveryBackoff(attempt));
         if (!active) return; // the user stopped it while waiting
+        if (_epoch != epochAtLoss) return; // ...or stopped and restarted it
       }
       await reloadService(reason: 'heartbeat lost, attempt ${attempt + 1}');
       if (active) report('the kernel was restarted automatically');
@@ -287,6 +718,17 @@ class KernelService {
     }
   }
 
+  /// The 10s first backoff and 30s second one. [recoveryBackoffOverride] lets
+  /// widget tests exercise the backoff window without real seconds.
+  static Duration recoveryBackoff(int attempt) =>
+      recoveryBackoffOverride != Duration.zero
+          ? recoveryBackoffOverride
+          : (attempt == 1 ? const Duration(seconds: 10) : const Duration(seconds: 30));
+
+  /// Test-only: when non-zero, replaces the recovery backoff entirely.
+  @visibleForTesting
+  static Duration recoveryBackoffOverride = Duration.zero;
+
   void _emitStatus(Map<String, int> snapshot) {
     if (_disposed) return;
     _events.add({
@@ -294,7 +736,6 @@ class KernelService {
       'value': {
         'upload': snapshot['uplink'] ?? 0,
         'download': snapshot['downlink'] ?? 0,
-        'memoryBytes': snapshot['memory'] ?? 0,
       },
     });
     _emitDashboard(
@@ -368,11 +809,20 @@ class KernelService {
 
   void dispose() {
     _disposed = true;
+    // A dispose that reaches here closes the core itself, so the host must not
+    // keep a handle for a box that is about to be released. An engine killed
+    // without a dispose leaves the registration standing — that is the takeover.
+    unawaited(_publishHandle(null));
     unawaited(_workerSub?.cancel());
     unawaited(_statusSub?.cancel());
     final worker = _worker;
     _worker = null;
-    if (worker != null) unawaited(worker.dispose());
+    if (worker != null) {
+      // dispose() races the ops still unwinding in the queue: a worker command
+      // sent after the isolate shut down waits out its timeout and fails. That
+      // failure is expected here — catch it so `unawaited` never surfaces it.
+      unawaited(worker.dispose().catchError((Object _) {}));
+    }
     _events.close();
     _kernel?.dispose();
     _kernel = null;

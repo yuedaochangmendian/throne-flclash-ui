@@ -26,6 +26,13 @@ jobs:
           AAR=$(find flutter/build/host/outputs/repo -name "*.aar" | head -1)
           test -n "$AAR"
           python3 tools/diagnostics/scan_aar_apis.py "$AAR"
+      # The AAR's `io.flrone/*` channels have no in-repo Kotlin counterpart to
+      # diff against; the budget in aar_channels.txt is their contract.
+      - name: Audit the vendored AAR channel surface
+        run: |
+          AAR=$(find flutter/build/host/outputs/repo -name "*.aar" | head -1)
+          test -n "$AAR"
+          python3 tools/diagnostics/aar_channel_audit.py "$AAR"
       # The NDK is installed by android-build; its clang is the exact one the
       # release build uses, so preamble syntax errors are caught before linking.
       - name: Check cgo preambles
@@ -49,7 +56,7 @@ jobs:
       - name: Prism UI drift check
         run: |
           python3 tools/diagnostics/prism_drift.py check --json prism_drift.json \
-            --fail-on removed --max-diverged 1
+            --fail-on removed --max-diverged 1 --expect-diverged banner.dart
       - name: Upload Prism UI drift report
         if: ${{ always() }}
         uses: actions/upload-artifact@v7
@@ -63,7 +70,19 @@ jobs:
           python3 tools/diagnostics/settings_audit.py --summary
           python3 tools/diagnostics/ffi_regression_test.py
           python3 tools/diagnostics/generated_models_check.py
+          # Dart reads Room's file directly, so Room's schema version has a second
+          # copy in db.dart. A bump on one side alone still compiles and still
+          # queries — it just reads the wrong column.
+          python3 tools/diagnostics/schema_audit.py
+          # The JVM accepts regexes Android's ICU rejects; see the pre.17 crash.
+          python3 tools/diagnostics/kotlin_regex_audit.py
           python3 tools/diagnostics/py_syntax_check.py tools/diagnostics/*.py tools/bindgen/*.py buildScript/*.py
+      # Locale completeness is a report, not a gate: the 885 known gaps across 19 locales
+      # predate this job and are burned down incrementally. `continue-on-error` keeps the
+      # list visible on every push without blocking it.
+      - name: i18n coverage report
+        run: python3 tools/diagnostics/i18n_coverage.py --summary
+        continue-on-error: true
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
@@ -79,7 +98,9 @@ jobs:
         run: flutter test --coverage
       - name: Coverage floor
         working-directory: flutter
-        run: python3 ../tools/diagnostics/coverage_gate.py coverage/lcov.info --min 40
+        # --report-dirs prints every lib/<dir> percentage so per-directory floors
+        # (--min-dir lib/data:NN) can be set from a measured number, not a guess.
+        run: python3 ../tools/diagnostics/coverage_gate.py coverage/lcov.info --min 40 --report-dirs
       - name: Upload coverage
         if: ${{ always() }}
         uses: actions/upload-artifact@v7

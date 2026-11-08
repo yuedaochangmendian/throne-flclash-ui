@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import '../widgets.dart';
 import 'data_subscription.dart';
+import 'form.dart';
 
 /// FlClash's memory summary with same-process accounting from libbox.
 class MemoryPanel extends StatelessWidget {
@@ -19,14 +20,18 @@ class MemorySummary extends StatelessWidget {
   @override Widget build(BuildContext context) {
     final color = context.colorScheme;
     final remote = snapshot['remote'] == true;
+    final rss = snapshot['rss'] as num? ?? 0;
     final app = snapshot['app'] as num? ?? 0;
     final core = snapshot['core'] as num? ?? 0;
-    // The headline is what the process holds now. `total` is the ART heap ceiling, not device RAM,
-    // so it would read as "256 MB used" on a panel where App and Core add up to 68 MB.
-    final total = bytes(remote ? (snapshot['total'] as num? ?? 0) : app + core).split(' ');
+    final other = snapshot['other'] as num? ?? 0;
+    // Every figure comes from Android's own accounting (Debug.MemoryInfo): totalPss, and its
+    // dalvik/native/other split, which add up to it. Nothing here is derived, so nothing here can
+    // disagree with the process total.
+    final total = bytes(remote ? (snapshot['total'] as num? ?? 0) : rss).split(' ');
     final parts = <(String, num, Color)>[
       if (!remote) ('App', app, color.primary),
       ('Core', core, Color.alphaBlend(color.primary.withValues(alpha: .45), SurfaceLevel.card.colorOf(color))),
+      if (!remote && other > 0) ('Other', other, color.onSurfaceVariant.withValues(alpha: .35)),
     ];
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Text.rich(TextSpan(children: [
@@ -81,15 +86,16 @@ class _MemoryDetailsState extends State<MemoryDetails> {
       const SizedBox(height: 8), Text(context.tr('Total memory'), style: AppTextStyle.headline.of(context)), const SizedBox(height: 4),
       MemorySummary(snapshot: memory), const SizedBox(height: 12),
       Text(context.tr(remote ? 'Memory reported by the remote core. Detailed accounting is unavailable.'
-        : 'App and core share one process. Core runtime memory is separated from process RSS, not added twice.'), style: context.listCaptionStyle),
+        : "The total is the process's resident memory (PSS), split by allocator: the app's heap, native allocations — the core runs there — and the rest."), style: context.listCaptionStyle),
       if (!remote) generateSection(title: context.tr('App'), items: [
-        ListItem(title: Text(context.tr('Process RSS')), trailing: Text(bytes(memory['rss'] as num? ?? 0))),
-        ListItem(title: Text(context.tr('Heap in use')), trailing: Text(bytes(memory['heapInuse'] as num? ?? 0))),
-        ListItem(title: Text(context.tr('Retained idle heap')), trailing: Text(bytes(memory['heapIdle'] as num? ?? 0))),
+        ListItem(title: Text(context.tr('Process RSS')), trailing: Text(bytes(memory['rss'] as num? ?? 0), style: context.listValueStyle)),
+        ListItem(title: Text(context.tr('Heap in use')), trailing: Text(bytes(memory['heapInuse'] as num? ?? 0), style: context.listValueStyle)),
+        ListItem(title: Text(context.tr('Retained idle heap')), trailing: Text(bytes(memory['heapIdle'] as num? ?? 0), style: context.listValueStyle)),
       ]),
       generateSection(title: context.tr('Core'), items: [
         if (!remote && memory['running'] != true) ListItem(title: Text(context.tr('Not running'))),
-        ListItem(title: Text(context.tr('Core memory')), trailing: Text(bytes(memory['core'] as num? ?? 0))),
+        ListItem(title: Text(context.tr('Core memory')), trailing: Text(bytes(memory['core'] as num? ?? 0), style: context.listValueStyle)),
+        if (!remote) ListItem(title: Text(context.tr('Other')), trailing: Text(bytes(memory['other'] as num? ?? 0), style: context.listValueStyle)),
       ]),
     ]));
   }

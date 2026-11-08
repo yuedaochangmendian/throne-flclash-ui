@@ -71,7 +71,7 @@ class _NodeTuningPageState extends State<NodeTuningPage> {
         if (hasMux) generateSection(title: context.tr('Mux'), items: [
           ListItem(
             title: Text(context.tr('Mux')),
-            trailing: Text(context.tr(_muxStateName(muxState))),
+            trailing: Text(context.tr(_muxStateName(muxState)), style: context.listValueStyle),
             onTap: () async {
               final picked = await showDialog<int>(context: context, builder: (context) => SimpleDialog(
                 title: Text(context.tr('Mux')),
@@ -86,7 +86,7 @@ class _NodeTuningPageState extends State<NodeTuningPage> {
           if (muxState == 3) ...[
             ListItem(
               title: Text(context.tr('Mux protocol')),
-              trailing: Text('${_info['muxProtocol'] ?? 'smux'}'),
+              trailing: Text('${_info['muxProtocol'] ?? 'smux'}', style: context.listValueStyle),
               onTap: () async {
                 final picked = await showDialog<String>(context: context, builder: (context) => SimpleDialog(
                   title: Text(context.tr('Mux protocol')),
@@ -120,7 +120,7 @@ class _NodeTuningPageState extends State<NodeTuningPage> {
         if (hasXrayMux) generateSection(title: context.tr('Xray multiplex'), items: [
           ListItem(
             title: Text(context.tr('Xray multiplex')),
-            trailing: Text(context.tr(_muxStateName(xrayMuxState))),
+            trailing: Text(context.tr(_muxStateName(xrayMuxState)), style: context.listValueStyle),
             onTap: () async {
               final picked = await showDialog<int>(context: context, builder: (context) => SimpleDialog(
                 title: Text(context.tr('Xray multiplex')),
@@ -138,7 +138,7 @@ class _NodeTuningPageState extends State<NodeTuningPage> {
             _number('XUDP concurrency', 'xrayMuxXudpConcurrency'),
             ListItem(
               title: Text(context.tr('XUDP proxy UDP/443')),
-              trailing: Text(_info['xrayMuxXudpProxyUDP443']?.toString().isNotEmpty == true ? '${_info['xrayMuxXudpProxyUDP443']}' : 'reject'),
+              trailing: Text(_info['xrayMuxXudpProxyUDP443']?.toString().isNotEmpty == true ? '${_info['xrayMuxXudpProxyUDP443']}' : 'reject', style: context.listValueStyle),
               onTap: () async {
                 final picked = await showDialog<String>(context: context, builder: (context) => SimpleDialog(
                   title: Text(context.tr('XUDP proxy UDP/443')),
@@ -155,7 +155,7 @@ class _NodeTuningPageState extends State<NodeTuningPage> {
         if (hasTls) generateSection(title: context.tr('Fragment'), items: [
           ListItem(
             title: Text(context.tr('Fragment')),
-            trailing: Text(context.tr(_tristateName((_info['fragmentState'] as num?)?.toInt() ?? 0))),
+            trailing: Text(context.tr(_tristateName((_info['fragmentState'] as num?)?.toInt() ?? 0)), style: context.listValueStyle),
             onTap: () async {
               final picked = await _tristateDialog(context.tr('Fragment'));
               if (picked != null) _set('fragmentState', picked);
@@ -176,7 +176,7 @@ class _NodeTuningPageState extends State<NodeTuningPage> {
         if (hasTls) generateSection(title: context.tr('TLS tricks'), items: [
           ListItem(
             title: Text(context.tr('TLS tricks')),
-            trailing: Text(context.tr(_tristateName((_info['tlsTricksState'] as num?)?.toInt() ?? 0))),
+            trailing: Text(context.tr(_tristateName((_info['tlsTricksState'] as num?)?.toInt() ?? 0)), style: context.listValueStyle),
             onTap: () async {
               final picked = await _tristateDialog(context.tr('TLS tricks'));
               if (picked != null) _set('tlsTricksState', picked);

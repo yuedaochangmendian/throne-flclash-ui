@@ -13,13 +13,19 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 import okhttp3.Call
+import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.json.JSONObject
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.Proxy
+import java.net.UnknownHostException
+import java.util.concurrent.Callable
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -55,7 +61,7 @@ object BboxEgress {
     // rest are fallbacks for when it rate-limits, is slow or is unreachable. The order is the
     // preference order, not the order they are tried: every source is asked at once (Bettbox's
     // race), so a blocked source costs latency only until another one answers.
-    private val endpoints = listOf(
+    private val endpoints: List<Pair<String, (JSONObject) -> Info>> = listOf(
         "https://ipwho.is/" to ::parseIpWhoIs,
         "https://uapis.cn/api/v1/network/myip" to ::parseUapis,
         "https://get.geojs.io/v1/ip/geo.json" to ::parseGeojs,
@@ -63,11 +69,39 @@ object BboxEgress {
         "https://ipinfo.io/json" to ::parseIpInfo,
     )
 
-    /** The whole probe must answer within this budget, however many sources are slow. */
-    private const val PROBE_BUDGET_MS = 8_000L
+    /**
+     * The source the speed-test screen's "Lookup provider" picks, moved to the front of the race.
+     *
+     * That setting was written to `exit_lookup_provider` and read by nothing, so changing it did
+     * nothing at all. A provider this build has no parser for — ip2location needs a key, cloudflare
+     * answers plain text — falls back to the default order rather than to nothing.
+     *
+     * `internal` (rather than private) so `BboxEgressParseTest` can pin the ordering.
+     */
+    internal fun endpointsFor(provider: String): List<Pair<String, (JSONObject) -> Info>> {
+        val chosen: Pair<String, (JSONObject) -> Info> = when (provider) {
+            "ipwho" -> "https://ipwho.is/" to ::parseIpWhoIs
+            "ipinfo" -> "https://ipinfo.io/json" to ::parseIpInfo
+            "ip-api" -> "http://ip-api.com/json" to ::parseIpApi
+            "ipapi-co" -> "https://ipapi.co/json/" to ::parseIpApiCo
+            "freeipapi" -> "https://freeipapi.com/api/json" to ::parseFreeIpApi
+            else -> return endpoints
+        }
+        return listOf(chosen) + endpoints.filter { it.first != chosen.first }
+    }
 
-    /** How long the richest source may hold the answer before a fallback takes over. */
-    private const val PRIMARY_BUDGET_MS = 3_500L
+    /**
+     * The whole probe must answer within this budget, however many sources are slow.
+     */
+    private const val PROBE_BUDGET_MS = 5_000L
+
+    /**
+     * How long the richest source may hold the answer before a fallback takes over. The fallbacks
+     * are asked at the same time and usually answer in a few hundred milliseconds, so this is the
+     * card's worst case when the preferred source is blocked — it used to be 3.5 s, which is what
+     * "the IP takes a while to show up" meant on a network where ipwho.is does not answer.
+     */
+    private const val PRIMARY_BUDGET_MS = 1_200L
 
     @Volatile
     private var cached: Info = Info()
@@ -83,7 +117,11 @@ object BboxEgress {
     @Volatile
     private var cachedDirectAt = 0L
 
-    private const val TTL_MS = 30_000L
+    /**
+     * An exit address rarely changes within a session; a route change forces a fresh probe, so a
+     * long TTL only spares the card a needless round trip when it is reopened.
+     */
+    private const val TTL_MS = 300_000L
 
     // One probe at a time. The card asks on every state change, and a state that
     // flickers faster than the answer used to start a new five-source race per
@@ -104,6 +142,9 @@ object BboxEgress {
     private var directClient: OkHttpClient? = null
 
     fun cached(direct: Boolean = false): Info = if (direct) cachedDirect else cached
+
+    /** When [cached] was measured; 0 when there is none. A served-from-cache answer carries its real time, so the card's "last checked" stays honest. */
+    fun cachedAt(direct: Boolean = false): Long = if (direct) cachedDirectAt else cachedAt
 
     /**
      * Probes the egress, through the mixed inbound unless [direct]. Returns the cached answer while it is fresh unless
@@ -148,10 +189,11 @@ object BboxEgress {
     private suspend fun race(http: OkHttpClient, failure: AtomicReference<String?>): Info? = coroutineScope {
         val calls = CopyOnWriteArrayList<Call>()
         try {
-            val (primaryUrl, primaryParse) = endpoints.first()
+            val sources = endpointsFor(DataStore.exitLookupProvider)
+            val (primaryUrl, primaryParse) = sources.first()
             val primary = async { fetch(http, primaryUrl, primaryParse, calls, failure) }
             val fallbacks = Channel<Info>(Channel.UNLIMITED)
-            val rest: List<Job> = endpoints.drop(1).map { (url, parse) ->
+            val rest: List<Job> = sources.drop(1).map { (url, parse) ->
                 launch { fetch(http, url, parse, calls, failure)?.let { fallbacks.send(it) } }
             }
             val preferred = withTimeoutOrNull(PRIMARY_BUDGET_MS) { primary.await() }
@@ -210,6 +252,7 @@ object BboxEgress {
 
     private fun newClient(port: Int?): OkHttpClient {
         val builder = OkHttpClient.Builder()
+            .dns(timedDns)
             .connectTimeout(6, TimeUnit.SECONDS)
             .readTimeout(8, TimeUnit.SECONDS)
             .callTimeout(12, TimeUnit.SECONDS)
@@ -217,6 +260,31 @@ object BboxEgress {
         if (port == null) return builder.build()
         val host = DataStore.inboundAddress.ifBlank { SettingsRegistry.LOOPBACK_ADDRESS }
         return builder.proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress(host, port))).build()
+    }
+
+    /**
+     * `Dns.SYSTEM` blocks inside `getaddrinfo`, which nothing can interrupt: a name that does not
+     * resolve holds its call — and therefore the whole race, which waits for its children — for as
+     * long as the platform takes to give up. In the report `get.geojs.io` cost 48 seconds, and the
+     * card sat on a skeleton the entire time even though other sources had answered.
+     *
+     * Two seconds is longer than any usable answer takes. The lookup runs on its own pool because
+     * the thread cannot be cancelled either; it is left to die when the resolver returns.
+     */
+    private val dnsPool = Executors.newCachedThreadPool { runnable ->
+        Thread(runnable, "bbox-egress-dns").apply { isDaemon = true }
+    }
+
+    private val timedDns: Dns = object : Dns {
+        override fun lookup(hostname: String): List<InetAddress> {
+            val task = dnsPool.submit(Callable<List<InetAddress>> { Dns.SYSTEM.lookup(hostname) })
+            return try {
+                task.get(2, TimeUnit.SECONDS)
+            } catch (e: TimeoutException) {
+                task.cancel(true)
+                throw UnknownHostException("$hostname: no answer in 2s")
+            }
+        }
     }
 
     fun invalidate() {
@@ -275,11 +343,54 @@ object BboxEgress {
         return Info(
             ip = json.optString("ip").takeIf { it.isNotBlank() },
             country = json.optString("country").takeIf { it.isNotBlank() },
-            organization = org?.substringAfter(' ', org),
+            organization = if (asn != null) org?.substringAfter(' ') else org,
             asn = asn,
             type = if (json.optString("ip").contains(':')) "IPv6" else "IPv4",
         )
     }
+
+    /** ip-api.com keys the AS number and the operator together in `as`, and repeats the ISP in `isp`. */
+    internal fun parseIpApi(json: JSONObject): Info {
+        if (json.optString("status") != "success") return Info()
+        val asField = json.optString("as")
+        return Info(
+            ip = json.optString("query").takeIf { it.isNotBlank() },
+            country = json.optString("countryCode").takeIf { it.isNotBlank() },
+            countryName = json.optString("country").takeIf { it.isNotBlank() },
+            region = json.optString("regionName").takeIf { it.isNotBlank() },
+            city = json.optString("city").takeIf { it.isNotBlank() },
+            isp = json.optString("isp").takeIf { it.isNotBlank() },
+            organization = json.optString("org").takeIf { it.isNotBlank() },
+            asn = asField.substringBefore(' ').takeIf { it.startsWith("AS") },
+        )
+    }
+
+    /** ipapi.co names the country twice (`country` is the ISO code) and packs the AS into `org`. */
+    internal fun parseIpApiCo(json: JSONObject): Info {
+        val org = json.optString("org").takeIf { it.isNotBlank() }
+        val asn = org?.substringBefore(' ')?.takeIf { it.startsWith("AS") }
+        return Info(
+            ip = json.optString("ip").takeIf { it.isNotBlank() },
+            country = json.optString("country").takeIf { it.isNotBlank() },
+            countryName = json.optString("country_name").takeIf { it.isNotBlank() },
+            region = json.optString("region").takeIf { it.isNotBlank() },
+            city = json.optString("city").takeIf { it.isNotBlank() },
+            // Strip the leading AS number only when there is one; otherwise `org`
+            // is the whole operator name and dropping its first word would be wrong.
+            organization = if (asn != null) org?.substringAfter(' ') else org,
+            asn = asn,
+        )
+    }
+
+    /** freeipapi.com answers location only: no operator, no AS number. */
+    internal fun parseFreeIpApi(json: JSONObject): Info = Info(
+        ip = json.optString("ipAddress").takeIf { it.isNotBlank() },
+        country = json.optString("countryCode").takeIf { it.isNotBlank() },
+        countryName = json.optString("countryName").takeIf { it.isNotBlank() },
+        region = json.optString("regionName").takeIf { it.isNotBlank() },
+        city = json.optString("cityName").takeIf { it.isNotBlank() },
+        type = if (json.optInt("ipVersion") == 6) "IPv6" else "IPv4",
+    )
 
     private fun parseIpWhoIs(json: JSONObject): Info {
         val connection = json.optJSONObject("connection")

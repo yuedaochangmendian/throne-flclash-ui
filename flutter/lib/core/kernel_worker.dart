@@ -21,10 +21,13 @@ import 'throne_ffi.dart';
 
 enum KernelCommand {
   createInstance,
+  adoptInstance,
   start,
   stop,
   setHeartbeat,
   warpRegister,
+  needWifiState,
+  updateWifiState,
   dispose,
 }
 
@@ -45,19 +48,37 @@ class KernelWorker {
   final SendPort _commands;
   final Stream<WorkerEvent> _events;
   final ReceivePort _eventsPort;
+  bool _disposed = false;
 
   Stream<WorkerEvent> get events => _events;
 
   static Future<KernelWorker> spawn() async {
     final events = ReceivePort();
     final ready = ReceivePort();
-    await Isolate.spawn(_workerMain, <Object>[events.sendPort, ready.sendPort]);
+    final Isolate isolate;
+    try {
+      isolate = await Isolate.spawn(
+          _workerMain, <Object>[events.sendPort, ready.sendPort]);
+    } catch (_) {
+      // The spawn itself failed before any cleanup path existed; without
+      // closing these the two native ports would leak.
+      events.close();
+      ready.close();
+      rethrow;
+    }
     late final SendPort commands;
     try {
       commands = await ready.first.timeout(
         const Duration(seconds: 20),
         onTimeout: () => throw StateError('the kernel worker did not start'),
       ) as SendPort;
+    } catch (_) {
+      // The worker never came up (a timeout, or its first message was not the
+      // command port). Without this, the isolate would live on holding
+      // libthrone.so open, with an events port nobody ever reads.
+      isolate.kill(priority: Isolate.beforeNextEvent);
+      events.close();
+      rethrow;
     } finally {
       ready.close();
     }
@@ -89,6 +110,12 @@ class KernelWorker {
   Future<int> createInstance(Map<String, dynamic> built) async =>
       (await _call(KernelCommand.createInstance, built))! as int;
 
+  /// Re-attaches to an Instance the host adopted when the previous Flutter
+  /// engine died. The Go handle table is process-wide, so the numeric handle is
+  /// still valid; false means it was closed in the meantime.
+  Future<bool> adoptInstance(int handle) async =>
+      (await _call(KernelCommand.adoptInstance, handle)) == true;
+
   Future<void> start() => _call(KernelCommand.start);
 
   /// Closes the Instance and releases its handle (the only release path).
@@ -96,6 +123,14 @@ class KernelWorker {
 
   Future<void> setHeartbeat(bool enabled) =>
       _call(KernelCommand.setHeartbeat, enabled);
+
+  /// Whether the running config asks for Wi-Fi state at all (a Wi-Fi-scoped route,
+  /// DNS or rule set). Asked after the start, when there is an instance to ask.
+  Future<bool> needWifiState() async =>
+      (await _call(KernelCommand.needWifiState)) == true;
+
+  /// Tells the core to re-read the platform's SSID/BSSID (the Kotlin side reads it).
+  Future<void> updateWifiState() => _call(KernelCommand.updateWifiState);
 
   Future<Map<String, dynamic>> warpRegister(
     String tunnelType,
@@ -109,6 +144,8 @@ class KernelWorker {
   }
 
   Future<void> dispose() async {
+    if (_disposed) return;
+    _disposed = true;
     try {
       await _call(KernelCommand.dispose);
     } finally {
@@ -197,6 +234,25 @@ void _workerMain(List<Object> init) {
           } finally {
             options.release();
           }
+        case KernelCommand.adoptInstance:
+          final adoptedHandle = payload! as int;
+          if (ffi.throne_Instance_alive(adoptedHandle) == 0) {
+            reply.send(false);
+          } else {
+            // The previous engine's isolate is gone, so this worker holds no
+            // instance of its own; only the process-wide Go handle survives.
+            final previous = instance;
+            if (previous != null) {
+              instance = null;
+              try { previous.close(); }
+              finally { previous.release(); }
+            }
+            instance = ThroneInstance(ffi, adoptedHandle);
+            startAtMs = DateTime.now().millisecondsSinceEpoch;
+            lastBeatAtMs = null;
+            lostReported = false;
+            reply.send(true);
+          }
         case KernelCommand.start:
           final current = instance;
           if (current == null) throw StateError('no kernel instance to start');
@@ -230,6 +286,12 @@ void _workerMain(List<Object> init) {
             data['tunnelType'] as String,
             asStringKeyedMap(data['params'], context: 'warp params'),
           ));
+        case KernelCommand.needWifiState:
+          final current = instance;
+          reply.send(current != null && current.needWIFIState());
+        case KernelCommand.updateWifiState:
+          instance?.updateWIFIState();
+          reply.send(null);
         case KernelCommand.dispose:
           heartbeatEnabled = false;
           heartbeat?.cancel();

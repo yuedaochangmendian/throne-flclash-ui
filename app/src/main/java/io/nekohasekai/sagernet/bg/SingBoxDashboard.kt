@@ -40,7 +40,12 @@ object SingBoxDashboard {
     /**
      * Blocking, and never fails the start: a failure is only logged, and the dashboard screen then finds no page to
      * show.
+     *
+     * Synchronized because two paths reach it: `SagerNet.onCreate` prewarms it on a background thread, and
+     * `BoxInstance.init` calls it again from a start that may still be building. Without the lock both would
+     * unpack into the same `*.unpack` directory and one would delete the other's files.
      */
+    @Synchronized
     fun install() {
         val temp = File(coreDir, "${ConfigGenerator.DASHBOARD_PATH}.unpack")
         try {

@@ -11,6 +11,7 @@ import 'dashboard_chip.dart';
 import '../common/ip_quality.dart';
 import '../common/ip_quality_cache.dart';
 import '../common/routed_ip_probe.dart';
+import 'form.dart';
 
 /// Mobile layout from FlClash's current_outbound.dart, with sing-box data.
 class StatusPanel extends StatefulWidget {
@@ -20,7 +21,9 @@ class StatusPanel extends StatefulWidget {
 class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
   // FlClash common/constant.dart and providers/routed_probe.dart.
   static const _throttleDuration = Duration(seconds: 5);
-  static const _moveSettleDuration = Duration(milliseconds: 300);
+  // Long enough to swallow the burst of state changes a connect or a profile switch emits, short
+  // enough that the card is not visibly waiting: the probe starts as soon as the route is settled.
+  static const _moveSettleDuration = Duration(milliseconds: 120);
   bool _busy = false, _checking = false, _qualityChecking = false;
   Json? _egress;
   String? _error, _qualityError, _stamp;
@@ -127,8 +130,18 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
       if (ip == null || direct) return;
       try {
         // The transport opens its native session on first get, so the lookup works on both the
-        // fresh-IP path (no session opened yet) and the quality-only path.
-        final record = await box.ipQualities.lookup(probe, ip, refresh: !readIp || ip == retryQualityFor);
+        // fresh-IP path (no session opened yet) and the quality-only path. Each answer the lookup
+        // would deliver lands on the card as it arrives — an inferred one first, then the precise
+        // one that replaces it — instead of the card waiting for the chain to converge.
+        final record = await box.ipQualities.lookup(probe, ip, refresh: !readIp || ip == retryQualityFor,
+          onAnswer: (quality) {
+            if (!mounted || generation != _generation) return;
+            setState(() {
+              result.remove('qualityError'); result.remove('qualityFailures');
+              result.addAll(quality.toDashboard(DateTime.now()));
+            });
+            _detailsRevision.value++;
+          });
         if (!mounted || generation != _generation) return;
         setState(() {
           result.remove('qualityError'); result.remove('qualityFailures');
@@ -188,7 +201,10 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
     final scale = math.max(1.0, MediaQuery.textScalerOf(context).scale(1));
     final ipStyle = AppTextStyle.title2.of(context, emphasized: true).toTabular.copyWith(color: foreground, letterSpacing: 0);
     final ipLoading = _checking || (_routeChanged && _ipDue && !box.transitioning && !box.remote);
-    final loading = (ipLoading && ip == null) || _qualityChecking;
+    // A quality answer on the card stays put while the lookup refines it; skeletons
+    // stand in only while nothing is known yet.
+    final qualityReady = info?['type'] != null || info?['quality'] != null;
+    final loading = (ipLoading && ip == null) || (_qualityChecking && !qualityReady);
     // Bettbox-style placement: a location (country · city) and a carrier (ASN · ISP/organization)
     // sit beside the IP, using the richer fields the ipwho.is source supplies when available.
     // A two-letter code is already drawn as the badge's regional-indicator emoji, so it is not
@@ -403,12 +419,14 @@ class EgressDetails extends StatelessWidget {
     'Organization': info['organization'], if (info['isp'] != null) 'ISP': info['isp'], 'ASN': info['asn'],
     'Type': context.tr(info['type'] as String? ?? 'Unknown type'),
     if (info['quality'] != null) 'Quality': context.tr(info['quality'] as String),
-    'IP query source': info['ipSource'], 'Quality query source': info['source'],
+    // One row, not two: show the source that actually answered (the quality lookup
+    // when it ran, otherwise the egress probe), never both side by side.
+    'IP source': info['source'] ?? info['ipSource'],
     'Last checked': localDate(info['qualityCheckedAt'] ?? info['checkedAt'])}),
     if (info['qualityError'] != null) generateSection(title: context.tr('IP quality unavailable'), items: [
       for (final failure in rows(info['qualityFailures'])) ListItem(title: Text(failure['source'].toString()),
         trailing: Text(context.tr({'noType': 'No type data', 'timeout': 'Timeout', 'rateLimited': 'Rate limited',
-          'failed': 'Unavailable', 'ipMismatch': 'IP mismatch'}[failure['status']] ?? 'Unavailable'))),
+          'failed': 'Unavailable', 'ipMismatch': 'IP mismatch'}[failure['status']] ?? 'Unavailable'), style: context.listValueStyle)),
     ]),
   ]);
 }

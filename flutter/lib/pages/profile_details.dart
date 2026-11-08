@@ -4,6 +4,7 @@ import '../components/profile_panel.dart';
 import 'profiles.dart';
 import 'profile_editor.dart';
 import 'configuration.dart';
+import '../components/form.dart';
 
 class ProfileDetailsPage extends StatelessWidget {
   const ProfileDetailsPage({super.key, this.profile});
@@ -32,8 +33,8 @@ class ProfileDetailsPage extends StatelessWidget {
         ListItem(title: Text(context.tr('Last updated')), subtitle: Text(
           (p['updatedAt'] as num? ?? 0) <= 0 ? context.tr('Unknown') : localDate(p['updatedAt']))),
         if (p['remote'] == true) ...[
-          ListItem(title: Text(context.tr('Auto update')), trailing: Text(context.tr(p['autoUpdate'] == true ? 'Turn on' : 'Turn off'))),
-          ListItem(title: Text(context.tr('Update interval (minutes)')), trailing: Text(p['interval'].toString())),
+          ListItem(title: Text(context.tr('Auto update')), trailing: Text(context.tr(p['autoUpdate'] == true ? 'Turn on' : 'Turn off'), style: context.listValueStyle)),
+          ListItem(title: Text(context.tr('Update interval (minutes)')), trailing: Text(p['interval'].toString(), style: context.listValueStyle)),
         ],
       ]),
       generateSection(items: [

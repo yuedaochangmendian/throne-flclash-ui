@@ -59,10 +59,13 @@ class ServiceNotification(
         private val ACTION_ORDER = listOf(ACTION_STOP, ACTION_PREVIOUS, ACTION_NEXT, ACTION_SWITCH, ACTION_RESET)
 
         fun notificationActions(): List<String> {
+            // null = never configured (defaults); an empty list is "every button deselected" and is honoured.
             val stored = DataStore.configurationStore.getStringList(Key.NOTIFICATION_ACTIONS) ?: return DEFAULT_ACTIONS
             return ACTION_ORDER.filter { it in stored }.take(3)
         }
 
+        // Template rendering lives in NotificationTemplate: no Android types, so
+        // it is unit-testable, and a bad pattern cannot fail this class's <clinit>.
         fun genTitle(ent: ProxyEntity): String {
             val gn = if (DataStore.showGroupInNotification)
                 SagerDatabase.groupDao.getById(ent.groupId)?.displayName() else null
@@ -76,56 +79,67 @@ class ServiceNotification(
     val screenOn = MutableStateFlow(SagerNet.power.isInteractive)
 
     suspend fun postNotificationSpeedUpdate(stats: SpeedDisplayData) {
+        // A content template owns the body outright: the speed toggles below only shape the
+        // built-in line, so a user who wrote their own text is never second-guessed.
+        val customBody = if (contentTemplate.isEmpty()) null else render(contentTemplate, contentValues(stats))
         useBuilder {
-            if (showDirectSpeed) {
-                val speedDetail = (service as Context).getString(
-                    R.string.speed_detail, service.getString(
-                        R.string.speed, Formatter.formatFileSize(service, stats.txRateProxy)
-                    ), service.getString(
-                        R.string.speed, Formatter.formatFileSize(service, stats.rxRateProxy)
-                    ), service.getString(
-                        R.string.speed,
-                        Formatter.formatFileSize(service, stats.txRateDirect)
-                    ), service.getString(
-                        R.string.speed,
-                        Formatter.formatFileSize(service, stats.rxRateDirect)
-                    )
-                )
-                it.setStyle(NotificationCompat.BigTextStyle().bigText(speedDetail))
-                it.setContentText(speedDetail)
+            // Re-render the title too: a template change reaches the notification on this same
+            // update, without waiting for the next profile switch.
+            it.setContentTitle(displayTitle(currentTitle))
+            if (customBody != null) {
+                it.setContentText(customBody)
+                it.setStyle(if ('\n' in customBody) NotificationCompat.BigTextStyle().bigText(customBody) else null)
+                it.setSubText(null)
             } else {
-                val speedSimple = (service as Context).getString(
-                    R.string.traffic, service.getString(
-                        R.string.speed, Formatter.formatFileSize(service, stats.txRateProxy)
-                    ), service.getString(
-                        R.string.speed, Formatter.formatFileSize(service, stats.rxRateProxy)
+                when {
+                    !showProxySpeed -> {
+                        it.setContentText(null)
+                        it.setStyle(null)
+                    }
+                    showDirectSpeed -> {
+                        val speedDetail = ctx.getString(
+                            R.string.speed_detail, speed(stats.txRateProxy), speed(stats.rxRateProxy),
+                            speed(stats.txRateDirect), speed(stats.rxRateDirect)
+                        )
+                        it.setStyle(NotificationCompat.BigTextStyle().bigText(speedDetail))
+                        it.setContentText(speedDetail)
+                    }
+                    else -> {
+                        val speedSimple = ctx.getString(
+                            R.string.traffic, speed(stats.txRateProxy), speed(stats.rxRateProxy)
+                        )
+                        it.setContentText(speedSimple)
+                        it.setStyle(null)
+                    }
+                }
+                // The cumulative total under the rate line is optional: a minimal notification
+                // (rate only) reads cleaner on a lock screen that already shows a clock.
+                if (showTrafficTotal) it.setSubText(
+                    ctx.getString(
+                        R.string.traffic,
+                        Formatter.formatFileSize(ctx, stats.txTotal),
+                        Formatter.formatFileSize(ctx, stats.rxTotal)
                     )
-                )
-                it.setContentText(speedSimple)
+                ) else it.setSubText(null)
             }
-            it.setSubText(
-                service.getString(
-                    R.string.traffic,
-                    Formatter.formatFileSize(service, stats.txTotal),
-                    Formatter.formatFileSize(service, stats.rxTotal)
-                )
-            )
         }
         update()
     }
 
     suspend fun postNotificationTitle(newTitle: String) {
+        currentTitle = newTitle
         useBuilder {
-            it.setContentTitle(newTitle)
+            it.setContentTitle(displayTitle(newTitle))
         }
         update()
     }
 
     /** A restart in place: the new profile's title and buttons, and no speed of the old one. */
     suspend fun refresh(newTitle: String) {
+        currentTitle = newTitle
         updateActions()
         useBuilder {
-            it.setContentTitle(newTitle)
+            it.setContentTitle(displayTitle(newTitle))
             it.setContentText(null)
             it.setSubText(null)
             it.setStyle(null)
@@ -148,12 +162,60 @@ class ServiceNotification(
         update()
     }
 
-    private val showDirectSpeed = DataStore.showDirectSpeed
+    // Read through on every update rather than captured at construction: the General page
+    // promises these apply on the service's next notification update, with no restart.
+    private val showProxySpeed get() = DataStore.showProxySpeed
+    private val showDirectSpeed get() = DataStore.showDirectSpeed
+
+    /** Whether the cumulative up/down total shows as the notification's sub text. */
+    private val showTrafficTotal get() = DataStore.showTrafficTotal
+
+    /**
+     * The title template. `{title}` is the profile name (or "Switching…"); everything else is
+     * literal, so "🚀 {title}" reads "🚀 Tokyo 01". Empty falls back to `{title}`, and an older
+     * build's `notificationTitlePrefix` is folded in as "<prefix> {title}" so an upgrade keeps it.
+     */
+    private val titleTemplate: String
+        get() = DataStore.notificationTitleTemplate.trim().ifEmpty {
+            val legacy = DataStore.notificationTitlePrefix.trim()
+            if (legacy.isEmpty()) "{title}" else "$legacy {title}"
+        }
+
+    /** A full body template; empty keeps the built-in rate/detail lines and the speed toggles. */
+    private val contentTemplate get() = DataStore.notificationContentTemplate.trim()
+
+    /** The latest title, so a content template can echo it while the rates update. */
+    private var currentTitle: String = title
+
+    /** [title] through [titleTemplate]. */
+    private fun displayTitle(title: String): String = render(titleTemplate, mapOf("title" to title))
+
+    /** Replaces every `{key}` in [template]; unknown placeholders stay as written. */
+    private fun render(template: String, values: Map<String, String>): String {
+        // One pass, and no second scan of substituted values; see NotificationTemplate.
+        return NotificationTemplate.render(template, values)
+    }
+
+    /** The service as a Context; `Interface` is not one, so every formatter call goes through here. */
+    private val ctx: Context get() = service as Context
+
+    private fun speed(rate: Long): String =
+        ctx.getString(R.string.speed, Formatter.formatFileSize(ctx, rate))
+
+    private fun contentValues(stats: SpeedDisplayData) = mapOf(
+        "title" to currentTitle,
+        "up" to speed(stats.txRateProxy),
+        "down" to speed(stats.rxRateProxy),
+        "directUp" to speed(stats.txRateDirect),
+        "directDown" to speed(stats.rxRateDirect),
+        "totalUp" to Formatter.formatFileSize(ctx, stats.txTotal),
+        "totalDown" to Formatter.formatFileSize(ctx, stats.rxTotal),
+    )
 
     private val builder = NotificationCompat.Builder(service as Context, channel)
         .setWhen(0)
         .setTicker(service.getString(R.string.forward_success))
-        .setContentTitle(title)
+        .setContentTitle(displayTitle(title))
         .setOnlyAlertOnce(true)
         .setContentIntent(SagerNet.configureIntent(service))
         .setSmallIcon(R.drawable.ic_throne_tile)

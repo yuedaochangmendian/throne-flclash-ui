@@ -1,6 +1,6 @@
 name: Fetch sing-box dashboard
 description: >-
-  Downloads the gh-pages build of SagerNet/sing-box-dashboard into app/src/main/assets/sb-dashboard/ (gitignored), the
+  Downloads a pinned build of SagerNet/sing-box-dashboard into app/src/main/assets/sb-dashboard/ (gitignored), the
   dashboard the app unpacks for the core's api service (bg/SingBoxDashboard.kt) instead of the core downloading it.
 runs:
   using: composite
@@ -12,7 +12,10 @@ runs:
         DEST=app/src/main/assets/sb-dashboard
         rm -rf "$DEST"
         mkdir -p "$DEST"
-        curl -fsSL --retry 3 https://codeload.github.com/SagerNet/sing-box-dashboard/tar.gz/refs/heads/gh-pages \
+        # Pinned like THRONE_CORE_REF: the gh-pages branch head is a moving target and made
+        # every build a different bundle. Bump DASHBOARD_REF consciously, same as the core pin.
+        DASHBOARD_REF=d77c2f016a7681aa1704e9f83c69139edb230c97  # 2026-10-11 "Deploy 3e4bf08e"
+        curl -fsSL --retry 3 "https://codeload.github.com/SagerNet/sing-box-dashboard/tar.gz/$DASHBOARD_REF" \
           | tar -xz --strip-components=1 -C "$DEST"
         # aapt leaves out dot files and directories starting with "_" without failing the build.
         find "$DEST" -type f -name '.*' -delete
@@ -26,4 +29,7 @@ runs:
         fi
         # Media range syntax needs Chromium 104; older Android System WebViews would miss the phone layout (#97).
         python3 buildScript/dashboard_css.py "$DEST"
+        # The bundle ships a 5.4 MB color-emoji webfont (~10% of the APK); the WebView falls
+        # back to the device's emoji font, which is the same glyphs.
+        python3 buildScript/dashboard_slim.py "$DEST"
         du -sh "$DEST"

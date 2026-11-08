@@ -7,8 +7,6 @@ import 'package:flrone/widgets.dart';
 import 'package:flrone/pages/connections.dart';
 import 'package:flrone/pages/logs.dart';
 import 'package:flrone/pages/settings.dart';
-import 'package:flrone/pages/diagnostics.dart';
-import 'package:flrone/pages/resolve.dart';
 import 'package:flrone/pages/reports.dart';
 import 'package:flrone/pages/profiles.dart';
 import 'package:flutter/services.dart';
@@ -105,8 +103,6 @@ void main() {
         ('Appearance', const AppearancePage()), ('Access', const AccessPage()),
         ('General', const GeneralPage()), ('Core', const CorePage()),
         ('Remote', const RemotePage()), ('Backup', const BackupPage()),
-        ('Quality', const DiagnosticsPage(quality: true)), ('STUN', const DiagnosticsPage(quality: false)),
-        ('Resolve', const ResolvePage()),
         ('Reports', const ReportsPage(kind: 'crash')), ('About', const AboutPage()),
       ]) {
         final closed = openPage(rootContext, page);

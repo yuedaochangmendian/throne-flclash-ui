@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import '../widgets.dart';
 import '../components/data_subscription.dart';
+import '../components/form.dart';
 
 /// The batch test panel over the bridge's `groups.testSession`: one scope (a group, a selection or
 /// the running connection), live progress with the latency histogram, the ranked best results, the
@@ -70,7 +71,7 @@ class _TestPanelPageState extends State<TestPanelPage> {
   }
 
   Widget _menuRow(String title, String label, VoidCallback onTap) => ListItem(
-    title: Text(title), trailing: Text(label), onTap: onTap);
+    title: Text(title), trailing: Text(label, style: context.listValueStyle), onTap: onTap);
 
   Widget _histogram(Json session) {
     final histogram = json(session['histogram']);

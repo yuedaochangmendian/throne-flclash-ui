@@ -42,9 +42,12 @@ class SettingNumber extends StatelessWidget {
 }
 
 class SettingText extends StatelessWidget {
-  const SettingText(this.title, this.setting, {super.key, this.hint});
+  const SettingText(this.title, this.setting, {super.key, this.hint, this.restart = true});
   final String title, setting;
   final String? hint;
+  /// False when the host applies the value on its own next read (a notification text,
+  /// say) and no restart badge should appear for a running service.
+  final bool restart;
   @override Widget build(BuildContext context) {
     final value = (context.box.settings[setting] ?? '').toString();
     // The row carries the stored value; the hint (an example, an "empty means…") is the dialog's
@@ -54,7 +57,7 @@ class SettingText extends StatelessWidget {
       subtitle: value.isEmpty && hint != null ? Text(context.tr(hint!)) : null,
       dialogTitle: context.tr(title), value: value,
       hintText: hint == null ? null : context.tr(hint!),
-      onChanged: (value) { if (value != null) context.box.setSetting(setting, value); },
+      onChanged: (value) { if (value != null) context.box.setSetting(setting, value, restart: restart); },
     );
   }
 }
@@ -378,7 +381,6 @@ class TunPage extends StatelessWidget {
 
 // ------------------------------------------------------------------------------------------------- dns
 
-const dnsStrategies = ['', 'ipv4_only', 'ipv6_only', 'prefer_ipv4', 'prefer_ipv6'];
 const dnsFinalOuts = ['remote', 'direct'];
 
 class DnsPage extends StatelessWidget {
@@ -435,6 +437,18 @@ class DnsPage extends StatelessWidget {
           SettingText('Query timeout', 'dnsQueryTimeout', hint: 'e.g. 5s, empty to use the core default'),
         ]),
       ],
+      // The DNS rules of a fragment land in the DNS object's `rules` — the one place this build
+      // keeps them — so the sheet lives here next to that object, not on a route profile.
+      generateSection(title: context.tr('Rules'), items: [
+        ListItem(
+          leading: const GlyphIcon(AppGlyphs.code),
+          title: Text(context.tr('Import DNS rules')),
+          subtitle: Text(context.tr('Paste a sing-box fragment with dns.rules; it is checked against the schema first.')),
+          onTap: () => openPage<bool>(context, const RuleImportPage()),
+        ),
+      ], footer: useObject
+          ? context.tr('Imported rules are appended to the DNS object above.')
+          : context.tr('Imported rules are kept in the DNS object, which is switched off here; turn it on for them to apply.')),
     ]);
   }
 }
@@ -677,6 +691,17 @@ String xrayVlessPreferenceName(int value) => switch (value) {
 };
 const exitLookupProviders = ['auto', 'ip-api', 'ipwho', 'ipinfo', 'ipapi-co', 'ip2location', 'freeipapi', 'cloudflare'];
 
+/// Three choices cannot be honoured by the probe set as it stands: ip-api's free
+/// endpoint is plain HTTP, ip2location needs an API key, and cloudflare answers
+/// plain text rather than JSON. Name that in the picker instead of letting a
+/// change look like it did nothing (they fall back to the default order).
+String exitLookupProviderName(String value) => switch (value) {
+  'ip-api' => 'Lookup provider cleartext',
+  'ip2location' => 'Lookup provider needs key',
+  'cloudflare' => 'Lookup provider fallback',
+  _ => value,
+};
+
 class TestingPage extends StatelessWidget {
   const TestingPage({super.key});
   @override Widget build(BuildContext context) => BoxPage(title: 'Testing', actions: [
@@ -699,7 +724,7 @@ class TestingPage extends StatelessWidget {
     ]),
     generateSection(title: context.tr('Exit detection'), items: [
       SettingToggle('Look up exit country', 'exitCountryLookup'),
-      SettingChoice<String>('Lookup provider', 'exitLookupProvider', options: exitLookupProviders, text: (value) => value),
+      SettingChoice<String>('Lookup provider', 'exitLookupProvider', options: exitLookupProviders, text: exitLookupProviderName),
     ]),
   ]);
 }

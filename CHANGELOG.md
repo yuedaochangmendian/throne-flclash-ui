@@ -1,3 +1,268 @@
+#### 3.3.1-pre.23
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. This one is the boundary round from the architecture review: a pinned and slimmed dashboard, an audited AAR channel surface, and a core that a Flutter-engine death no longer leaves unowned. No UI change.
+
+* **The dashboard build is pinned and 5.4 MB lighter**: `.github/actions/sing-box-dashboard` used to pull the moving `gh-pages` head on every build — the only upstream that was not pinned. It now downloads `SagerNet/sing-box-dashboard` at `d77c2f016a7681aa1704e9f83c69139edb230c97` (2026-10-11), the same way `THRONE_CORE_REF` pins the core. `buildScript/dashboard_slim.py` then deletes the color-emoji woff2 (5.4 MB, roughly 10% of the APK), strips its `@font-face` and its `sw.js` precache entry, and keeps the CSS `Noto Color Emoji` fallback so the WebView uses the device's own glyphs: 7.9 MB -> 2.5 MB. The script is idempotent and fails the build if a future pinned ref no longer carries the expected font and CSS shapes, rather than silently shipping the full bundle
+* **Binary-only channels are audited**: `channel_audit.py` sees method names in source, but `io.flrone/*` channels registered inside a vendored AAR were invisible — exactly the `ghostty` / `openconnect` / `terminal` gap the pre.19 note left open. `tools/diagnostics/aar_channel_audit.py` scans every such string in a given AAR / JAR / APK / DEX and in `flutter/lib` against the budget in `aar_channels.txt`; CI runs it on the Flutter AAR and on every freshly built `ThroneCore.aar`. An unknown name fails the push, so a ref bump that widens that surface cannot land unnoticed
+* **An engine death no longer strands the core**: the FFI driver registers the running Instance's numeric handle with the host over `ffi.handle` once a start holds, and clears it on every stop, failed start and dispose. A stop from a widget, tile or notification in ffiMode is answered by a `serviceStop` event while the UI is attached; once `cleanUpFlutterEngine` has run there is no subscriber, so `BaseService.stopRunner` closes the adopted handle through a new `Core.closeInstance` JNI thunk over `throne_Instance_close` instead of leaving the tunnel up until the process dies. `ffi.mode` returns the handle to a new engine, which adopts the still-running core through `KernelWorker.adoptInstance` rather than building a second box on the same tun. `docs/bbox-bridge.md` records the contract, and four new handshake tests pin registration, host stop, adoption and a stale handle
+* **Checked**: `flutter analyze --fatal-infos` clean, **387 tests pass**, CI green on both jobs; `channel_audit`, `symbol_audit`, `ffi_regression_test`, `settings_audit`, `schema_audit`, `generated_models_check`, `kotlin_regex_audit`, `aar_channel_audit` and `py_syntax_check` all green; the pinned dashboard slims 7.9 MB -> 2.5 MB and is idempotent
+* **Still needs a device**: no Android smoke test ran here. Kill the UI while the VPN is up, stop it from the notification, then reopen the app — the tunnel should close on the stop and, if it was left running, come back without a second box fighting over the tun
+
+#### 3.3.1-pre.22
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. This one fixes the two things found on pre.21: a row that stood out on the rules screen, and an IP card that held its result back.
+
+* **The batch-add row reads like its neighbours**: `Batch add simple rules` carried the dialog title's style — 20dp emphasized — while the rows around it (Add rule, Reorder rules, Restore default rules) are 17dp list titles, so one row of the rules section stood out bigger and heavier. It is a list title now, and the dialog keeps the title3 style every dialog on these pages uses
+* **The IP card shows each quality answer as it lands**: the six-source chain delivered one result at the end, so the type and quality chips sat behind skeleton pills — and on a refresh hid the answer the card already had — until the chain converged. `lookupIpQuality` now reports the answer it would deliver as it arrives: the first inferred one as soon as a source speaks, then the precise one that replaces it. The chips update in place the moment anything is known, and a running lookup refines what is on the card instead of blanking it. The lookup's own outcome is unchanged — the future still completes with the precise answer or the first inferred one, so cache writes, expiry and the failure cooldown read the same record — and a new `ip_quality_test` pins the two-stage report
+* **Checked**: `flutter analyze --fatal-infos` clean, **383 tests pass**, CI green on both jobs. On a device: the rules screen's four rows at one size, and the status card's chips appearing as soon as a source answers and staying put through a refresh
+
+#### 3.3.1-pre.21
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. This one is the font-size fix on the settings rows, and nothing else.
+
+* **A row's value now reads at its label's size.** pre.20's rule editor showed the name field at 17dp and the picker values beside it at 11dp bold — `ListRow` sizes its trailing slot for side marks (caption2 emphasized, the size a chevron wants), while `FormRow` keeps its value in the title slot and `ListItem.options` shows its value through a body-size button. Three conventions shared one page, and the value read as a footnote next to its own label. `context.listValueStyle` is the picker value now — body size, secondary colour — and every hand-built value carries it: the rule editor's type / target / outbound / action / reject-method / strategy rows, the route editor's outbound row, node tuning, auto selector, group settings, profile details, the protocol form's picker rows, the test panel, the memory panel and the egress quality failures. 27 rows across ten files
+* **Left as it is**: `ListItem.input` rows (Throne settings, backup) draw their value inside prism's `list_item.dart` at the side style; moving those needs a second drift patch against the vendored copy, so they stay 11dp bold for now
+* **Checked**: `flutter analyze --fatal-infos` clean, **382 tests pass** (the parallel backoff flake stayed quiet this round), CI green on both jobs. The acceptance check is visual: install this build, open a saved rule, and the name field and every picker value should read at one size
+
+#### 3.3.1-pre.20
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. This one closes out pre.19's two loose ends — the IP card reports one source, the rule editor folds Advanced away — and then takes a structural pass over the code the previous previews landed. No behaviour change beyond those two UI decisions.
+
+* **The IP card reports the probe that answered**: the Bettbox-derived enrichment block is gone — `ip_enrichment.dart` (284 lines: three detail sources, the field-wise merge, the scamalytics risk score) and its 195-line test are deleted, and the two parallel source rows collapse into one. The card shows whichever probe actually answered, so an unanswered egress probe can no longer sit next to a confident-looking quality row. The automatic six-source quality path is untouched
+* **The rule editor reads as Rule / Match / Advanced**, with Advanced collapsed by default, the ThroneForAndroid shape. Picker dialog titles and option labels share `AppTextStyle`, so every `SimpleDialog` in the page lays its rows out at one size
+* **`pages/routes.dart` becomes five files.** It held four pages, the rule-text formatters and the enum tables in 1395 lines — the only page module under `lib/pages/` that was not one page. `route_texts.dart` keeps the tables and the pure formatters (`ruleName`, `outboundToken`, `routeActionColor`, `ruleActionText`, `ruleConditions`, `ruleRowSubtitle`); `route_profiles.dart`, `route_editor.dart`, `rule_order.dart` and `rule_editor.dart` are one page each, carrying the dialog only it opens (`_BatchAddDialog`, `_MultiChoiceDialog`, `_RuleSetDialog`). `widgets.dart` exports the five, so no call site changed
+* **`RuleEditorPage.build` is 14 lines instead of 250.** Match and Advanced used to sit four levels inside `children: [if (custom) ...[if (_advancedOpen) ...[`. The rule shape comes from getters now (`_isSimple` / `_isEndpoint` / `_isCustom` / `_simpleKind`), and `build` is a `FormPage` over `_ruleSection()`, `_simpleSections()` and `_customSections()`. Lines indented eight levels or more drop from 83 to 29
+* **`ruleConditions`' scalar branch loses a test that could not fail**: `raw?.toString().trim() is String` is true by type, and the same string was trimmed three times. It is a plain if/else now, same output
+* **The kernel lifecycle has one attach path and one teardown path**: `initialize` and the tests' `debugAttach` carried the same four subscription lines twice, and a failed start nested eight cleanup statements five levels into a `catch`. Both are `_attach` / `_detach` now and the catch is two lines. Four declarations nothing referenced are gone: `readCString` and the private `_cstrPublic` behind it (the generated bindings carry their own `_cstr`), `configEncoder`, and `dnsStrategies` — the rule editor's enum table is the one source for strategy values
+* **Checked**: `flutter analyze --fatal-infos` clean; **382 tests pass** and coverage is 54.69% (floor 40%) on a full run — 15 fewer than pre.19, because the deleted enrichment suite was exactly those 15. A parallel run can trip the backoff test described below, which passes 13/13 with its file alone (three runs). `channel_audit`, `symbol_audit`, `ffi_regression_test` and `generated_models_check` green; neither side of the bridge changed
+* **Still needs a device**: no Android smoke test ran here, same as pre.17 and pre.19. Installing this build, starting the VPN, opening a saved rule and folding Advanced back open remains the acceptance check
+* **Known, unfixed**: `kernel_handshake_test.dart` is flaky when the suite runs in parallel — `a manual start during the recovery backoff rebuilds, not swallows` depends on real 5/20/80 ms delays. It passes 5/5 alone and failed 2 of 4 full runs, including one on a pages-only change. Replacing `Future.delayed` with a fake clock is the fix, and it is test infrastructure, not this run
+
+#### 3.3.1-pre.19
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. This one lines the rule editor up with Throne for Android and adds Bettbox-style, on-demand IP detail and risk lookup to the outbound card.
+
+* **Rule conditions become pickers instead of free text**: five fields — `ip_version`, `network`, `protocol`, `reject_method`, `strategy` — are now `SimpleDialog` option rows whose value sets are lifted verbatim from Throne's `arrays.xml`. `ip_version` stores `4`/`6`, not the `ipv4`/`ipv6` hints the text box used to accept; `network` gains `icmp`; `protocol` carries the full upstream set; `reject_method` and `strategy` keep an empty first "unset" option. Throne's `ensureValue` is reproduced: a rule saved with a value the picker does not know (an older `ipv4`, say) has that value appended as a live option rather than dropped, so opening and saving an old rule cannot lose it. Picking the unset option removes the key instead of writing an empty string. `action` gains `hijack-dns`, keeps the existing `bypass`, and uses the same helper
+* **Bettbox-style IP detail, on demand**: `common/ip_enrichment.dart` adds a self-contained enrichment layer — three detail sources (`ip-api.com`, `get.geojs.io`, `api.ip.sb`) parsed into a field-wise `merge` that fills gaps without overwriting, plus scamalytics `Fraud Score` parsed into low / medium / high / very-high buckets (clamped to 0..100, HTML comments ignored). It is wired into the **Outbound IP** detail page behind an explicit look-up action: nothing fires on the dashboard's automatic refresh path, so the request-count, URL, wave-timing and pixel-height assertions in `ip_quality_test.dart`, `status_panel_test.dart` and `status_panel_parity_test.dart` are untouched. The automatic quality path stays on its original six-source hedged chain; the Bettbox source list is a switchable, on-demand layer. Source labels pass through as given — Bettbox's Hong Kong / Macao / Taiwan country-code rewriting is deliberately **not** ported
+* **Pinned and checked**: pure-function tests lock the rule value sets, `ensureValue`, unset labels, key removal and a legacy `ipv4` render; the enrichment module's tests cover all three detail parsers, field merge, risk buckets, all-sources-failing, a malformed single source, JSON round-trip, region pass-through and cancellation. A first CI run caught one inverted assertion in the new test (the implementation was right); a test-only follow-up commit fixed it. The branch now also parses and analyses locally against Dart 3.13.7 under `flutter_lints` before CI. Real CI: `flutter analyze` No issues found, **397 tests passed**, coverage **54.75%** (floor 40%, `lib/common` 97.71%)
+* **Still needs a device**: no Android smoke test ran here. The rule pickers and the on-demand lookup are UI paths, so installing this build, opening a saved rule and running the Outbound IP look-up remains the acceptance check
+
+#### 3.3.1-pre.18
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. This one fixes the pre.17 startup crash: on a real device the VPN service could not start at all.
+
+* **The service starts again.** The one-pass placeholder render introduced in the pre.14 review round shipped in pre.17 as `Regex("\{([A-Za-z]+)}")` — the closing `}` was never escaped. Desktop `java.util.regex` accepts a lone `}`, but Android's `Pattern` delegates to ICU4C, which rejects it with `PatternSyntaxException` at `PatternNative.compileImpl`. Because that `val` sat in `ServiceNotification`'s `companion object`, the failure surfaced as `ExceptionInInitializerError` the moment the class loaded, breaking `VpnService.onStartCommand` → `startProxy` before the core ever ran: an installed pre.17 crash-looped six times in six seconds and the service never left `service: idle`. CI stayed green because `app:testOssDebugUnitTest` runs on the JVM, where the same literal compiles and matches `{up}`. Both braces are now escaped, and the render moved into `NotificationTemplate`, a plain Kotlin object with no Android dependency, so a broken template can degrade the notification text without taking the VPN service down with it
+* **Two gates pin the gap.** Six JUnit tests lock the render contract (all seven built-in keys, unknown keys left as written, a value containing `{up}` not re-substituted, the ICU-legal pattern itself), and `tools/diagnostics/kotlin_regex_audit.py` runs in CI to reject an unescaped standalone `}` in any `Regex("…")` literal while leaving legal `{n}` quantifiers alone (nine self-tests; 52 existing literals pass clean). Neither substitutes for a device: only ICU on Android reproduces the difference, so **installing this build and starting the VPN remains the acceptance check**
+
+#### 3.3.1-pre.17
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. This one is a user-requested UI round: the notification rows get a page of their own, the diagnostics feature goes away, and the route screens read like Throne's.
+
+* **Notification settings move up a level**: the seven service-notification rows (group name, proxy/direct speed, traffic total, the two templates, the button picker) leave the General page for their own **Notification** entry on the settings list, one tap from the drawer like every other page. The General page keeps the connection and behaviour rows
+* **The diagnostics feature is deleted**: the settings entry, the network-quality and STUN pages and the domain-resolution page are gone — and the whole chain behind them, because none of it had another consumer. Dart loses `dnsResolve` on the box, the driver's `resolveDomains` and its short-lived lookup isolate; Kotlin loses the `dns.resolve` handler, the `dnsResolve` capability, `BboxResolve` and `DomainResolver`, the AIDL's `resolveDomains` method and `ICoreService`'s override. The C ABI's `Mobile.resolveDomains` stays in the core patch untouched (the throne_* surface is not the UI's to prune); `docs/bbox-bridge.md` records the removal. The dashboard's IP-quality card is unaffected — it never ran through the diagnostics screens
+* **The route screens read like Throne's** (`RouteTexts.kt` / `layout_route_rule_item`): a profile row now summarises as `Default: proxy · 3 rules` instead of `Remote · 3 rules`; a rule row carries Throne's two lines — the action on top in the route palette (`route → direct` blue, direct green, `reject (drop)` red, the config purple, night variants lifted) and the conditions under it in the desktop's token language (`suffix: google.com +2 · rule-set: geosite-ir`, first value plus a count, same field order as upstream). Both wire shapes grow `defaultOutbound` so the summary is identical from FFI and channel
+
+#### 3.3.1-pre.16
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. This one is the review round over the review round: two agents audited the lifecycle serialization, the data-layer fixes and the prism sync as landed, and seven findings came back.
+
+* The two that mattered. **A concurrent reader could call into a closed sqlite handle**: the read-failure eviction closes the connection, but a second overlapping `list()` still held the same reader and would run its query against freed memory (a deterministic interleaving — two route screens and one failing read — not a rare race). `SqliteDatabase` now refuses every statement on a closed handle, which also closes the pre-existing dispose/invalidate overlap. **A lost core made the start button lie**: the worker's `lost` report leaves the instance handle in place on purpose (the recovery reads it), so the new double-start guard read "dead" as "running" and silently swallowed a user's manual start during the recovery backoff — while the swallowed start still bumped the epoch and dissolved the recovery behind it. A lost flag now separates dead from running; the epoch only counts effective transitions, so guarded no-ops can no longer stand a recovery down
+* Recovery semantics restored and pinned: `serviceStop()` reports a failed service stop again (the serialization round had swallowed it), the dashboard still says Stopped either way; three new tests cover the lost→rebuild chain, a manual start landing inside the backoff window (it builds), and a start queued behind an unwinding start (the op-level guard is what stops the orphaning — an entry-level guard would pass that test, and previously none could fail)
+* Smaller: `Isolate.spawn` failing on its own no longer leaks both receive ports; `KernelWorker.dispose` is idempotent and its error can no longer surface through `unawaited`; the read-demotion comment now states the real trade (no result codes → any read failure demotes, the channel answers identically); the ip-api comment names integrity — not secrecy — as the thing cleartext gives up, and where a forged answer ends up (the quality card, display only); `prism_drift.py` refuses the `--expect-diverged` + `--fail-on diverged/any` combination that could never both hold; the prism baseline records the full 40-char sha; and the changelog's preview-coexistence sentence now scopes itself to tag-path previews
+
+#### 3.3.1-pre.15
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. This one catches the project up with its two upstreams: the Prism UI sync that queued behind the drift tool, and the Throne core pin moving to 1.4.1 after an API-surface evaluation.
+
+* **Prism sync**: the three upstream commits that queued while the drift tooling was built are in the vendored copy — the feed/list fade fix (`e93fec1`), the sheet's cornerless-display foot rounding (`63450c0`), and the press fade a dropped tap runs (`5d8ed7ab`; our `press_surface.dart` lacked the `onTapCancel` wiring exactly as upstream found). The drift baseline is re-snapshotted at `5d8ed7ab`: 144 identical, `banner.dart` still the only local patch. The upstream test files and their helpers (`TestApp`/`HostScaffold`) come along, so the regressions they pin are pinned here too; `flutter_localizations` joins the dev dependencies for the helper's delegate
+* **Core pin moves** `36b6bc4` (10-31) → `3bbe551d` (the `1.4.1` tag, 11-06, 36 commits). The evaluation that cleared it: the self-owned `throne_*` bridge is applied as purely additive file copies with zero imports of core internals, `core/mobile` is **byte-identical** between the two refs (63 exported symbols unchanged — the desktop's new connections/warp/routing APIs live outside the gomobile surface), and `build_android.sh` is unchanged, so the AAR's Java contract and the Dart FFI ABI both survive untouched. What arrives is the dependency wave the 36 commits rode in on: sing-tun, xray-core and sing-box all moved to newer Throne forks (utls key-share fix, wireguard stall fix, XHTTP extra/import compatibility, DNS-tunnel and masque work)
+* **Upstream comparison, for the record**: ThroneForAndroid's log-export crash-loop fix (`3c4f9cb7b`, a `reporting` flag so the crash screen dying does not rebirth again) is the same bug class this fork fixed in 3.1.1 with a rate-limited restart budget — ours is already in and strictly stronger, nothing to port. Of v2.0.5/v2.0.6's feature list, per-group routing with subscription import, AmneziaWG WARP and the auto-selector work are already present here; DNS-tunnel outbound types are the one gap the core bump opens (UI work, queued)
+
+#### 3.3.1-pre.14
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. This one is the review round over the whole branch: three parallel reviews covered the Kotlin host and the FFI boundary, the Dart data layer and its tests, and the UI-kit rename plus the tooling. No feature change.
+
+The kernel lifecycle is the one that mattered. A reload that arrived while a start was still unwinding used to tear down the instance that start was about to produce and then silently do nothing — the dashboard said Started, the tunnel was dead, and no heartbeat would ever notice (the stop had turned the heartbeat off). Three findings shared that root:
+
+* Lifecycle commands (`start` / `stop` / `reload`) now run **one at a time** through a serialized chain in `KernelService`: a command that lands while another unwinds waits for it and re-validates the world when its turn comes, so a stop behind a start still stops, a reload behind a start restarts the live instance, and a reload behind a stop does not pull the tunnel back up. A double start while the core runs is a no-op instead of overwriting the instance handle (which orphaned the live core inside the worker). A delayed heartbeat recovery compares the epoch it recorded when the core was lost against the current one, so a stop-and-restart by the user while the backoff sleeps cancels the recovery instead of reloading a tunnel the user just brought up. Four new tests pin the sequence
+* The route-profile source had the same shape of bug on the data side: two concurrent first reads (two route screens opening at once) each ran the attach, and the loser's SQLite connection was cached over and never closed. The attach is now memoized into one in-flight future every caller joins. A reader that fails mid-read is closed and demoted to the channel for the rest of the run (SQL cannot heal inside a process), instead of staying cached and throwing on every read
+* `kernel_worker` no longer leaks the spawned isolate when startup times out (it keeps the handle now and kills it, closing the events port), and the per-domain address iterator is released explicitly like every other temporary wrapper in the FFI layer
+* The outbound picker on the rule editor reports a failed `groupNodes` through the box instead of dying as an uncaught async error
+
+Three gates or sources were quietly broken:
+
+* The **ip-api.com quality source** was switched to `https://` in the governance round — but the free endpoint answers 403 with "SSL unavailable for this endpoint" (verified live), so the source has been dead since, hedging away a request in the first wave on every lookup. It is back on `http://` with a comment that states the trade (the egress lookup's ip-api provider already makes the same one; the reply carries no secret), and the comment that claimed it "may refuse" and sat "in the last wave" — both false — is gone
+* **`prism_drift.py` check mode now fails closed**: an emptied or mis-counted baseline manifest used to make every category zero and pass CI. It validates `files` is non-empty, `file_count` matches, and the commit is recorded, and a new `--expect-diverged banner.dart` turns the budget check into an identity check — a second patched file traded for banner.dart no longer fits under `--max-diverged 1`
+* **`release.yml`'s tag dedup classifies `git ls-remote`'s exit codes**: 2 = free (proceed), 0 = exists (refuse), anything else retries three times and refuses to publish — a TLS blip used to read as "tag is free" and a re-dispatch could have clobbered a live release
+
+Smaller honesties: the egress card's "last checked" reports when the answer was actually measured (a served-from-cache or failure-path answer used to be stamped "just now"); the notification template renders placeholders in one pass, so a profile name containing `{up}` can no longer be eaten by the rate substitution; `CONTRIBUTING.md`'s local coverage gate matches CI's `--min 40`; and the changelog's preview-coexistence sentence now describes what actually happens instead of contradicting itself.
+
+Still open by decision: a Flutter-engine death leaves the Dart-owned core unowned (the widget's stop button cannot close it until the process dies — adopting the numeric handle into the host is the fix and changes a contract, so it wants its own round), `resolveDomains` on a stale handle after a stop leans on the Go side's panic guards being total, and the vendored AAR's view channels (`io.flrone/ghostty|openconnect|terminal`) have no in-repo counterpart to audit — an AAR string scan in CI is the answer when it lands.
+
+#### 3.3.1-pre.13
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. This one fixes the notification buttons dialog that pre.12 shipped broken, and turns the notification text into something the user writes.
+
+* The **notification buttons** dialog no longer crashes on open. The in-house `AlertDialog` renders its body on a `Surface`, not a `Material`, so `CheckboxListTile`'s `ListTile` reached `Material.of(context)!` and threw "Null check operator used on a null value" (release builds skip the `debugCheckHasMaterial` assert, so it surfaced as that null check rather than the assert message). The picker's body is now wrapped in a transparent `Material`
+* The General page gains a **Show proxy speed** switch (`showProxySpeed`, default on). Off hides the proxy rate line; the cumulative total under it stays governed by **Show traffic total**, so the notification can be title-only, title + total, or title + rate
+* The title prefix becomes a **title template** (`notificationTitleTemplate`): `{title}` is the profile name (or "Switching…") and everything else is literal, so `🚀 {title}` reads `🚀 Tokyo 01`. An existing `notificationTitlePrefix` is folded in on read as `<prefix> {title}`, so upgrading users keep their prefix without re-entering it
+* A new **notification content template** (`notificationContentTemplate`) replaces the built-in speed line when set. Placeholders: `{title}`, `{up}`, `{down}`, `{directUp}`, `{directDown}`, `{totalUp}`, `{totalDown}`; a multi-line template uses the expanded (BigText) style. Empty keeps the built-in line and the switches above, so the two ways of shaping the body never fight
+* Both templates and the switch ride the same `settings.set` channel as the other notification rows, apply on the service's next update (no restart badge), and are covered by the settings audit, the i18n gate (zh entries included) and widget tests
+
+#### 3.3.1-pre.12
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. This one is the structure-audit round: the follow-ups the link-by-link review of the #19 data path asked for, with no feature change. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open — it now has a data-layer section with the exact commands.
+
+The review found three structural risks (a schema gate that only compared version numbers, a versionCode scheme previews can never come back from, and SQLite reads on the UI isolate) and a tail of smaller ones. This lands the ones that did not need a device in the loop, plus the notification customisation round:
+
+* The service notification gains three customisation rows on the General page: a **title prefix** (`notificationTitlePrefix`, prepended to every title — profile name and "Switching…" alike, empty = off), a **cumulative traffic switch** (`showTrafficTotal`, the up/down total under the rate line), and a **button picker** (`notificationActions`) — the five buttons (stop / previous / next / switch / reset) were already stored and read by the service but had no UI to change them; the picker shows the first three of the enabled ones in the host's fixed order, and an empty selection means no buttons. All three apply on the service's next notification update, so none raises the restart badge; all three ride the same `settings.set` channel and are covered by the settings audit and the i18n gate (zh entries included)
+* `schema_audit.py` now parses Room's exported schema JSON and column-checks every SELECT in `flutter/lib/data/*_dao.dart` — a migration that renames or drops a column the SQL mentions by name fails the push instead of dying silently behind the channel fallback (previously only the version number was compared, and the version staying at 19 was exactly the case nobody would catch)
+* Preview tags are capped at `-pre.998` in `release.yml`: 999 is the stable slot, and a `-pre.999` would have built the same versionCode as the stable release of that version; README now states the one-way rule (a preview never installs over the stable release it belongs to — `INSTALL_FAILED_VERSION_DOWNGRADE` by design)
+* `data.path` no longer opens (and migrates) Room's database on the main thread — a new `respondIo` wrapper runs the block on `Dispatchers.IO` and replies on the main thread; `settings.get` moves with it (a cold read loads its JSON document from disk)
+* A failed SQLite attach is now classified: a schema version mismatch is permanent for this run, while a cold-start `data.path` race or a locked file is retried up to three reads and gets a fresh budget every time the app resumes; `invalidate()` re-attaches from scratch for flows that replace the database file
+* The read connection's `busy_timeout` drops from 2 s to 250 ms: until the connection moves to a DB isolate, that wait runs on the UI isolate, and anything longer falls back to the channel — which answers off the main thread anyway
+* `readOnly` now defaults to true in both `openAt` and `openDatabase` (every production caller already passed it; only the defaults and one comment disagreed), the speed-test defaults are `https://` (both endpoints verified to serve TLS), and `TrustAllManager` carries the rule that every call site stays behind `net_insecure`
+* The coverage gate can hold per-directory floors (`--min-dir lib/data:NN`) and prints a per-directory report; the locale audit runs on every push as a non-blocking report (885 known gaps, now visible instead of invisible)
+* `docs/device-checklist.md` gains the data-layer section: overwrite-install failure codes, post-migration column drift, WAL concurrency and pulling the database off a debug package to confirm `PRAGMA user_version`
+* New widget tests cover the three notification rows: the switch and the prefix write through `settings.set` without the restart badge, and the button picker saves in the host's fixed order regardless of the order the checkboxes were touched in
+
+`BuildConfig.VERSION_CODE` was also re-checked statically: the updater filters candidates by version name first (`Semver.compare(version, installed) > 0`), so a device on this preview is never offered 3.3.0 regardless of how AGP fills the code. Still open, by choice: the DB isolate migration (the review's P0-1 — it waits for real-device numbers from the checklist above), the one cleartext IP probe source (`http://ip-api.com/json`, a user decision), and the missing `10.json` schema export (pre-dates the repository).
+
+#### 3.3.1-pre.11
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one starts reading route profiles straight from Room over `dart:ffi`, with a transparent fallback to the existing channel.
+
+The data layer had a `GroupsDao` but no route-profile access, while `RouteProfilesPage` still read through `routes.list`. This adds a `RouteProfilesDao` that reproduces the host's `list()` in SQL, and one `RouteProfilesSource` entry point: prefer a read-only SQLite connection at the path returned by `data.path`, and fall back to `routes.list` on any failure so the page never sees an error.
+
+* `route_profiles` left-joined to `route_rules` for `ruleCount` / `simpleRuleCount`, and `current_route_id` decoded from `settings.value`; the wire shape matches `BboxRoutes.list()` field for field, so the fallback is invisible to the UI
+* Read-only `DataLayer.attach`, a schema-version check, and total fallback — including an empty `route_profiles` table, which the host would otherwise seed on read
+* `BoxController` owns the connection and closes it on dispose; `data.path` is wired on both the Dart and Kotlin sides
+* The `NOT WIRED` comments, `docs/bbox-bridge.md` and the `3.3.1-pre.1` changelog note now describe the real state
+* New DAO, source and fallback unit tests. CI is green end to end: `flutter analyze --fatal-infos`, `flutter test --coverage`, the coverage floor, Kotlin unit tests and the debug build, AAR API scan and cgo preamble checks. Physical-device checks — WAL concurrency with Room, the `data.path` version and migrated column names — remain open
+
+#### 3.3.1-pre.10
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one lands the code review's fixes — the failed start, the hand-over timing and the blocking DNS lookup — with tests for the parts that had none.
+
+A review of `main..feat/ffi` found two problems worth blocking on and six worth fixing. A failed core start left the notification claiming a tunnel that was not there, and one domain lookup could freeze the driver's one-second heartbeat for up to ten seconds. Both are fixed, along with the handshake timing around them and the loose ends the review listed.
+
+* A failed core start now stops the foreground service too, and a hand-over that cannot become ready is rolled back to the bridge — no more "Connected" with nothing behind it
+* Domain lookups run on their own short-lived isolate instead of the heartbeat, capped at one batch; status snapshots, loss detection and reloads no longer queue behind a slow name
+* The hand-over polls a read-only service state instead of guessing one second, a refused VPN fails fast rather than waiting for a slow config build, and overlapping rate pushes are dropped
+* The speed-test screen labels the cleartext lookup source and the two options that currently fall back; an operator name without an AS number is no longer truncated
+* Tests cover the whole handshake path (8 Dart) and the new IP parsers (10 Kotlin). 326 Flutter tests, every CI audit and `flutter analyze` are green
+
+#### 3.3.1-pre.9
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one stops computing memory and asks Android, and fixes two things behind the slow IP card.
+
+The memory card went through three arithmetics, and each one was wrong for the same reason: the core's figure is the heap the Go runtime has *mapped*, not a share of what the process has resident. On a 286 MB process it read 319 MB, so any sum built on it produced a part larger than the whole.
+
+* The panel now shows what `Debug.MemoryInfo` reports and does no arithmetic of its own: the process total, and its split by allocator — the app's heap, native allocations (the core runs there), and the rest. The four add up because the platform produced them
+* The IP card was held for 48 seconds by one source whose name did not resolve: `Dns.SYSTEM` blocks inside `getaddrinfo` and nothing can interrupt it, while the probe waits for its children. Lookups now have a two-second deadline
+* "Lookup provider" in the speed-test screen was written to `exit_lookup_provider` and read by nobody. The chosen provider now goes to the front of the race; ip-api, ipapi.co and freeipapi gained parsers
+
+#### 3.3.1-pre.8
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one makes the memory card add up, and stops the IP card from waiting on a source that is not answering.
+
+The memory card read 327.2 MB total on a 286.1 MB process, with a 319.2 MB core. The core's figure is what the Go runtime has *mapped*, not what is resident — different quantities, and the mapped one can exceed RSS. Using it as a share of the process produced a part larger than the whole.
+
+* The process is the headline again, split into the app's heap, the core's share capped at what is left, and the rest (native allocations, graphics, shared pages). Every figure adds up, and no part can exceed the whole
+* The IP card waited 3.5 s for the preferred source before a fallback was allowed to win, even though the fallbacks had already replied — 3.5 s of skeleton on every connect. The preferred source now has 1.2 s, and the whole probe 5 s
+* A resolved address is cached for five minutes instead of thirty seconds. A route change still forces a fresh probe, so the previous exit's address is never shown
+
+#### 3.3.1-pre.7
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one puts the memory card back on the arithmetic it started with.
+
+pre.5 made the headline the process RSS and pre.6 made `app` the process minus the core, so the card read 283.3 MB for an app whose own heap is 13.7 MB. RSS is the whole process — ART heap, native allocations, the graphics driver, the Go heap, shared pages — and none of that is "memory this app uses" to the reader.
+
+* The headline is `app + core` again: the ART heap plus the core's own heap
+* What pre.6 added stays: the core's figure comes from the driver's status feed, not from an HTTP call to an API that is off by default
+* The caption now says where the rest of the process goes, so a small total above a large RSS row reads as two different questions instead of a contradiction
+* A core that reports nothing still reads as unknown rather than 0 B
+
+#### 3.3.1-pre.6
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one is about where the core's memory figure comes from.
+
+The core's share was read over HTTP, from the clash API. That API is off by default — `core_box_clash_api` starts at `-9090` — so the call spent a five-second timeout on an IO thread every two seconds and came back empty, which the panel then had to print as zero or unknown.
+
+The core has been reporting its own heap all along, in the status snapshot that already carries the rates, the totals and the goroutine count. In FFI mode the driver is the only side holding the instance handle, so the channel cannot ask it; Dart can, and now does:
+
+* `core` in the memory event is the driver's own figure, and `app` is the process minus it
+* The bridge no longer calls the clash API in FFI mode — it was asking a question the driver answers every second, more slowly
+* The HTTP path stays for the case without a driver, where there is nothing else to ask
+
+#### 3.3.1-pre.5
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one is about the memory panel's arithmetic.
+
+The panel built its headline out of two numbers: the app's ART heap and the core's own figure. On a 283.3 MB process the heap is 13.7 MB, so it announced a 13.7 MB total one row above a row that said 283.3 MB, and drew a bar claiming the app held a twentieth of what it did.
+
+* The headline is the process now — the figure the RSS row states, and what "memory" means to the reader
+* `app` is the process minus the core's share, so the parts still add up to the total instead of counting the core twice
+* A core whose API is off reports nothing; that share now reads as unknown rather than "0 B", and the caption says it stays inside the process figure
+
+#### 3.3.1-pre.4
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one is about how long the tunnel takes to come up.
+
+Tapping connect used to run the two halves one after the other: Android brought the service up, and only then did Dart build the config. They have nothing to say to each other until the core asks for the tun, so they now run at the same time — the service's process start, notification and receiver registration are spent while the config is being built instead of in front of it. The screen is also told the tunnel is up the moment the core is, rather than after the running-config facts have been written to the store.
+
+* `service.start` and `config.build` are issued together and awaited together; a failure in either still ends the start with nothing left running
+* The `core started in` line now carries the split (`service`, `config`, `instance`, `start`) so the next round has numbers instead of a total
+* The sing-box dashboard is unpacked at app start instead of at the first connect. It is 46 files out of the APK, once per install, and it used to sit inside `config.build` — on the one path the user is watching. `install()` is now synchronized, so the start that overlaps the prewarm cannot unpack into the same directory
+* The wait for the live `VpnService` polls every 10 ms instead of 50 ms; the service registers itself in the first line of `startProxy`, so the poll was mostly measuring its own interval
+
+#### 3.3.1-pre.3
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one corrects pre.2.
+
+pre.2 stopped the service's zeros from overwriting the driver's figures, but it did so for every dashboard event — including the driver's own. Both feeds reach the same handler, so the merge kept the *previous* values and, once connected, nothing on the home cards moved again: no start time, no totals, no rates.
+
+* The two feeds are told apart where they are subscribed: events from the kernel service are marked as the driver's and applied as-is, and only the channel's copy is merged
+* A regression test drives both feeds through the same handler — the driver's numbers land, the service's zeros do not, and the mode still comes from the channel
+
+#### 3.3.1-pre.2
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one is about the home cards' figures.
+
+In FFI mode the service keeps running — it holds the tun and the notification — but it no longer owns a box. Its meter has no `TrafficUpdater`, so every number it reports is zero, and the bridge was still pushing that dashboard and a rate sample once a second. Dart's copy therefore alternated between the driver's snapshot and the service's zeros: every figure on the home cards flipped twice a second, and the sparkline sampled both values.
+
+* The dashboard keeps the driver's fields while it owns the core — status, started time, both totals, connections, memory and goroutines — and still takes the mode, the selected profile and the system proxy from the channel, which is what persists them. A dashboard that merges back to the same map no longer notifies the UI at all
+* The channel's rate sample is dropped while the driver runs, and the bridge no longer sends it in the first place
+
+#### 3.3.1-pre.1
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. CI is green, but the physical-device checklist (`docs/device-checklist.md`) is still open. This one starts moving the data plane off the channel.
+
+The bridge was the only way Dart could reach the database. The first table no longer needs it:
+
+* **`groups` is read over `dart:ffi`.** `sager_net.db` is already opened `WRITE_AHEAD_LOGGING` — the app says so, and names the reason: a reader in one process running while the other writes. A connection in the Dart isolate therefore reads the same file without inventing a protocol between the two sides. The library is the platform's own `libsqlite3.so`, not sqflite, because this module's AAR cannot register a plugin: `registerScannerPlugin` exists precisely because the generated registrant is loaded by reflection and a failure there is swallowed
+* **`data.path` is the one call left on the channel.** Dart cannot derive `/data/data/<pkg>/databases` without a package name it does not have. The host answers with the path and the schema version Room actually opened at, read from the file rather than the annotation — a downgrade makes those two disagree
+* **`schema_audit.py` runs on every push.** A version bump on one side alone still compiles and still queries; it just reads the wrong column, silently
+* **Every failure falls back.** `DataLayer.attach` returns null when the library, the path or the schema is not what it expects, and the screen keeps using the channel instead of going blank
+
+The driver also regained what the service used to do while it owned the core:
+
+* Running-config facts (`runningProfiles` / `runningRouteId`). Without them a node a running chain still uses could be deleted, and a group's routing change never triggered the reload that applies it
+* Domain resolution for the diagnostics page, which had been answering "not running" on a live tunnel because it read a field only the gomobile start path fills
+* The Wi-Fi monitor and its `wifi.state` events, so a rule that only applies on one SSID takes effect when the network changes
+* The notification speed line, which `TrafficLooper` never filled in FFI mode
+* The service-first race: a `START_STICKY` service that came up before Dart had already built a box of its own, and two boxes on one tun fight over the descriptor
+
+The auto-selector panel now says the kernel holds the runtime instead of reporting "not running", and the widget speed is pushed from the same main-thread coroutine as the notification.
+
+Writes and the other five tables stay on the channel until a device agrees with this one.
+
+> **Correction (2026-11-07):** the four bullets above described the target slice, not a live path — at this release
+> `DataLayer.attach` had no production caller, `data.path` was never invoked from Dart, and the source was marked
+> `STATUS: NOT WIRED`. The first table actually wired is `route_profiles` (#19), read over `dart:ffi` with a full
+> `routes.list` fallback; `groups` remains the un-wired slice. See `docs/bbox-bridge.md` for the current state.
+> This note corrects the record; it is not a new build.
+
 #### 3.3.0
 
 The first stable release since 3.2.25. Previews pre.1–pre.13 were the test bed; the code here is the same, with the release notes written for people who do not read commit logs.
@@ -148,7 +413,7 @@ Release plumbing, needed before a preview can be published safely:
 
 * `release.yml` derives the `preview` channel and GitHub prerelease flag from a `-pre.<n>` version, feeds the matching build number into `android-build`, and refuses a tag whose base version disagrees with `nb4a.properties`
 * `publish_release.sh` marks preview releases with `--prerelease`, keeping them off `releases/latest` and out of the self-update channel
-* Preview builds keep the normal package name, so they can be installed alongside the stable build only if you uninstall first; the signature is unchanged from 3.2.x
+* Previews published from a tag keep the normal package name, so installing one replaces the stable build (same signature); only the preview workflow's dispatch builds carry the separate debug package name, and only those install alongside. The signature is unchanged from 3.2.x throughout
 
 Repository governance: multi-language README index, `SIGNING-POLICY.md`, `CONTRIBUTING.md`, `SECURITY.md`, `CODE_OF_CONDUCT.md`, PR template, Dependabot config, issue-template config, rewritten `AUTHORS`, CI coverage and generated-model guards, and fixes to stale version/packaging claims in the planning docs.
 

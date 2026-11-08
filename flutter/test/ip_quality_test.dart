@@ -27,12 +27,14 @@ _Reply _status(int status) =>
   Map<String, _Reply> replies, {
   Duration timeout = const Duration(seconds: 8),
   Duration hedge = const Duration(seconds: 1),
+  void Function(IpQuality quality)? onAnswer,
 }) {
   final adapter = FakeIpProbe(replies);
   addTearDown(adapter.close);
   return (
     adapter: adapter,
-    result: lookupIpQuality(adapter, _ip, timeout: timeout, hedge: hedge),
+    result: lookupIpQuality(adapter, _ip,
+        timeout: timeout, hedge: hedge, onAnswer: onAnswer),
   );
 }
 
@@ -182,7 +184,7 @@ void main() {
       lookup.adapter.requested.map((uri) => uri.toString()),
       unorderedEquals([
         'https://ident.me/json',
-        'https://ip-api.com/json/$_ip?fields=status,isp,org,as,mobile,proxy,hosting',
+        'http://ip-api.com/json/$_ip?fields=status,isp,org,as,mobile,proxy,hosting',
         'https://api.ipquery.io/$_ip?format=json',
         'https://iplocate.io/api/lookup/$_ip',
         'https://proxycheck.io/v3/$_ip',
@@ -273,6 +275,34 @@ void main() {
       );
     },
   );
+
+  test('reports an inferred answer before the chain settles and replaces it',
+      () async {
+    final answers = <IpQuality>[];
+    final lookup = _lookup({
+      'api.ipquery.io': _status(500),
+      'ip-api.com': _ok({
+        'status': 'success',
+        'isp': 'Example Broadband',
+        'hosting': false,
+        'mobile': false,
+      }, const Duration(milliseconds: 10)),
+      'ident.me': _ok({
+        'ip': _ip,
+        'type': 'business',
+      }, const Duration(milliseconds: 200)),
+    }, hedge: const Duration(seconds: 8), onAnswer: answers.add);
+
+    await Future<void>.delayed(const Duration(milliseconds: 60));
+    expect(answers, hasLength(1));
+    expect(answers.single.source, IpQualitySource.ipApiCom);
+    expect(answers.single.type, IpType.residential);
+
+    final quality = await lookup.result;
+    expect(quality.source, IpQualitySource.identMe);
+    expect(answers, hasLength(2));
+    expect(answers.last.type, IpType.business);
+  });
 
   test('asks the later waves only while the earlier ones fail', () async {
     final lookup = _lookup({

@@ -84,6 +84,12 @@ object BboxRoutes {
             mapOf(
                 "id" to p.id,
                 "name" to p.name,
+                "defaultOutbound" to when (p.default_outbound_id) {
+                    OutboundIds.PROXY -> "proxy"
+                    OutboundIds.BLOCK -> "block"
+                    OutboundIds.WARP_BYPASS -> "warp-bypass"
+                    else -> "direct"
+                },
                 "current" to (p.id == current),
                 "isRemote" to p.is_remote,
                 "isRaw" to p.is_raw,

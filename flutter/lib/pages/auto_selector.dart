@@ -190,7 +190,7 @@ class _AutoSelectorPageState extends State<AutoSelectorPage> with WidgetsBinding
           if (_info['balance'] == true) ...[
             ListItem(
               title: Text(context.tr('Balance mode')),
-              trailing: Text(context.tr(_balanceName('${_info['balanceMode'] ?? 'rotate'}'))),
+              trailing: Text(context.tr(_balanceName('${_info['balanceMode'] ?? 'rotate'}')), style: context.listValueStyle),
               onTap: () async {
                 final picked = await showDialog<String>(context: context, builder: (context) => SimpleDialog(
                   title: Text(context.tr('Balance mode')),
@@ -250,19 +250,27 @@ class _AutoSelectorPageState extends State<AutoSelectorPage> with WidgetsBinding
     final autoNote = context.tr('Refreshes every few seconds while this page is open.');
     final phase = _status['phase']?.toString() ?? 'idle';
     if (phase == 'idle') {
+      // The FFI driver owns the core, so this runtime has no live view of it: say that
+      // instead of reporting "not running" for a selector the kernel is ranking.
+      final external = _status['driver'] == 'ffi';
       return [generateSection(items: [
-        ListItem(title: Text(context.tr('Status')), subtitle: Text(context.tr('Not running'))),
+        ListItem(
+          title: Text(context.tr('Status')),
+          subtitle: Text(context.tr(external
+              ? 'The kernel runs this selector directly; live ranking is not reported here'
+              : 'Not running')),
+        ),
       ], footer: autoNote)];
     }
     final members = (_status['members'] as List? ?? const []).map((e) => json(e)).toList();
     final pinnedId = (_status['pinned_id'] as num?)?.toInt() ?? -1;
     return [
       generateSection(title: context.tr('Status'), items: [
-        ListItem(title: Text(context.tr('Phase')), trailing: Text('${_status['core_phase'] ?? phase}')),
+        ListItem(title: Text(context.tr('Phase')), trailing: Text('${_status['core_phase'] ?? phase}', style: context.listValueStyle)),
         ListItem(title: Text(context.tr('Selected')),
           subtitle: Text('${_status['selected_name'] ?? ''}')),
         ListItem(title: Text(context.tr('Pinned')),
-          trailing: Text(pinnedId < 0 ? context.tr('Automatic') : '#$pinnedId'),
+          trailing: Text(pinnedId < 0 ? context.tr('Automatic') : '#$pinnedId', style: context.listValueStyle),
           onTap: () => _pin(-1)),
         ListItem(title: Text(context.tr('Members')), subtitle: Text(
           '${_status['members_alive'] ?? 0} alive · ${_status['members_qualified'] ?? 0} qualified · ${_status['members_cooldown'] ?? 0} cooldown')),

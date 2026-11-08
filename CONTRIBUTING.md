@@ -23,8 +23,8 @@ CI（`ci.yml`）在每次 push 与 PR 上运行以下检查，提交前建议在
 cd flutter && flutter pub get
 flutter analyze --fatal-infos
 flutter test --coverage
-# CI 在 flutter/ 目录另以覆盖率下限脚本收口
-python3 ../tools/diagnostics/coverage_gate.py coverage/lcov.info --min 10
+# CI 在 flutter/ 目录另以覆盖率下限脚本收口（与 ci.yml 同一数值）
+python3 ../tools/diagnostics/coverage_gate.py coverage/lcov.info --min 40
 cd ..
 
 # 契约 / 一致性诊断脚本（回到仓库根目录）

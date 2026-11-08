@@ -322,6 +322,11 @@ private val tls13Supported: Boolean by lazy {
     runCatching { "TLSv1.3" in SSLContext.getDefault().supportedSSLParameters.protocols }.getOrDefault(false)
 }
 
+// Trust-everything TLS, deliberately unsafe. Every use site must stay behind the
+// user's explicit `net_insecure` switch (SettingsRegistry.NET_INSECURE, default
+// false) — currently the three builders above: one via its `allowInsecure`
+// parameter (defaulting to DataStore.netInsecure), two reading DataStore.netInsecure
+// directly. A new call site without that gate is a security bug.
 @Suppress("CustomX509TrustManager", "TrustAllX509TrustManager")
 private object TrustAllManager : X509TrustManager {
     override fun checkClientTrusted(chain: Array<X509Certificate>, authType: String) = Unit

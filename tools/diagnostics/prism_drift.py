@@ -272,9 +272,18 @@ def main(argv=None) -> int:
                     help="exit non-zero if the named category is non-empty")
     ap.add_argument("--max-diverged", type=int, default=-1,
                     help="exit non-zero if more than N files diverge (default: never)")
+    ap.add_argument("--expect-diverged", default="",
+                    help="comma-separated file names that must be exactly the "
+                         "diverged set: a different file patched instead is a failure, "
+                         "even when the count still fits --max-diverged")
     ap.add_argument("--max-drift", type=int, default=-1,
                     help="exit non-zero if diverged+added+removed exceeds this (default: never)")
     args = ap.parse_args(argv)
+
+    if args.expect_diverged and args.fail_on in ("diverged", "any"):
+        ap.error("--expect-diverged already fails when the diverged set is not "
+                 "exactly the expected one; --fail-on diverged/any would make the "
+                 "check fail even when it matches")
 
     if args.mode == "snapshot":
         if not args.upstream or not args.upstream.is_dir():
@@ -297,6 +306,27 @@ def main(argv=None) -> int:
         return 2
     meta = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     baseline = meta.get("files", {})
+
+    # The gate must fail closed: an emptied or mis-counted manifest is the one
+    # input that turns every category into zero and silently passes CI. The
+    # project has lost a JSON file to a truncate-then-throw before.
+    problems = []
+    if not isinstance(baseline, dict) or not baseline:
+        problems.append("the manifest lists no files")
+    else:
+        declared = meta.get("file_count")
+        if declared is not None and declared != len(baseline):
+            problems.append(
+                f"file_count says {declared} but the manifest lists "
+                f"{len(baseline)} files")
+    if not meta.get("commit") or meta.get("commit") == "unknown":
+        problems.append("the baseline commit is missing or 'unknown'")
+    if problems:
+        for problem in problems:
+            print(f"::error::prism baseline is unusable: {problem}", file=sys.stderr)
+        print("ERROR: refusing to compare against a broken baseline; "
+              "regenerate it with `snapshot`.", file=sys.stderr)
+        return 2
 
     if args.mode == "upstream":
         if not args.upstream or not args.upstream.is_dir():
@@ -328,6 +358,18 @@ def main(argv=None) -> int:
     if args.max_drift >= 0 and sum(counts.values()) - counts["identical"] > args.max_drift:
         failed = True
         print(f"\nFAIL: drift exceeds --max-drift {args.max_drift}.")
+    if args.expect_diverged:
+        expected = {name.strip() for name in args.expect_diverged.split(",") if name.strip()}
+        actual = set(res["diverged"])
+        if expected != actual:
+            failed = True
+            missing = sorted(expected - actual)
+            extra = sorted(actual - expected)
+            print("\nFAIL: the diverged set is not the recorded patch set.")
+            if missing:
+                print(f"  expected but clean: {', '.join(missing)}")
+            if extra:
+                print(f"  diverged unexpectedly: {', '.join(extra)}")
     return 1 if failed else 0
 
 

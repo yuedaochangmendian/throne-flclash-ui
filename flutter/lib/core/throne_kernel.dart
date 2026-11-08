@@ -14,7 +14,6 @@ import 'dart:async';
 import 'dart:ffi';
 import 'dart:isolate';
 
-import 'package:ffi/ffi.dart';
 
 import 'throne_ffi.dart';
 
@@ -102,15 +101,4 @@ class ReplyPort {
     _port.close();
     _controller.close();
   }
-}
-
-/// Read a `const char *` return as a Dart string and free it (the C ABI rule).
-String readCString(Pointer<Utf8> p, ThroneFFI ffi) => _cstrPublic(p, ffi);
-
-// Mirrors the generated _cstr without reaching into library-private names.
-String _cstrPublic(Pointer<Utf8> p, ThroneFFI ffi) {
-  if (p == nullptr) return '';
-  final s = p.toDartString();
-  ffi.throne_free(p);
-  return s;
 }

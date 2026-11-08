@@ -11,6 +11,7 @@ import 'common/throttle.dart';
 import 'core/kernel_service.dart';
 import 'core/platform_value.dart';
 import 'core/throne_kernel.dart';
+import 'data/route_profiles_source.dart';
 
 part 'box_api.dart';
 
@@ -127,6 +128,35 @@ class BoxController extends ChangeNotifier {
   final _dataOwners = <BoxData, Set<Object>>{};
   Listenable get stateChanges => _stateChanges;
   Json dashboard = {}, settings = {}, preferences = {}, rates = {};
+
+  /// Dashboard fields the FFI driver owns while it runs the core. In that mode the service
+  /// side has no box of its own: its meter has no TrafficUpdater and its status is the
+  /// service's, so both report zeros. Letting those land on the dashboard flipped every
+  /// figure between the two sources once a second.
+  static const driverOwnedDashboard = {
+    'status', 'startedAt', 'uploadTotal', 'downloadTotal', 'connections', 'memory', 'goroutines',
+  };
+
+  /// [incoming] with the driver's own fields kept from [current] when [channelIsStale]:
+  /// the service side has no box in FFI mode, so its copy of these is a row of zeros.
+  /// Everything else — the mode, the selected profile, the system proxy — still comes from
+  /// the channel, which is the side that persists it. The driver's own events are never
+  /// merged: they are the values the merge is protecting.
+  static Json mergeDashboard(Json current, Json incoming, {required bool channelIsStale}) {
+    if (!channelIsStale) return incoming;
+    final merged = Map<String, dynamic>.of(incoming);
+    for (final key in driverOwnedDashboard) {
+      if (current.containsKey(key)) merged[key] = current[key];
+    }
+    return merged;
+  }
+
+  /// Test hook: pretend the FFI driver owns the core, so the arbitration between the two
+  /// sources can be exercised without the library. Null asks the driver.
+  @visibleForTesting
+  bool? debugDriverActive;
+  bool get _driverActive => debugDriverActive ?? kernel.active;
+
   BoxCapabilities capabilities = BoxCapabilities.empty;
   Json toolState = {}, stun = {}, quality = {}, inbox = {}, ping = {};
   Json terminal = {};
@@ -163,6 +193,18 @@ class BoxController extends ChangeNotifier {
   String? applyRequired;
   final appIcons = <String, Future<Uint8List?>>{};
   final _profileStats = <int, Future<Json>>{};
+
+  /// The route profile list's single entry point. SQLite is tried on the first
+  /// read and kept while it works; every failure answers with the channel's
+  /// `routes.list` instead, so no screen sees a difference. A transiently
+  /// failed attach gets a fresh retry budget on resume; the connection is
+  /// closed with the controller, not with a page.
+  RouteProfilesSource? _routeProfiles;
+  RouteProfilesSource get routeProfiles => _routeProfiles ??= RouteProfilesSource(
+        resolvePath: () => dataPath(),
+        channelFallback: () => routeList(),
+      );
+
   late final ipQualities = IpQualityCache(
     read: (ip) => call('dashboard.qualityCache.get', {'ip': ip}),
     write: (ip, record) async { await call('dashboard.qualityCache.put', {'ip': ip, 'value': record}); },
@@ -197,6 +239,10 @@ class BoxController extends ChangeNotifier {
   /// the first frame back shows current data instead of a stale dashboard.
   void resumeRefreshes() {
     refreshGate.setForeground(true);
+    // A cold start can race the host's first `data.path` answer; if the
+    // SQLite attach failed transiently, coming back to the app is the natural
+    // moment to try again. A healthy connection is not touched.
+    _routeProfiles?.retryFailed();
     if (_deferredAspects.isEmpty) return;
     final aspects = _deferredAspects.toList();
     _deferredAspects.clear();
@@ -355,13 +401,16 @@ class BoxController extends ChangeNotifier {
       _kernelEvents = null;
       if (kernel.ffiMode) {
         _kernelSub = ThroneKernel.ensure()?.logs.listen(_onKernelLog, onError: report);
-        _kernelEvents = kernel.events.listen(_onEvent, onError: report);
+        _kernelEvents = kernel.events.listen((event) => _onEvent(event, fromDriver: true), onError: report);
       }
     } catch (error) {
       // The FFI worker failed to start. KernelService has already handed core
       // control back to the channel, so the UI stays usable and shows why the
       // accelerated path is unavailable instead of hanging on the loading view.
       startupError = describe(error);
+      // If the rollback itself did not finish, the service would sit Connected
+      // under ffiMode with no core and nothing left to rebuild it.
+      if (kernel.handoverPending) unawaited(kernel.abandonHandover());
       notifyListeners();
     }
     try {
@@ -389,7 +438,18 @@ class BoxController extends ChangeNotifier {
       for (final data in _dataOwners.keys) { _syncData(data); }
     } catch (error) {
       startupError = describe(error);
+      // `ready` never completed, so config.build cannot be trusted and the
+      // hand-over must not be left pending: give the core back to the bridge,
+      // which rebuilds its own box on service.reload.
+      if (!ready && kernel.handoverPending) {
+        unawaited(kernel.abandonHandover());
+      }
     }
+    // The service may have started its own box before Dart attached (START_STICKY,
+    // always-on VPN); the bridge stopped it to avoid two boxes on one tun. Rebuild it
+    // here, now that the channel can answer config.build, instead of leaving the
+    // tunnel down until the user taps connect again.
+    if (ready && kernel.handoverPending) unawaited(kernel.adoptService());
     notifyListeners();
   }
 
@@ -478,10 +538,17 @@ class BoxController extends ChangeNotifier {
   static String describe(Object error) => error is PlatformException
       ? error.message ?? error.code : error.toString();
 
-  void _onEvent(dynamic event) {
+  /// [event] from the driver's own status feed, as opposed to the channel.
+  @visibleForTesting
+  void handleEvent(dynamic event, {bool fromDriver = false}) => _onEvent(event, fromDriver: fromDriver);
+
+  void _onEvent(dynamic event, {bool fromDriver = false}) {
     if (_disposed) return;
     final item = json(event);
     final value = item['value'];
+    // The driver's feed is the truth while it runs the core; the channel's dashboard and
+    // rates then carry the service meter's zeros and must not overwrite it.
+    final channelIsStale = _driverActive && !fromDriver;
     var aspects = const [BoxAspect.state];
     switch (item['type']) {
       case 'tools': toolState = json(value);
@@ -507,7 +574,7 @@ class BoxController extends ChangeNotifier {
         return;
       case 'browserComplete': eventBus.emit(BrowserCompleteEvent(json(value))); return;
       case 'dashboard':
-        final nextDashboard = json(value);
+        final nextDashboard = mergeDashboard(dashboard, json(value), channelIsStale: channelIsStale);
         if (const DeepCollectionEquality().equals(dashboard, nextDashboard)) return;
         const counters = {'memory', 'goroutines', 'uploadTotal', 'downloadTotal', 'connections'};
         Json state(Json data) => Map.fromEntries(data.entries.where((entry) => !counters.contains(entry.key)));
@@ -569,6 +636,10 @@ class BoxController extends ChangeNotifier {
         systemAccentColor = accent;
         aspects = const [BoxAspect.appearance];
       case 'rates':
+        // The driver's own status feed carries these numbers while it runs the core; the
+        // channel's copy is the service meter's, which has no TrafficUpdater in FFI mode and
+        // would alternate with the real rates once a second.
+        if (channelIsStale) return;
         rates = json(value);
         // One point per second, whoever pushes it: the channel's tick and the FFI status feed can
         // both report the same second, and a doubled sample would halve the window's span. The
@@ -585,6 +656,16 @@ class BoxController extends ChangeNotifier {
       case 'serviceReload':
         // A widget/tile/notification reload reached the FFI driver (BboxKernel.onReloadWanted).
         unawaited(kernel.reloadService(reason: 'widget/tile/notification reload'));
+        return;
+      case 'serviceStop':
+        // A widget/tile/notification stop in ffiMode: the service is already
+        // stopping, so the driver only closes the core it owns.
+        unawaited(kernel.stopCoreFromHost());
+        return;
+      case 'wifi.state':
+        // The Android monitor saw the SSID/BSSID change (BboxKernel.onWifiChanged); the core
+        // that owns the routing rules is Dart's, so the re-read happens here.
+        unawaited(kernel.updateWifiState());
         return;
       case 'subscriptionReport':
         // Errors and untitled status lines are snackbars; a popup report opens the change window
@@ -638,6 +719,8 @@ class BoxController extends ChangeNotifier {
     _subscription?.cancel();
     _kernelSub?.cancel();
     _kernelEvents?.cancel();
+    _routeProfiles?.dispose();
+    _routeProfiles = null;
     kernel.dispose();
     eventBus.close();
     _stateChanges.dispose();

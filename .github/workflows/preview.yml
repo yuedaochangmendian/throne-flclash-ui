@@ -21,6 +21,11 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
       # BUILD = commits since the last stable tag (vX.Y.Z), at most 998: previews of X.Y.Z sort below its release (999).
+      # NOTE: this path and the tag path in release.yml number previews differently — this one by
+      # commit count, release.yml by the `-pre.N` suffix in the tag. The tag path is authoritative:
+      # its versionName and versionCode agree by construction, while a dispatch-built artifact here
+      # can carry a different number than the tagged release of the same code. Compare artifacts by
+      # commit, not by preview number, across the two paths.
       - name: Build number
         id: version
         run: |

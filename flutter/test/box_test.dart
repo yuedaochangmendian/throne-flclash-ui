@@ -253,4 +253,46 @@ void main() {
       expect(await ended, [[], [], [], []]);
     });
   });
+
+  test('the service dashboard never overwrites the driver\'s numbers', () {
+    final driver = <String, dynamic>{
+      'status': 'Started', 'startedAt': 1000, 'uploadTotal': 4096, 'downloadTotal': 8192,
+      'connections': 7, 'memory': 64, 'goroutines': 12, 'mode': 'rule', 'selectedProfileName': 'A',
+    };
+    final service = <String, dynamic>{
+      'status': 'Stopped', 'startedAt': 0, 'uploadTotal': 0, 'downloadTotal': 0,
+      'connections': 0, 'memory': 0, 'goroutines': 0, 'mode': 'global', 'selectedProfileName': 'B',
+    };
+    final merged = BoxController.mergeDashboard(driver, service, channelIsStale: true);
+    expect(merged['status'], 'Started');
+    expect(merged['uploadTotal'], 4096);
+    expect(merged['connections'], 7);
+    // The channel still owns what it persists: the mode and the selected profile.
+    expect(merged['mode'], 'global');
+    expect(merged['selectedProfileName'], 'B');
+    // A fresh channel copy is used as-is, and nothing is copied.
+    expect(BoxController.mergeDashboard(driver, service, channelIsStale: false), same(service));
+  });
+
+  test('the driver\'s own dashboard is never merged away', () async {
+    messenger.setMockMethodCallHandler(channel, (_) async => {'version': 'test', 'coreVersion': 'test', 'dashboard': {'status': 'Stopped'}});
+    await box.initialize();
+    box.debugDriverActive = true;
+
+    box.handleEvent({'type': 'dashboard', 'value': {'status': 'Started', 'uploadTotal': 4096, 'mode': 'rule'}}, fromDriver: true);
+    expect(box.dashboard['status'], 'Started');
+    expect(box.dashboard['uploadTotal'], 4096);
+
+    // A second later the service reports its own zeros. They must not land, or every figure
+    // on the home cards stops moving — which is what merging both sources did.
+    box.handleEvent({'type': 'dashboard', 'value': {'status': 'Stopped', 'uploadTotal': 0, 'mode': 'global'}});
+    expect(box.dashboard['status'], 'Started');
+    expect(box.dashboard['uploadTotal'], 4096);
+    expect(box.dashboard['mode'], 'global');
+
+    box.handleEvent({'type': 'rates', 'value': {'upload': 0, 'download': 0}});
+    expect(box.rates, isEmpty);
+    box.handleEvent({'type': 'rates', 'value': {'upload': 1024, 'download': 2048}}, fromDriver: true);
+    expect(box.rates['upload'], 1024);
+  });
 }

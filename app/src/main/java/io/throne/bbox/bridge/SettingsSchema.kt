@@ -4,6 +4,7 @@ import android.content.Context
 import android.os.PowerManager
 import io.nekohasekai.sagernet.Key
 import io.nekohasekai.sagernet.ktx.app
+import io.nekohasekai.sagernet.bg.ServiceNotification
 import io.nekohasekai.sagernet.database.DataStore
 import kotlin.math.absoluteValue
 
@@ -128,6 +129,30 @@ object Settings {
             "showGroupInNotification",
             get = { DataStore.showGroupInNotification },
             set = { DataStore.showGroupInNotification = it },
+        ),
+        // The notification's own customisation set. All take effect on the service's next
+        // update cycle (or restart), so none needs Apply.Reload of the running core.
+        boolEntry("showProxySpeed", get = { DataStore.showProxySpeed }, set = { DataStore.showProxySpeed = it }),
+        boolEntry("showTrafficTotal", get = { DataStore.showTrafficTotal }, set = { DataStore.showTrafficTotal = it }),
+        textEntry(
+            "notificationTitleTemplate",
+            Apply.None,
+            { DataStore.notificationTitleTemplate },
+            { DataStore.notificationTitleTemplate = it },
+        ),
+        textEntry(
+            "notificationContentTemplate",
+            Apply.None,
+            { DataStore.notificationContentTemplate },
+            { DataStore.notificationContentTemplate = it },
+        ),
+        listEntry(
+            "notificationActions",
+            Apply.None,
+            // null (never configured) is the default set; an explicitly emptied list stays empty,
+            // matching ServiceNotification's own reading of the same key.
+            { DataStore.configurationStore.getStringList(Key.NOTIFICATION_ACTIONS) ?: ServiceNotification.DEFAULT_ACTIONS },
+            { DataStore.notificationActions = it },
         ),
         boolEntry("allowBetaUpdate", get = { DataStore.allowBetaUpdate }, set = { DataStore.allowBetaUpdate = it }),
 
