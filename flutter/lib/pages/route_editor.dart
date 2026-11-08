@@ -260,6 +260,15 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
             onTap: _batchAdd,
           ),
           if (!_isRaw) ListItem(
+            leading: const GlyphIcon(AppGlyphs.code),
+            title: Text(context.tr('Import rules from JSON')),
+            subtitle: Text(context.tr('Paste a sing-box fragment carrying route or DNS rules; it is checked against the schema first.')),
+            onTap: () async {
+              final added = await openPage<bool>(context, RuleImportPage(profileId: widget.id));
+              if (added == true && mounted) await _loadRules();
+            },
+          ),
+          if (!_isRaw) ListItem(
             leading: const GlyphIcon(AppGlyphs.reset),
             title: Text(context.tr('Restore default rules')),
             onTap: _resetRules,

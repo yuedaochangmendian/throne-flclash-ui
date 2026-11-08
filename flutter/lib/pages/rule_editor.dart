@@ -253,19 +253,19 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
     final process = !_isSimple || _simpleKind == 'process_name' || _simpleKind == 'process_path';
     return [
       if (address) generateSection(title: context.tr('Domains'), items: [
-        _csvRow('Domain', 'domain'),
-        _csvRow('Domain suffix', 'domain_suffix'),
-        _csvRow('Domain keyword', 'domain_keyword'),
-        _csvRow('Domain regex', 'domain_regex'),
+        _valuesRow('Domain', 'domain'),
+        _valuesRow('Domain suffix', 'domain_suffix'),
+        _valuesRow('Domain keyword', 'domain_keyword'),
+        _valuesRow('Domain regex', 'domain_regex'),
       ]),
       if (address) generateSection(title: context.tr('IP and ports'), items: [
-        _csvRow('IP CIDR', 'ip_cidr'),
-        _csvRow('Source IP CIDR', 'source_ip_cidr'),
+        _valuesRow('IP CIDR', 'ip_cidr'),
+        _valuesRow('Source IP CIDR', 'source_ip_cidr'),
         _ruleSetRow(),
-        _csvRow('Port', 'port'),
-        _csvRow('Port range', 'port_range'),
-        _csvRow('Source port', 'source_port'),
-        _csvRow('Source port range', 'source_port_range'),
+        _valuesRow('Port', 'port'),
+        _valuesRow('Port range', 'port_range'),
+        _valuesRow('Source port', 'source_port'),
+        _valuesRow('Source port range', 'source_port_range'),
         ListItem.toggle(
           title: Text(context.tr('Source IP is private')),
           value: _rule['source_ip_is_private'] == true,
@@ -279,12 +279,12 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
       ]),
       if (process)
         generateSection(title: context.tr('Processes and apps'), items: [
-          if (!_isSimple || _simpleKind == 'process_name') _csvRow('Process name', 'process_name'),
-          if (!_isSimple || _simpleKind == 'process_path') _csvRow('Process path', 'process_path'),
+          if (!_isSimple || _simpleKind == 'process_name') _valuesRow('Process name', 'process_name'),
+          if (!_isSimple || _simpleKind == 'process_path') _valuesRow('Process path', 'process_path'),
           if (!_isSimple) ...[
-            _csvRow('Process path regex', 'process_path_regex'),
-            _csvRow('Package name', 'package_name'),
-            _csvRow('Package name regex', 'package_name_regex'),
+            _valuesRow('Process path regex', 'process_path_regex'),
+            _valuesRow('Package name', 'package_name'),
+            _valuesRow('Package name regex', 'package_name_regex'),
           ],
         ]),
     ];
@@ -298,11 +298,11 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
     if (!_isCustom) return const [];
     return [
       generateSection(title: context.tr('Match'), items: [
-        _csvRow('Domain suffix', 'domain_suffix'),
-        _csvRow('Domain', 'domain'),
-        _csvRow('IP CIDR', 'ip_cidr'),
+        _valuesRow('Domain suffix', 'domain_suffix'),
+        _valuesRow('Domain', 'domain'),
+        _valuesRow('IP CIDR', 'ip_cidr'),
         _ruleSetRow(),
-        _csvRow('Package name', 'package_name'),
+        _valuesRow('Package name', 'package_name'),
         _networkTypeRow(),
       ]),
       generateSection(items: [
@@ -314,15 +314,15 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
       ]),
       if (_advancedOpen) ...[
         generateSection(title: context.tr('Domains'), items: [
-          _csvRow('Domain keyword', 'domain_keyword'),
-          _csvRow('Domain regex', 'domain_regex'),
+          _valuesRow('Domain keyword', 'domain_keyword'),
+          _valuesRow('Domain regex', 'domain_regex'),
         ]),
         generateSection(title: context.tr('IP and ports'), items: [
-          _csvRow('Source IP CIDR', 'source_ip_cidr'),
-          _csvRow('Port', 'port'),
-          _csvRow('Port range', 'port_range'),
-          _csvRow('Source port', 'source_port'),
-          _csvRow('Source port range', 'source_port_range'),
+          _valuesRow('Source IP CIDR', 'source_ip_cidr'),
+          _valuesRow('Port', 'port'),
+          _valuesRow('Port range', 'port_range'),
+          _valuesRow('Source port', 'source_port'),
+          _valuesRow('Source port range', 'source_port_range'),
           ListItem.toggle(
             title: Text(context.tr('IP is private')),
             value: _rule['ip_is_private'] == true,
@@ -335,15 +335,15 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
           ),
         ]),
         generateSection(title: context.tr('Processes and apps'), items: [
-          _csvRow('Process name', 'process_name'),
-          _csvRow('Process path', 'process_path'),
-          _csvRow('Process path regex', 'process_path_regex'),
-          _csvRow('Package name regex', 'package_name_regex'),
+          _valuesRow('Process name', 'process_name'),
+          _valuesRow('Process path', 'process_path'),
+          _valuesRow('Process path regex', 'process_path_regex'),
+          _valuesRow('Package name regex', 'package_name_regex'),
         ]),
         generateSection(title: context.tr('Network'), items: [
-          _csvRow('Inbound', 'inbound'),
-          _csvRow('Wi-Fi SSID', 'wifi_ssid'),
-          _csvRow('Wi-Fi BSSID', 'wifi_bssid'),
+          _valuesRow('Inbound', 'inbound'),
+          _valuesRow('Wi-Fi SSID', 'wifi_ssid'),
+          _valuesRow('Wi-Fi BSSID', 'wifi_bssid'),
           _enumRow('IP version', 'ip_version'),
           _enumRow('Network', 'network'),
           _enumRow('Protocol', 'protocol'),
@@ -379,21 +379,37 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
           ),
           _textRow('TLS spoof', 'tls_spoof'),
           _textRow('TLS spoof method', 'tls_spoof_method'),
-          _csvRow('Sniffers', 'sniffers'),
+          _valuesRow('Sniffers', 'sniffers'),
         ]),
       ],
     ];
   }
 
-  Widget _csvRow(String title, String key, {String? hint}) => FormRow(
-    title: context.tr(title),
-    trailing: FormRowTextField(
-      initialValue: _listOf(key).join(', '),
-      hintText: hint ?? context.tr('Comma-separated'),
-      autocorrect: false,
-      onChanged: (value) => _setList(key, value),
-    ),
-  );
+  /// A list member as a row that opens the per-line editor, the way Throne for Android's
+  /// `RouteRuleActivity` edits its list preferences: the row shows what is set (or "Not set"),
+  /// and the dialog takes one value per line instead of a comma-joined single line.
+  Widget _valuesRow(String title, String key) {
+    final values = _listOf(key);
+    return ListItem(
+      title: Text(context.tr(title)),
+      subtitle: Text(
+        values.isEmpty ? context.tr('Not set') : values.join(', '),
+        maxLines: 1, overflow: TextOverflow.ellipsis,
+      ),
+      onTap: () async {
+        final saved = await showDialog<String>(
+          context: context,
+          builder: (context) => _RuleValuesDialog(
+            title: context.tr(title),
+            hint: ruleFieldHint(context, key),
+            initial: values.join('\n'),
+          ),
+        );
+        if (saved == null) return;
+        _set(key, saved.split('\n').map((line) => line.trim()).where((line) => line.isNotEmpty).toList());
+      },
+    );
+  }
 
   /// sing-box's network types as a multi-choice, the way the native rule editor offers them
   /// (RouteRuleActivity's multi-choice dialog over route_rule_network_type_entries); the empty
@@ -575,6 +591,49 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
 String _networkTypeName(String value) => switch (value) {
   'wifi' => 'Wi-Fi', 'cellular' => 'Cellular', 'ethernet' => 'Ethernet', _ => 'Other',
 };
+
+/// The per-line editor of one list member, the dialog Throne for Android's rule editor opens for
+/// its list preferences: a hint saying what one line is, then one value per line. The controller
+/// lives here so the closing animation is safe (the same rule as the other editors).
+class _RuleValuesDialog extends StatefulWidget {
+  const _RuleValuesDialog({required this.title, required this.initial, this.hint});
+  final String title, initial;
+  final String? hint;
+  @override State<_RuleValuesDialog> createState() => _RuleValuesDialogState();
+}
+
+class _RuleValuesDialogState extends State<_RuleValuesDialog> {
+  late final TextEditingController _controller = TextEditingController(text: widget.initial);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => material.AlertDialog(
+    title: Text(widget.title, style: AppTextStyle.title3.of(context, emphasized: true)),
+    content: SizedBox(
+      width: 360,
+      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (widget.hint != null) Padding(
+          padding: const EdgeInsets.only(bottom: 12),
+          child: Text(widget.hint!, style: AppTextStyle.caption1.of(context)),
+        ),
+        TextField(
+          controller: _controller, minLines: 4, maxLines: 10, autocorrect: false,
+          keyboardType: TextInputType.multiline,
+          decoration: const InputDecoration(border: OutlineInputBorder()),
+        ),
+      ]),
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: Text(context.tr('Cancel'))),
+      TextButton(onPressed: () => Navigator.pop(context, _controller.text), child: Text(context.tr('OK'))),
+    ],
+  );
+}
 
 /// A multi-choice dialog over a fixed option set; the answer is the selected subset.
 class _MultiChoiceDialog extends StatefulWidget {

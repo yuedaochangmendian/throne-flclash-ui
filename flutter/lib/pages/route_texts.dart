@@ -95,6 +95,35 @@ Json ruleEnumApply(Json rule, String key, String value) {
   return next;
 }
 
+/// The hint under a list field's per-line editor, matching what Throne for Android's
+/// `RouteRuleActivity` shows above its own multi-line dialog: what one line is, and — for the
+/// domain matches — the example that makes the difference between them clear.
+const ruleFieldHints = <String, String>{
+  'domain': 'One domain per line; only that exact host matches.',
+  'domain_suffix': 'One suffix per line; google.com matches google.com and its subdomains.',
+  'domain_keyword': 'One keyword per line; the host has to contain it.',
+  'domain_regex': 'One Go regular expression per line, matched against the host.',
+  'ip_cidr': 'One CIDR per line, for example 10.0.0.0/8 or 2001:db8::/32.',
+  'source_ip_cidr': 'One CIDR per line; the connection\'s own address has to fall inside it.',
+  'port': 'One port per line.',
+  'port_range': 'One range per line, for example 1000:2000.',
+  'source_port': 'One port per line; the connection\'s own source port.',
+  'source_port_range': 'One range per line, for example 1000:2000.',
+  'process_name': 'One process name per line.',
+  'process_path': 'One absolute process path per line.',
+  'process_path_regex': 'One Go regular expression per line, matched against the path.',
+  'package_name': 'One Android package per line, for example com.example.app.',
+  'package_name_regex': 'One regular expression per line, matched against the package name.',
+  'inbound': 'One inbound tag per line.',
+  'wifi_ssid': 'One network name per line.',
+  'wifi_bssid': 'One access point address per line.',
+  'sniffers': 'One sniffer per line.',
+};
+
+/// The hint for [key]; a field without one still gets the "one per line" reminder.
+String ruleFieldHint(BuildContext context, String key) =>
+    context.tr(ruleFieldHints[key] ?? 'One value per line.');
+
 /// A rule's row title: its name, or the first match value, or its position.
 String ruleName(Json rule, int index) {
   final name = rule['name']?.toString() ?? '';

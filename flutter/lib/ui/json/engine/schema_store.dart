@@ -13,6 +13,10 @@ class SchemaStore {
   static const outbound = r'#/$defs/Outbound';
   static const endpoint = r'#/$defs/Endpoint';
 
+  /// The two rule objects a route profile imports: `route.rules` and `dns.rules`.
+  static const rule = r'#/$defs/Rule';
+  static const dnsRule = r'#/$defs/DNSRule';
+
   static const asset = 'schema/sing-box.json';
 
   // The core's stub files register these without the build tags, but the Android core cannot run them.

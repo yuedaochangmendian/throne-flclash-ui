@@ -72,6 +72,7 @@ export 'pages/route_profiles.dart';
 export 'pages/route_editor.dart';
 export 'pages/rule_order.dart';
 export 'pages/rule_editor.dart';
+export 'pages/rule_import.dart';
 export 'pages/auto_selector.dart';
 export 'pages/node_tuning.dart';
 export 'ui/ui.dart';

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flrone/components/code_editor.dart';
 import 'package:flrone/main.dart';
 import 'package:flrone/widgets.dart';
 import 'package:flutter/services.dart';
@@ -37,6 +38,7 @@ void main() {
   late StreamController<dynamic> events;
   late List<Map<String, Object?>> rules;
   late List<String> dataPathCalls;
+  late List<Map<String, Object?>> savedRules;
 
   Future<void> mount(WidgetTester tester) async {
     tester.binding.platformDispatcher.localesTestValue = const [Locale('en')];
@@ -48,6 +50,7 @@ void main() {
     const channel = MethodChannel('test.routes-page');
     events = StreamController<dynamic>.broadcast();
     dataPathCalls = <String>[];
+    savedRules = <Map<String, Object?>>[];
     final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(channel, (call) async {
       switch (call.method) {
@@ -77,6 +80,12 @@ void main() {
           };
         case 'routes.rules':
           return {'rules': rules};
+        case 'routes.saveRules':
+          savedRules = [
+            for (final rule in (call.arguments as Map)['rules'] as List)
+              Map<String, Object?>.from(rule as Map),
+          ];
+          return {'rules': savedRules};
       }
       return null;
     });
@@ -255,6 +264,68 @@ void main() {
 
     expect(find.text('Domain keyword'), findsWidgets);
     expect(find.text('Port'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a list member is edited one value per line, as the native editor does', (tester) async {
+    reportFlutterErrors();
+    rules = [rule(name: 'Ads', domainSuffix: ['ads.example'])];
+    await mount(tester);
+    openPage(tester.element(find.byType(HomePage)), const RouteEditorPage(id: 1));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Ads'));
+    await tester.pumpAndSettle();
+
+    // The row shows what is set; the value is not a comma-joined single line any more.
+    expect(find.text('ads.example'), findsOneWidget);
+    // A field with nothing set says so, as the native rows do.
+    expect(find.text('Not set'), findsWidgets);
+
+    await tester.tap(find.text('Domain suffix'));
+    await tester.pumpAndSettle();
+    // The dialog carries the hint the native one shows above its field.
+    expect(find.textContaining('google.com matches google.com and its subdomains'), findsOneWidget);
+
+    // The dialog's field is the last one built; the page behind keeps its own text fields.
+    await tester.enterText(find.byType(TextField).last, 'a.com\nb.com\n\n  c.com  ');
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    // One value per line, blank lines dropped and each line trimmed.
+    expect(find.text('a.com, b.com, c.com'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the import page previews a fragment and adds its route rules', (tester) async {
+    reportFlutterErrors();
+    rules = [];
+    await mount(tester);
+    openPage(tester.element(find.byType(HomePage)), const RouteEditorPage(id: 1));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Import rules from JSON'));
+    await tester.pumpAndSettle();
+    expect(find.text('Import rules'), findsWidgets);
+    expect(find.text('Paste a sing-box rule fragment'), findsOneWidget);
+
+    final editor = find.descendant(of: find.byType(CodeEditor), matching: find.byType(EditableText));
+    await tester.enterText(editor, '{"domain_suffix": ["a.com"], "outbound": "proxy"}');
+    // The preview parses after the debounce.
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Route rules to add'), findsOneWidget);
+    expect(find.text('DNS rules to add'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+
+    await tester.tap(find.byTooltip('Import'));
+    await tester.pumpAndSettle();
+
+    // The rule reached the profile through routes.saveRules, in the editor's own shape.
+    expect(savedRules, hasLength(1));
+    expect(savedRules.single['domain_suffix'], ['a.com']);
+    expect(savedRules.single['outbound_id'], -1);
+    expect(savedRules.single['type'], 'custom');
     expect(tester.takeException(), isNull);
   });
 }
