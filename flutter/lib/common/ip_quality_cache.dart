@@ -21,7 +21,8 @@ class IpQualityCache {
     return record.quality.ip == ip && !age.isNegative && age < maxAge;
   }
 
-  Future<IpQualityRecord> lookup(IpProbeTransport transport, String ip, {bool refresh = false}) async {
+  Future<IpQualityRecord> lookup(IpProbeTransport transport, String ip,
+      {bool refresh = false, void Function(IpQuality quality)? onAnswer}) async {
     if (transport.cancelled) throw const IpProbeCancelled();
     _records.removeWhere((key, record) => !_fresh(record, key));
     _failures.removeWhere((_, failure) {
@@ -52,15 +53,16 @@ class IpQualityCache {
       if (transport.cancelled) throw const IpProbeCancelled();
       return record;
     }
-    final result = _lookup(transport, ip);
+    final result = _lookup(transport, ip, onAnswer);
     _pending[ip] = (transport: transport, result: result);
     try { return await result; }
     finally { if (identical(_pending[ip]?.result, result)) _pending.remove(ip); }
   }
 
-  Future<IpQualityRecord> _lookup(IpProbeTransport transport, String ip) async {
+  Future<IpQualityRecord> _lookup(
+      IpProbeTransport transport, String ip, void Function(IpQuality quality)? onAnswer) async {
     try {
-      final quality = await lookupIpQuality(transport, ip);
+      final quality = await lookupIpQuality(transport, ip, onAnswer: onAnswer);
       if (transport.cancelled) throw const IpProbeCancelled();
       final record = IpQualityRecord(quality, now());
       _records[ip] = record;

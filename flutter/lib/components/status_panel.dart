@@ -130,8 +130,18 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
       if (ip == null || direct) return;
       try {
         // The transport opens its native session on first get, so the lookup works on both the
-        // fresh-IP path (no session opened yet) and the quality-only path.
-        final record = await box.ipQualities.lookup(probe, ip, refresh: !readIp || ip == retryQualityFor);
+        // fresh-IP path (no session opened yet) and the quality-only path. Each answer the lookup
+        // would deliver lands on the card as it arrives — an inferred one first, then the precise
+        // one that replaces it — instead of the card waiting for the chain to converge.
+        final record = await box.ipQualities.lookup(probe, ip, refresh: !readIp || ip == retryQualityFor,
+          onAnswer: (quality) {
+            if (!mounted || generation != _generation) return;
+            setState(() {
+              result.remove('qualityError'); result.remove('qualityFailures');
+              result.addAll(quality.toDashboard(DateTime.now()));
+            });
+            _detailsRevision.value++;
+          });
         if (!mounted || generation != _generation) return;
         setState(() {
           result.remove('qualityError'); result.remove('qualityFailures');
@@ -191,7 +201,10 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
     final scale = math.max(1.0, MediaQuery.textScalerOf(context).scale(1));
     final ipStyle = AppTextStyle.title2.of(context, emphasized: true).toTabular.copyWith(color: foreground, letterSpacing: 0);
     final ipLoading = _checking || (_routeChanged && _ipDue && !box.transitioning && !box.remote);
-    final loading = (ipLoading && ip == null) || _qualityChecking;
+    // A quality answer on the card stays put while the lookup refines it; skeletons
+    // stand in only while nothing is known yet.
+    final qualityReady = info?['type'] != null || info?['quality'] != null;
+    final loading = (ipLoading && ip == null) || (_qualityChecking && !qualityReady);
     // Bettbox-style placement: a location (country · city) and a carrier (ASN · ISP/organization)
     // sit beside the IP, using the richer fields the ipwho.is source supplies when available.
     // A two-letter code is already drawn as the badge's regional-indicator emoji, so it is not

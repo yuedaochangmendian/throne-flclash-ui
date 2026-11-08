@@ -34,18 +34,23 @@ const _waves = [
   [IpQualitySource.proxyCheck],
 ];
 
+/// [onAnswer] reports the answer the lookup would deliver: the first inferred
+/// one as it lands, then the precise one that replaces it — so a caller can show
+/// a result before the chain settles instead of waiting for the winner.
 Future<IpQuality> lookupIpQuality(
   IpProbeTransport transport,
   String ip, {
   Duration timeout = const Duration(seconds: 8),
   Duration hedge = const Duration(seconds: 1),
-}) => _Lookup(transport, ip, timeout, hedge).run();
+  void Function(IpQuality quality)? onAnswer,
+}) => _Lookup(transport, ip, timeout, hedge, onAnswer).run();
 
 class _Lookup {
-  _Lookup(this.transport, this.ip, this.timeout, this.hedge);
+  _Lookup(this.transport, this.ip, this.timeout, this.hedge, this.onAnswer);
   final IpProbeTransport transport;
   final String ip;
   final Duration timeout, hedge;
+  final void Function(IpQuality quality)? onAnswer;
   final _completer = Completer<IpQuality>();
   final _failures = <IpQualityFailure>[];
   IpQuality? _fallback;
@@ -81,10 +86,14 @@ class _Lookup {
     if (_completer.isCompleted) return;
     if (transport.cancelled) { _cancel(); return; }
     if (answer.inferred) {
-      _fallback ??= answer.quality;
+      if (_fallback == null) {
+        _fallback = answer.quality;
+        onAnswer?.call(answer.quality);
+      }
       _advance();
       return;
     }
+    onAnswer?.call(answer.quality);
     _timer?.cancel();
     _completer.complete(answer.quality);
     unawaited(transport.close());
