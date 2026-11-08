@@ -47,6 +47,8 @@ class FakeWorker implements KernelWorker {
   final _events = StreamController<WorkerEvent>.broadcast();
 
   bool failCreate = false;
+  bool adoptAlive = true;
+  final adoptedHandles = <int>[];
   final calls = <String>[];
 
   @override
@@ -57,6 +59,13 @@ class FakeWorker implements KernelWorker {
     calls.add('createInstance');
     if (failCreate) throw StateError('the kernel refused the config');
     return 1;
+  }
+
+  @override
+  Future<bool> adoptInstance(int handle) async {
+    calls.add('adoptInstance');
+    adoptedHandles.add(handle);
+    return adoptAlive;
   }
 
   @override
@@ -113,12 +122,14 @@ class ChannelLog {
   late final MethodChannel channel = MethodChannel(name);
   late BoxController box;
   final calls = <String>[];
+  final payloads = <Object?>[];
 
   void install(Future<dynamic> Function(MethodCall call) handler) {
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(channel, (call) async {
       calls.add(call.method);
+      payloads.add(call.arguments);
       return handler(call);
     });
     box = BoxController(channel: channel);
@@ -140,6 +151,14 @@ Future<dynamic> defaultReply(MethodCall call) async {
       return null;
   }
 }
+
+/// Only the `ffi.handle` payloads count: `log.note` and `wifi.watch` carry
+/// other single-key maps whose `['handle']` would also read as null.
+bool isHandlePayload(Object? payload, Object? value) =>
+    payload is Map &&
+    payload.length == 1 &&
+    payload.containsKey('handle') &&
+    payload['handle'] == value;
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -568,6 +587,108 @@ void main() {
           reason: 'the second snapshot is dropped while the first is in flight');
       statsGate.complete(<String, dynamic>{});
       await Future<void>.delayed(const Duration(milliseconds: 10));
+    });
+  });
+
+  group('host handle ownership', () {
+    test('a start registers the handle and a stop clears it', () async {
+      final log = ChannelLog('test.handle.register');
+      log.install(defaultReply);
+      addTearDown(log.tearDown);
+
+      final kernel = FakeKernel();
+      final worker = FakeWorker();
+      final service = KernelService(log.box);
+      service.debugAttach(kernel, worker);
+      addTearDown(() {
+        service.dispose();
+        kernel.close();
+      });
+
+      await service.startService();
+      expect(
+        log.payloads.where((p) => isHandlePayload(p, 1)),
+        hasLength(1),
+        reason: 'the host must know the running core handle',
+      );
+      expect(service.active, isTrue);
+
+      await service.stopService();
+      expect(
+        log.payloads.where((p) => isHandlePayload(p, null)),
+        hasLength(1),
+        reason: 'a normal stop must not leave the host holding a dead handle',
+      );
+      expect(service.active, isFalse);
+    });
+
+    test('a host stop closes the core without bouncing the service', () async {
+      final log = ChannelLog('test.handle.host-stop');
+      log.install(defaultReply);
+      addTearDown(log.tearDown);
+
+      final kernel = FakeKernel();
+      final worker = FakeWorker();
+      final service = KernelService(log.box);
+      service.debugAttach(kernel, worker);
+      addTearDown(() {
+        service.dispose();
+        kernel.close();
+      });
+
+      await service.startService();
+      final serviceStops = log.calls.where((m) => m == 'service.stop').length;
+      await service.stopCoreFromHost();
+      expect(log.calls.where((m) => m == 'service.stop'),
+          hasLength(serviceStops),
+          reason: 'the service is already stopping; calling service.stop again '
+              'would bounce the stopRunner this event answers');
+      expect(service.active, isFalse);
+      expect(worker.calls, contains('stop'));
+    });
+
+    test('a host handle is adopted instead of rebuilding the core', () async {
+      final log = ChannelLog('test.handle.adopt');
+      log.install(defaultReply);
+      addTearDown(log.tearDown);
+
+      final kernel = FakeKernel();
+      final worker = FakeWorker();
+      final service = KernelService(log.box);
+      service.debugAttach(kernel, worker);
+      addTearDown(() {
+        service.dispose();
+        kernel.close();
+      });
+
+      await service.debugAdoptHostHandle(7);
+      expect(worker.adoptedHandles, [7]);
+      expect(worker.calls, contains('setHeartbeat'));
+      expect(worker.calls, isNot(contains('createInstance')));
+      expect(service.active, isTrue);
+    });
+
+    test('a dead host handle is cleared at the bridge', () async {
+      final log = ChannelLog('test.handle.dead');
+      log.install(defaultReply);
+      addTearDown(log.tearDown);
+
+      final kernel = FakeKernel();
+      final worker = FakeWorker()..adoptAlive = false;
+      final service = KernelService(log.box);
+      service.debugAttach(kernel, worker);
+      addTearDown(() {
+        service.dispose();
+        kernel.close();
+      });
+
+      await service.debugAdoptHostHandle(9);
+      expect(service.active, isFalse);
+      expect(
+        log.payloads.where((p) => isHandlePayload(p, null)),
+        isNotEmpty,
+        reason: 'the host must not keep a handle the engine cannot adopt',
+      );
     });
   });
 }

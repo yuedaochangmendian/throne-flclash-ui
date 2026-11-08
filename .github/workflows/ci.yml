@@ -26,6 +26,13 @@ jobs:
           AAR=$(find flutter/build/host/outputs/repo -name "*.aar" | head -1)
           test -n "$AAR"
           python3 tools/diagnostics/scan_aar_apis.py "$AAR"
+      # The AAR's `io.flrone/*` channels have no in-repo Kotlin counterpart to
+      # diff against; the budget in aar_channels.txt is their contract.
+      - name: Audit the vendored AAR channel surface
+        run: |
+          AAR=$(find flutter/build/host/outputs/repo -name "*.aar" | head -1)
+          test -n "$AAR"
+          python3 tools/diagnostics/aar_channel_audit.py "$AAR"
       # The NDK is installed by android-build; its clang is the exact one the
       # release build uses, so preamble syntax errors are caught before linking.
       - name: Check cgo preambles

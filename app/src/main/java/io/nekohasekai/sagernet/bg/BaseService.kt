@@ -418,6 +418,18 @@ class BaseService {
             val originalMessage = msg
 
             runOnMainDispatcher {
+                // A non-Dart stop (widget/tile/notification) cannot reach the FFI
+                // driver through the channel. With a UI attached, ask it to close
+                // the core; after a Flutter-engine death, the host closes the
+                // numeric handle Dart registered before it died. A restart keeps
+                // its core — it is an in-place rebuild, not a stop.
+                if (!restart && io.throne.bbox.bridge.BboxKernel.ffiMode &&
+                    io.throne.bbox.bridge.BboxKernel.onStopWanted?.invoke() != true
+                ) {
+                    runOnDefaultDispatcher {
+                        io.throne.bbox.bridge.BboxKernel.closeAdoptedCore()
+                    }
+                }
                 var cleanupError: Throwable? = null
                 fun recordCleanupFailure(stage: String, error: Throwable) {
                     if (cleanupError == null) {

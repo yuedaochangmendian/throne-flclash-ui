@@ -150,6 +150,10 @@ Every lifecycle step writes a `[lifecycle] …` line into `core.log` (start, sto
 heartbeat loss, start failure), and the service writes `[service] state -> …` on each transition. The log screen tails
 that same file, so a restart loop reads as a sequence instead of a mystery.
 
+### The host owns the core handle when the engine dies (FFI driver only)
+
+The Go handle table is process-wide, so the numeric Instance handle outlives the Dart isolate that created it. `KernelService` registers it with the host over `ffi.handle` after a start holds and clears it on every stop and failed start. A stop from a widget, tile or notification never goes through the UI's own stop action: while the UI is attached the bridge emits `serviceStop` and the driver closes the core itself; once `cleanUpFlutterEngine` has run there is no subscriber, so `BaseService.stopRunner` calls `BboxKernel.closeAdoptedCore()` — a new `Core.closeInstance(handle)` JNI thunk over `throne_Instance_close` — instead of leaving the tunnel up until the process dies. A new engine receives the same handle in `ffi.mode`'s reply and adopts it through `KernelWorker.adoptInstance`, which re-wraps the live handle rather than building a second box on the same tun.
+
 ## The data plane moves to Dart
 
 `sager_net.db` is opened by Room, and Room opens it with `WRITE_AHEAD_LOGGING` — `SagerDatabase` says so and names

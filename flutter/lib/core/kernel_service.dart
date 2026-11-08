@@ -102,6 +102,10 @@ class KernelService {
   /// methods are exercised.
   void debugAttach(ThroneKernel kernel, KernelWorker worker) => _attach(kernel, worker);
 
+  /// Test-only: drives the host-handle adoption without a native library.
+  @visibleForTesting
+  Future<void> debugAdoptHostHandle(int handle) => _adoptHostHandle(handle);
+
   /// Wires the worker's event stream and the kernel's status feed to this
   /// driver. Both entry points — [initialize] and the tests' [debugAttach] —
   /// subscribe the same way, so they cannot drift apart.
@@ -150,6 +154,10 @@ class KernelService {
       // The reply says whether a service-side box had to be stopped to get here.
       final reply = await box.call('ffi.mode', {'enabled': true});
       handoverPending = reply is Map && reply['handedOver'] == true;
+      // The host kept the numeric handle when the previous engine died; adopt
+      // that core instead of building a second box on the same tun.
+      final hostHandle =
+          reply is Map ? (reply['handle'] as num?)?.toInt() : null;
       final kernel = ThroneKernel.ensure();
       if (kernel == null) {
         await _rollbackToBridge();
@@ -166,9 +174,51 @@ class KernelService {
         await _rollbackToBridge();
         rethrow;
       }
+      if (hostHandle != null && hostHandle > 0) {
+        await _adoptHostHandle(hostHandle);
+      }
     } finally {
       _initializing = false;
     }
+  }
+
+  /// Registers the running core's numeric handle with the host, or clears it.
+  /// The host closes that handle when a stop arrives after the Flutter engine
+  /// died. A failed write costs the takeover, not the start itself.
+  Future<void> _publishHandle(int? handle) async {
+    try {
+      await box.call('ffi.handle', {'handle': handle});
+    } catch (error) {
+      note('handle registration: $error');
+    }
+  }
+
+  /// Takes back a core the host adopted when the previous Flutter engine died.
+  /// The service is still up and the Go handle table is process-wide, so the
+  /// numeric handle remains valid; building a new instance here would put a
+  /// second box on the same tun.
+  Future<void> _adoptHostHandle(int handle) async {
+    final worker = _worker;
+    if (worker == null || _disposed) return;
+    bool alive;
+    try {
+      alive = await worker.adoptInstance(handle);
+    } catch (error) {
+      note('adopt: could not take over the host handle: $error');
+      alive = false;
+    }
+    if (!alive) {
+      note('adopt: the host handle is gone, clearing the registration');
+      await _publishHandle(null);
+      return;
+    }
+    _instanceHandle = handle;
+    _startedAt = DateTime.now();
+    _instanceLost = false;
+    await worker.setHeartbeat(true);
+    _emitDashboard('Started');
+    await _watchWifiRules(worker);
+    note('adopt: took over the core left by the previous engine');
   }
 
   /// Gives the core back to the service after the FFI driver failed to come up. A
@@ -307,6 +357,15 @@ class KernelService {
     });
   }
 
+  /// A non-Dart stop (widget/tile/notification) reached the driver through the
+  /// host event. The service is already stopping, so only the core is closed —
+  /// calling `service.stop` again would bounce the stopRunner we are answering.
+  Future<void> stopCoreFromHost() async {
+    if (_kernel == null) return;
+    note('stop: host asked the driver to close the core');
+    await _enqueue(() => _stopCore());
+  }
+
   /// Rebuilds the config and restarts the core in place (the foreground service stays).
   /// Only restarts if the core is actually running — a stopped service must not be pulled
   /// up by a stale selection-change or mode-switch event, and a start still unwinding
@@ -442,6 +501,8 @@ class KernelService {
       // by a core that is answering again.
       _instanceLost = false;
       await worker.setHeartbeat(true);
+      // The host owns this handle if the engine dies before the next stop.
+      await _publishHandle(handle);
       final startMs = clock.elapsedMilliseconds;
       _startedAt = DateTime.now();
       // Split by phase: the total alone cannot say whether the next second should be spent on
@@ -472,6 +533,7 @@ class KernelService {
       // createInstance does not silently orphan it inside the worker isolate.
       try { await worker.stop(); } catch (_) { /* Already stopped or never started. */ }
       _instanceHandle = null;
+      await _publishHandle(null);
       // A failed start leaves nothing running, and a reload that kept the old facts
       // would otherwise describe a core that is not there.
       await _clearRunning();
@@ -501,8 +563,11 @@ class KernelService {
     // moot and an epoch bump here (a real transition) is what the delayed
     // recovery's staleness check reads.
     _instanceLost = false;
-    // Cleared before the box closes, so nothing reads "still running" while it shuts down. A
-    // reload keeps the facts: the next start writes them again a moment later, and the gap is
+    // Cleared before the box closes: nothing reads "still running" while it
+    // shuts down, and a stop with no UI attached must not leave the host
+    // holding a handle the driver is about to release.
+    await _publishHandle(null);
+    // A reload keeps the facts: the next start writes them again a moment later, and the gap is
     // not a stop the user asked for. The Wi-Fi monitor follows the same rule — it is useless
     // without a box, and rebuilding it on every reload would drop a change that lands between.
     if (clearRunning) {
@@ -744,6 +809,10 @@ class KernelService {
 
   void dispose() {
     _disposed = true;
+    // A dispose that reaches here closes the core itself, so the host must not
+    // keep a handle for a box that is about to be released. An engine killed
+    // without a dispose leaves the registration standing — that is the takeover.
+    unawaited(_publishHandle(null));
     unawaited(_workerSub?.cancel());
     unawaited(_statusSub?.cancel());
     final worker = _worker;

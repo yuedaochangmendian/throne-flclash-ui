@@ -194,6 +194,8 @@ class ThroneBoxBridge(
         channel.setMethodCallHandler(null)
         events.setStreamHandler(null)
         sink = null
+        // No UI is left to answer a non-Dart stop: the host owns the handle.
+        BboxKernel.onStopWanted = null
     }
 
     // ------------------------------------------------------------------------------------------------ events
@@ -935,13 +937,37 @@ class ThroneBoxBridge(
                     } else {
                         null
                     }
+                    // A non-Dart stop is answered by the UI while it is attached,
+                    // and by the host's adopted handle once the engine is gone.
+                    BboxKernel.onStopWanted = if (BboxKernel.ffiMode) {
+                        {
+                            if (sink == null) false else {
+                                emit("serviceStop", true)
+                                true
+                            }
+                        }
+                    } else {
+                        null
+                    }
+                    if (!enabled) BboxKernel.closeAdoptedCore()
                     // A service that came up before Dart (START_STICKY, always-on VPN) already
                     // built its own box. Two boxes on one tun fight over the same descriptor,
                     // so the service-side one is stopped and the service restarted in place:
                     // with ffiMode now true, that start keeps the notification and leaves the
                     // core to Dart, which rebuilds it from the dashboard state it finds.
                     val handedOver = if (enabled) BboxKernel.handOver() else false
-                    result.success(mapOf("handedOver" to handedOver))
+                    // A new engine adopts a core left behind by the previous one
+                    // instead of building a second box on the same tun.
+                    result.success(mapOf(
+                        "handedOver" to handedOver,
+                        "handle" to BboxKernel.kernelHandle,
+                    ))
+                }
+                // Dart registers the running core's numeric Instance handle so
+                // the host can close it when a stop arrives after the engine died.
+                "ffi.handle" -> {
+                    BboxKernel.adoptHandle(call.argument<Number>("handle")?.toLong())
+                    result.success(null)
                 }
                 // Wi-Fi rules in ffiMode: Dart asks the core whether the config needs Wi-Fi
                 // state and enables the monitor here. Only the Android callback stays on this

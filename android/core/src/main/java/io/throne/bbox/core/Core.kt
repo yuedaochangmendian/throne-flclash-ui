@@ -18,6 +18,13 @@ object Core {
     external fun stopTun()
 
     /**
+     * Closes a kernel Instance the host adopted from Dart. A stop from the
+     * widget/tile/notification has no Dart isolate to answer it once the Flutter
+     * engine is gone, so the host owns the numeric handle until then.
+     */
+    external fun closeInstance(handle: Long)
+
+    /**
      * A TunOptions handle as JSON (mtu, addresses, routes, dns, packages, http
      * proxy) — the fields VpnService.Builder needs when the kernel asks for the
      * VPN mid-start through CorePlatform.openTun.

@@ -1,0 +1,5 @@
+io.flrone/box            # MethodChannel: BoxController <-> ThroneBoxBridge (methods/events audited by channel_audit.py)
+io.flrone/events         # EventChannel: host -> Dart
+io.flrone/ghostty        # AndroidView viewType (pages/terminal.dart) — dormant: B-box terminal, capability off, no registration in any shipped binary
+io.flrone/openconnect    # AndroidView viewType (pages/authentication.dart) — dormant: B-box openconnect auth, capability off
+io.flrone/terminal/*     # MethodChannel per terminal session id (pages/terminal.dart) — dormant

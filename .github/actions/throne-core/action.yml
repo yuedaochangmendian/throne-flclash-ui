@@ -108,3 +108,6 @@ runs:
             || { echo "::error::ThroneCore.aar has no jni/$abi/libthrone.so"; exit 1; }
         done
         python3 -c 'import json, sys; json.load(open(sys.argv[1]))' app/src/main/assets/schema/sing-box.json
+        # The upstream AAR is binary-only: its `io.flrone/*` channel strings are
+        # invisible to channel_audit.py. Fail a ref bump that widens that surface.
+        python3 tools/diagnostics/aar_channel_audit.py app/libs/ThroneCore.aar
