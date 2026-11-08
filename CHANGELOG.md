@@ -1,6 +1,6 @@
 #### 3.3.1
 
-The first stable release since 3.3.0. Previews pre.1-pre.23 were the test bed; this section is the release-candidate record until the device checklist below is complete.
+The first stable release since 3.3.0. Previews pre.1-pre.23 were the test bed. CI, release-candidate packaging, signature verification and the x86_64 upgrade check passed; the remaining physical-device regression matrix is tracked in Issue #17.
 
 * **The Dart driver owns the core end to end.** Start, stop and reload are serialized; the running core handle is registered with the host, adopted after a Flutter-engine restart, and closed by the service when the UI is gone. A lost core no longer leaves the start button lying or a second box fighting over the same TUN
 * **The data plane moves closer to Room.** Route profiles are read over `dart:ffi` with a transparent channel fallback; the schema gate checks the columns every query names, and closed, invalidated or concurrently used SQLite handles now fail safely instead of reading freed memory
@@ -11,7 +11,7 @@ The first stable release since 3.3.0. Previews pre.1-pre.23 were the test bed; t
 * **UI and core stay aligned with upstream.** The Prism sync, Throne core 1.4.1 pin, Flrone identifier unification and Bettbox runtime guards from the preview line are included. The in-app updater now points at this repository
 * **Release and repository checks are auditable.** The AAR channel surface is measured against a budget, the dashboard is pinned, preview/stable release shapes are validated, and governance checks cover the updater constant, tags, assets and changelog/version agreement
 * **Verification:** `flutter analyze --fatal-infos` is clean, 387 Flutter tests pass, both CI jobs are green, and `channel_audit`, `symbol_audit`, `ffi_regression_test`, `settings_audit`, `schema_audit`, `generated_models_check`, `kotlin_regex_audit`, `aar_channel_audit` and `py_syntax_check` pass. The lightweight QR-scanner rewrite (PR #16) is deliberately not part of 3.3.1 until its single-code, multi-frame, denied-permission and back-navigation checks have run on an Android device
-* **Device gate:** `docs/device-checklist.md` remains open, so no stable `v3.3.1` tag should be published from these notes yet. Replace this bullet with the pass date and devices once the full checklist has run
+* **Verification boundary:** CI, the signed release-candidate build, ABI/SHA-256/signature checks and an x86_64 API 35 upgrade test passed. The arm64/TV matrix in `docs/device-checklist.md` remains tracked in Issue #17 and must be completed immediately after publication; the maintainer explicitly approved this release before those remaining checks were completed
 
 #### 3.3.1-pre.23
 
