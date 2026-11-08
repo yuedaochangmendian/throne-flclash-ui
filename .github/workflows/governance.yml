@@ -1,0 +1,36 @@
+name: Repository governance
+on:
+  schedule:
+    - cron: '23 3 * * *'
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - 'tools/diagnostics/github_governance.py'
+      - 'tools/diagnostics/github_governance_baseline.json'
+      - '.github/workflows/governance.yml'
+      - 'docs/github-workflow.md'
+concurrency:
+  group: governance
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  audit:
+    name: Audit repository process
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      # No Gradle / NDK / Flutter here: this must still run while an upstream
+      # dependency CDN is failing (see docs/github-workflow.md section 7).
+      - name: Governance audit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -o pipefail
+          python3 tools/diagnostics/github_governance.py \
+            --repo "${{ github.repository }}" --strict --format markdown \
+            | tee -a "$GITHUB_STEP_SUMMARY"

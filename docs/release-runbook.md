@@ -1,5 +1,7 @@
 # 发布手册与 GitHub API 5xx 降级路径
 
+> 完整流程规范见 [github-workflow.md](github-workflow.md)：分支模型、preview/stable 双通道、tag 与 release 命名、更新器契约、治理校验。本文只记发版操作与降级路径。
+
 ## 正常流程
 
 1. 在 `nb4a.properties` 递增 `VERSION_NAME` / `VERSION_CODE`，在 `CHANGELOG.md` 顶部补对应版本段落（`buildScript/release_notes.sh` 会从这里取正文，缺失会在构建前失败）。
