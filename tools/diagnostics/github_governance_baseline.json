@@ -1,0 +1,22 @@
+{
+  "note": "已知历史遗留（2026-11-08 盘点）。每修复一项就从本列表删除对应 id，使校验重新对该项生效。新增违规不在基线内会以 --strict 阻断。",
+  "baseline": [
+    "release:preview-manifest:v3.2.18",
+    "release:preview-manifest:v3.2.19",
+    "release:preview-manifest:v3.2.20",
+    "release:preview-manifest:v3.2.21",
+    "release:preview-manifest:v3.2.22",
+    "tag:name:v2.0.4-bbox-ui-20261101",
+    "tag:name:v2.0.4-bbox-ui-20261101b",
+    "tag:name:v2.0.4-bbox-ui-20261101c",
+    "tag:name:v2.0.4-bbox-ui-20261101d",
+    "tag:name:v2.0.4-bbox-ui-20261101e",
+    "tag:name:v2.0.4-bbox-ui-20261101f",
+    "tag:name:wip-bbox-20261101",
+    "tag:name:wip-bbox-20261101-2",
+    "tag:name:wip-bbox-20261101-3",
+    "tag:orphan:wip-bbox-20261101",
+    "tag:orphan:wip-bbox-20261101-2",
+    "tag:orphan:wip-bbox-20261101-3"
+  ]
+}
