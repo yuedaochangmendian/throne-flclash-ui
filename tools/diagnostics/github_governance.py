@@ -7,6 +7,9 @@ agreement and the delete_branch_on_merge setting. Known historical exceptions
 live in github_governance_baseline.json; remove an id from that file once the
 issue is fixed so the check starts failing on regressions.
 
+Output is ASCII so GitHub Actions logs and Step Summary render identically
+under any runner locale.
+
 Usage:
     GH_TOKEN=<token> python3 github_governance.py --repo owner/repo
     GH_TOKEN=<token> python3 github_governance.py --strict --format markdown
@@ -91,66 +94,67 @@ class Audit:
         for branch in branches:
             name = branch["name"]
             if not BRANCH_RE.match(name):
-                findings.append(self.finding(f"branch:name:{name}", f"分支 {name} 不符合命名规范"))
+                findings.append(self.finding(f"branch:name:{name}", f"branch {name} breaks the naming convention"))
 
         # 2. Tag naming + tag/release pairing.
         tag_names = {t["name"] for t in tags}
         release_tags = {r["tag_name"] for r in releases}
         for tag in sorted(tag_names):
             if not TAG_RE.match(tag):
-                findings.append(self.finding(f"tag:name:{tag}", f"tag {tag} 不符合 ^vX.Y.Z(-pre.N)?$"))
+                findings.append(self.finding(f"tag:name:{tag}", f"tag {tag} does not match ^vX.Y.Z(-pre.N)?$"))
             if tag not in release_tags:
-                findings.append(self.finding(f"tag:orphan:{tag}", f"tag {tag} 没有对应 release"))
+                findings.append(self.finding(f"tag:orphan:{tag}", f"tag {tag} has no release"))
         for tag in sorted(release_tags - tag_names):
-            findings.append(self.finding(f"release:no-tag:{tag}", f"release {tag} 没有对应 tag"))
+            findings.append(self.finding(f"release:no-tag:{tag}", f"release {tag} has no tag"))
 
         # 3. Release shape.
         for release in releases:
             tag, names = release["tag_name"], {a["name"] for a in release["assets"]}
             if release["draft"]:
-                findings.append(self.finding(f"release:draft:{tag}", f"release {tag} 仍是草稿"))
+                findings.append(self.finding(f"release:draft:{tag}", f"release {tag} is still a draft"))
                 continue
             has_manifest = "throne-update.json" in names
             abi_ok = all(any(abi in n and n.endswith(".apk") for n in names) for abi in ABIS)
             if release["prerelease"]:
                 if has_manifest:
                     findings.append(
-                        self.finding(f"release:preview-manifest:{tag}", f"preview {tag} 不应带 throne-update.json")
+                        self.finding(f"release:preview-manifest:{tag}", f"preview {tag} must not carry throne-update.json")
                     )
             else:
                 if not (abi_ok and "SHA256SUMS" in names and has_manifest):
                     missing = []
                     if not abi_ok:
-                        missing.append("3 个 ABI APK")
+                        missing.append("3 ABI APKs")
                     if "SHA256SUMS" not in names:
                         missing.append("SHA256SUMS")
                     if not has_manifest:
                         missing.append("throne-update.json")
                     findings.append(
-                        self.finding(f"release:stable-assets:{tag}", f"stable {tag} 资产不齐", "、".join(missing))
+                        self.finding(f"release:stable-assets:{tag}", f"stable {tag} has incomplete assets", ", ".join(missing))
                     )
 
         # 4. releases/latest.
         if latest.get("prerelease"):
             findings.append(
-                self.finding(f"latest:prerelease:{latest['tag_name']}", "releases/latest 指向 prerelease")
+                self.finding(f"latest:prerelease:{latest['tag_name']}", "releases/latest points at a prerelease")
             )
         latest_names = {a["name"] for a in latest.get("assets", [])}
         if not {"SHA256SUMS", "throne-update.json"} <= latest_names:
             findings.append(
-                self.finding(f"latest:assets:{latest['tag_name']}", "releases/latest 缺少清单资产")
+                self.finding(f"latest:assets:{latest['tag_name']}", "releases/latest lacks manifest assets")
             )
 
-        # 5. Repository settings.
-        if not repository.get("delete_branch_on_merge"):
+        # 5. Repository setting. An installation token with contents:read does not
+        # receive this admin-level field, so a missing field is not a violation.
+        if "delete_branch_on_merge" in repository and not repository["delete_branch_on_merge"]:
             findings.append(
-                self.finding("settings:delete_branch_on_merge", "合并 PR 后未自动删除源分支")
+                self.finding("settings:delete_branch_on_merge", "merged PR branches are not deleted automatically")
             )
 
         # 6. Updater contract: the constant must point at this repository.
         updater = self.content("app/src/main/java/io/nekohasekai/sagernet/update/UpdateChecker.kt")
         if updater is None:
-            findings.append(self.finding("updater:missing", "找不到 UpdateChecker.kt"))
+            findings.append(self.finding("updater:missing", "UpdateChecker.kt not found"))
         else:
             match = re.search(r'const val REPOSITORY\s*=\s*"([^"]+)"', updater)
             value = match.group(1) if match else "<missing>"
@@ -158,8 +162,8 @@ class Audit:
                 findings.append(
                     self.finding(
                         f"updater:repository:{value}",
-                        "UpdateChecker.REPOSITORY 未指向本仓库",
-                        f"当前 {value}，期望 {self.repo}",
+                        "UpdateChecker.REPOSITORY does not point at this repository",
+                        f"found {value}, expected {self.repo}",
                     )
                 )
 
@@ -175,7 +179,7 @@ class Audit:
                     findings.append(
                         self.finding(
                             f"version:changelog:{heading.group(1)}",
-                            "CHANGELOG 顶部段落与 nb4a.properties 的 VERSION_NAME 不一致",
+                            "CHANGELOG top section disagrees with VERSION_NAME in nb4a.properties",
                             f"CHANGELOG {heading.group(1)} / VERSION_NAME {version.group(1).strip()}",
                         )
                     )
@@ -193,21 +197,21 @@ def render(findings, baseline, fmt):
     new = [f for f in findings if f["id"] not in baseline]
     known = [f for f in findings if f["id"] in baseline]
     if fmt == "json":
-        return json.dumps({"new": new, "baselined": known, "checked": len(new) + len(known)}, indent=2)
+        return json.dumps({"new": new, "baselined": known}, indent=2)
     lines = [
-        "## GitHub 流程治理校验",
+        "## GitHub process governance audit",
         "",
-        f"- 检查项覆盖：分支 / tag / release / latest / 更新器常量 / 版本一致性 / 仓库设置",
-        f"- 新增违规：**{len(new)}**；基线内历史遗留：{len(known)}",
+        "Scope: branches / tags / releases / latest / updater constant / version agreement / repo settings",
+        f"New violations: **{len(new)}**; historical exceptions in baseline: {len(known)}",
         "",
     ]
     if new:
-        lines += ["### 新增违规（需修复）", "", "| id | 说明 | 细节 |", "|---|---|---|"]
+        lines += ["### New violations (fix required)", "", "| id | message | detail |", "|---|---|---|"]
         lines += [f"| `{f['id']}` | {f['message']} | {f['detail']} |" for f in new]
     else:
-        lines += ["### 新增违规：无 ✅", ""]
+        lines += ["### New violations: none", ""]
     if known:
-        lines += ["", "### 基线内历史遗留", "", "| id | 说明 |", "|---|---|"]
+        lines += ["", "### Historical exceptions in baseline", "", "| id | message |", "|---|---|"]
         lines += [f"| `{f['id']}` | {f['message']} |" for f in known]
     return "\n".join(lines) + "\n"
 

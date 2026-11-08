@@ -78,7 +78,7 @@
 
 ## 8. 治理校验
 
-`github_governance.py` 用 GitHub API 只读检查：分支命名、tag 命名、tag↔release 一一对应、stable 资产齐全、preview 不带清单、`releases/latest` 合法、`UpdateChecker.REPOSITORY` 指向本仓库、`nb4a.properties` 与 CHANGELOG 顶部段落一致、仓库 `delete_branch_on_merge` 已开启。
+`github_governance.py` 用 GitHub API 只读检查：分支命名、tag 命名、tag↔release 一一对应、stable 资产齐全、preview 不带清单、`releases/latest` 合法、`UpdateChecker.REPOSITORY` 指向本仓库、`nb4a.properties` 与 CHANGELOG 顶部段落一致、仓库 `delete_branch_on_merge` 已开启。`delete_branch_on_merge` 属 admin 级字段，CI 的 `github.token`（`contents: read`）读不到时该项跳过、不误报；用维护者 PAT 本地运行时会实际校验。
 
 - `--strict`：存在**不在基线内**的违规时退出 1；`Repository governance` 以 strict 运行并写入 Step Summary。
 - 基线 `github_governance_baseline.json` 只收录已确认的历史遗留；每修复一项就删除对应 id，使校验重新对该项生效。
