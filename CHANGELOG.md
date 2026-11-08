@@ -1,3 +1,11 @@
+#### 3.3.1-pre.21
+
+> **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. This one is the font-size fix on the settings rows, and nothing else.
+
+* **A row's value now reads at its label's size.** pre.20's rule editor showed the name field at 17dp and the picker values beside it at 11dp bold — `ListRow` sizes its trailing slot for side marks (caption2 emphasized, the size a chevron wants), while `FormRow` keeps its value in the title slot and `ListItem.options` shows its value through a body-size button. Three conventions shared one page, and the value read as a footnote next to its own label. `context.listValueStyle` is the picker value now — body size, secondary colour — and every hand-built value carries it: the rule editor's type / target / outbound / action / reject-method / strategy rows, the route editor's outbound row, node tuning, auto selector, group settings, profile details, the protocol form's picker rows, the test panel, the memory panel and the egress quality failures. 27 rows across ten files
+* **Left as it is**: `ListItem.input` rows (Throne settings, backup) draw their value inside prism's `list_item.dart` at the side style; moving those needs a second drift patch against the vendored copy, so they stay 11dp bold for now
+* **Checked**: `flutter analyze --fatal-infos` clean, **382 tests pass** (the parallel backoff flake stayed quiet this round), CI green on both jobs. The acceptance check is visual: install this build, open a saved rule, and the name field and every picker value should read at one size
+
 #### 3.3.1-pre.20
 
 > **Preview build for testing only.** Published as a GitHub prerelease with no `throne-update.json`; the in-app updater still offers 3.3.0. Install manually from Releases, and do not use it as a daily driver. This one closes out pre.19's two loose ends — the IP card reports one source, the rule editor folds Advanced away — and then takes a structural pass over the code the previous previews landed. No behaviour change beyond those two UI decisions.
