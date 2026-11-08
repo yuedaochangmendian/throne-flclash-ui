@@ -256,7 +256,7 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
           ),
           if (!_isRaw) ListItem(
             leading: const GlyphIcon(AppGlyphs.importFile),
-            title: Text(context.tr('Batch add simple rules'), style: AppTextStyle.title3.of(context, emphasized: true)),
+            title: Text(context.tr('Batch add simple rules')),
             onTap: _batchAdd,
           ),
           if (!_isRaw) ListItem(
