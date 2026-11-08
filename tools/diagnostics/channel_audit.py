@@ -91,7 +91,7 @@ CAPABILITY_RE = re.compile(r'"([a-zA-Z]+)"\s+to\s+(true|false)')
 # Handlers are dotted (`word.word…`) with the single historical exception of
 # `ready`; anything else a `"…" ->` match picks up inside the when block (nested
 # data mappings like "Stopping", "directDns") is not a handler.
-METHOD_NAME_RE = re.compile(r"^[a-z][a-zA-Z0-9_]*(\.[a-zA-Z0-9_.]+)+$|^ready$")
+METHOD_NAME_RE = re.compile(r"^[a-z][a-zA-Z0-9_]*(?:\.[a-zA-Z0-9_]+)+$|^ready$")
 
 # Methods invoked through a disabled capability's UI. Key = Capabilities.kt key,
 # values = the bridge-method prefixes that belong to it. The vendored B-box pages

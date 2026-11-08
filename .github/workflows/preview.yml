@@ -1,6 +1,8 @@
 name: Preview
 on:
   workflow_dispatch:
+permissions:
+  contents: read
 concurrency:
   group: preview-${{ github.ref }}
   cancel-in-progress: true
