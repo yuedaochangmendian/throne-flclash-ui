@@ -10,7 +10,7 @@
    - `gh workflow run release.yml --ref main -f publish=true`
    - 推送 `v<VERSION_NAME>` tag（工作流现在也监听 `push.tags: v*`）
 4. `buildScript/publish_release.sh` 负责创建/复用发行版：每次写操作重试 3 次（间隔 15s），已存在的 release/draft 改为上传资产并取消草稿，最后打印资产清单。
-5. 核对：`gh release view <tag> --json tagName,isDraft,targetCommitish,assets`，确认非草稿、tag 指向目标提交、5 个资产齐全（3 个 ABI APK + `SHA256SUMS` + `throne-update.json`）。
+5. 核对：`gh release view <tag> --json tagName,name,isPrerelease,isDraft,targetCommitish,assets`。stable 必须非 prerelease、名称等于 tag、5 个资产齐全（3 个 ABI APK + `SHA256SUMS` + `throne-update.json`）；preview 必须标记 prerelease、名称等于 tag，且不得带 `throne-update.json`。
 
 只想要 APK 不发布时，用 `-f publish=false`，产物以 `Flrone-<tag>` artifact 上传（保留 14 天）。
 

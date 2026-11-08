@@ -115,6 +115,23 @@ class Audit:
                 continue
             has_manifest = "throne-update.json" in names
             abi_ok = all(any(abi in n and n.endswith(".apk") for n in names) for abi in ABIS)
+            if "-pre." in tag and TAG_RE.match(tag):
+                if not release["prerelease"]:
+                    findings.append(
+                        self.finding(
+                            f"release:preview-flag:{tag}",
+                            f"preview tag {tag} must be marked as a prerelease",
+                            "a preview tag marked stable can displace releases/latest and reach the in-app updater",
+                        )
+                    )
+                if release["name"] != tag:
+                    findings.append(
+                        self.finding(
+                            f"release:preview-name:{tag}",
+                            f"preview release {tag} has title {release['name']!r}",
+                            "release name must match tag_name",
+                        )
+                    )
             if release["prerelease"]:
                 if has_manifest:
                     findings.append(
