@@ -110,7 +110,7 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 }
 
-// Adapted from FlClash v0.9.2 dashboard/widgets/traffic.dart.
+// The phone layout of FlClash's current dashboard/widgets/traffic.dart.
 class _SpeedPanel extends StatelessWidget {
   const _SpeedPanel();
   @override Widget build(BuildContext context) => BoxPanel(child: Column(children: [
@@ -120,9 +120,17 @@ class _SpeedPanel extends StatelessWidget {
   ]));
 }
 
+/// Keeps one shape at every width, growing only when the text needs more. The
+/// chart fills the tile under the title row, behind the figure and the total.
 class _SpeedTile extends StatelessWidget {
   const _SpeedTile({required this.upload});
   final bool upload;
+
+  static const _aspectRatio = 1.45;
+  static const _padding = EdgeInsets.fromLTRB(16, 14, 16, 12);
+  static const _titleGap = 4.0;
+  static const _bleed = 2.0;
+
   @override Widget build(BuildContext context) {
     final box = context.watchBox(BoxAspect.traffic), colors = context.colorScheme;
     final color = upload ? colors.onSurfaceVariant : colors.primary;
@@ -131,26 +139,29 @@ class _SpeedTile extends StatelessWidget {
     final raw = box.dashboard[upload ? 'uploadTotal' : 'downloadTotal'];
     final total = raw is num ? bytes(raw) : (raw?.toString() ?? '0 B');
     final scale = math.max(1.0, MediaQuery.textScalerOf(context).scale(1));
-    final textHeight = 14 + 4 + (AppTextStyle.footnote.leading + AppTextStyle.title1.leading + AppTextStyle.caption1.leading) * scale;
+    final chartTop = _padding.top + _titleGap + AppTextStyle.footnote.leading * scale;
     return LayoutBuilder(builder: (context, constraints) {
-      final chartHeight = math.max(36.0, constraints.maxWidth / 1.06 - textHeight - 12 + 2);
       return Container(
+        constraints: BoxConstraints(minHeight: constraints.maxWidth / _aspectRatio),
         clipBehavior: Clip.antiAlias,
         decoration: ShapeDecoration(color: SurfaceLevel.block.colorOf(colors), shape: AppShape.all(22)),
         child: Stack(children: [
-          Positioned(left: -2, right: -2, bottom: -2, height: chartHeight, child: LineChart(
-            values: List.of(upload ? box.uploadHistory : box.downloadHistory), revision: box.sampleRevision,
-            capacity: BoxController.trafficWindow, minScale: 8 * 1024, baselineRatio: 1,
-            color: upload ? Color.alphaBlend(colors.primary.withValues(alpha: .45), SurfaceLevel.card.colorOf(colors)) : colors.primary,
-          )),
-          Padding(padding: EdgeInsets.fromLTRB(16, 14, 16, chartHeight - 2 + 12), child: Column(
+          Positioned(
+            left: -_bleed, right: -_bleed, top: chartTop, bottom: -_bleed,
+            child: RepaintBoundary(child: LineChart(
+              values: List.of(upload ? box.uploadHistory : box.downloadHistory), revision: box.sampleRevision,
+              capacity: BoxController.trafficWindow, minScale: 8 * 1024, baselineRatio: 1,
+              color: upload ? Color.alphaBlend(colors.primary.withValues(alpha: .45), SurfaceLevel.card.colorOf(colors)) : colors.primary,
+            )),
+          ),
+          Padding(padding: _padding, child: Column(
             crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(spacing: 4, children: [
                 GlyphIcon(upload ? AppGlyphs.arrowUp : AppGlyphs.arrowDown, size: 16, color: color),
                 Flexible(child: Text(context.tr(upload ? 'Upload' : 'Download'), maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: AppTextStyle.footnote.of(context, emphasized: true).copyWith(color: colors.onSurfaceVariant))),
               ]),
-              const SizedBox(height: 4),
+              const SizedBox(height: _titleGap),
               Text.rich(TextSpan(children: [
                 TextSpan(text: show.first, style: AppTextStyle.title1.of(context, emphasized: true).toTabular.copyWith(letterSpacing: -.02 * AppTextStyle.title1.size)),
                 TextSpan(text: ' ${show.last}/s', style: AppTextStyle.footnote.of(context, emphasized: true).copyWith(color: colors.onSurfaceVariant)),

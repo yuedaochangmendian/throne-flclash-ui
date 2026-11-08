@@ -14,6 +14,9 @@ import '../widgets.dart';
 /// Imports a sing-box JSON fragment. From a route profile it takes route rules into the profile and
 /// DNS rules into the DNS object; from Settings, DNS it takes the DNS rules alone and says where a
 /// route rule it finds belongs. Returns true when something was added.
+///
+/// Opens as a form sheet (`openForm`), the same presentation as the rule editor
+/// and batch-add dialog, so every rule entry on the routes page is a popup.
 class RuleImportPage extends StatefulWidget {
   const RuleImportPage({super.key, this.profileId});
 

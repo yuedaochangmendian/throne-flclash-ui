@@ -264,7 +264,9 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
             title: Text(context.tr('Import rules from JSON')),
             subtitle: Text(context.tr('Paste a sing-box fragment carrying route or DNS rules; it is checked against the schema first.')),
             onTap: () async {
-              final added = await openPage<bool>(context, RuleImportPage(profileId: widget.id));
+              // The rule editor and batch add are sheets; the JSON importer uses
+              // the same form sheet so every rule entry reads as one UI.
+              final added = await openForm<bool>(context, RuleImportPage(profileId: widget.id));
               if (added == true && mounted) await _loadRules();
             },
           ),

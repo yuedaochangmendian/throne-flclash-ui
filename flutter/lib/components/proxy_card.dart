@@ -5,7 +5,12 @@ import '../pages/protocol_form.dart';
 import '../pages/node_json_page.dart';
 import '../pages/test_panel.dart';
 
-// Metrics and card presentation from FlClash v0.9.2 proxies/common.dart and card.dart.
+// Metrics and card presentation from FlClash proxies/common.dart and card.dart.
+
+/// FlClash's delay-test phases: a queued node waits its turn with a clock, a
+/// running one animates the spinner, and an idle one shows its last delay.
+enum ProxyTestPhase { idle, queued, running }
+
 class ProxyCardMetrics {
   ProxyCardMetrics.of(BuildContext context, Json preferences)
       : compact = preferences['proxyCardSize'] == 'Compact' ||
@@ -30,10 +35,43 @@ int proxyColumns(double width, Json preferences) {
 
 class ProxyNodeCard extends StatelessWidget {
   const ProxyNodeCard({super.key, required this.group, required this.node,
-    required this.testing, required this.onSelect, required this.onTest});
+    required this.phase, required this.onSelect, required this.onTest});
   final Json group, node;
-  final bool testing;
+  final ProxyTestPhase phase;
   final VoidCallback onSelect, onTest;
+
+  /// FlClash keeps a square glyph area while a test is underway or before any
+  /// delay has been sampled; a finished test reads as a tappable figure. FadeBox
+  /// cross-fades between them, so a whole screen of tests moves as one motion.
+  Widget _delayArea(BuildContext context, ProxyCardMetrics metrics, String delayText, Color delayColor, bool tested) {
+    final h = metrics.delayHeight;
+    final label = context.tr('Test latency');
+    if (phase != ProxyTestPhase.idle || !tested) {
+      return SizedBox(
+        key: ValueKey('glyph:$phase'),
+        height: h, width: h,
+        child: Semantics(button: true, label: label, child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: phase == ProxyTestPhase.idle ? onTest : null,
+          child: switch (phase) {
+            ProxyTestPhase.running => ActivityIndicator(size: h),
+            ProxyTestPhase.queued => GlyphIcon(AppGlyphs.clock, size: h,
+              color: context.colorScheme.onSurfaceVariant.withValues(alpha: .38)),
+            ProxyTestPhase.idle => GlyphIcon(AppGlyphs.bolt, size: h),
+          },
+        )),
+      );
+    }
+    return Semantics(
+      key: const ValueKey('delay'),
+      button: true, label: label,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque, onTap: onTest,
+        child: Text(delayText, maxLines: 1, overflow: TextOverflow.ellipsis,
+          style: AppTextStyle.caption2.of(context, emphasized: true).copyWith(color: delayColor)),
+      ),
+    );
+  }
 
   Future<String> _link(BuildContext context, {bool json = false}) async =>
       (await context.box.profileNodeLink(group['tag'], node['tag'], json)).toString();
@@ -70,7 +108,7 @@ class ProxyNodeCard extends StatelessWidget {
           PopupMenuItem(glyph: AppGlyphs.checkCircle, label: context.tr('Select'), checked: selected,
             onPressed: onSelect),
         PopupMenuItem(glyph: AppGlyphs.bolt, label: context.tr('Test latency'),
-          onPressed: testing ? null : onTest),
+          onPressed: phase == ProxyTestPhase.idle ? onTest : null),
         // The download/upload speed test lives here, as a submenu of its modes; a session tests
         // one node at a time and the panel reports the result.
         PopupMenuItem(glyph: AppGlyphs.speed, label: context.tr('Speed test'), subItems: [
@@ -156,14 +194,10 @@ class ProxyNodeCard extends StatelessWidget {
               if (!metrics.loose) Expanded(child: TooltipText(text: Text(node['type'].toString(), maxLines: 1,
                 overflow: TextOverflow.ellipsis, style: AppTextStyle.footnote.of(context).copyWith(color: context.colorScheme.onSurface.opacity80)))),
               if (!metrics.loose) const SizedBox(width: 4),
-              Flexible(child: Semantics(button: true, label: context.tr('Test latency'), child: GestureDetector(
-                behavior: HitTestBehavior.opaque, onTap: testing ? null : onTest,
-                child: FadeBox(alignment: metrics.loose ? Alignment.centerLeft : Alignment.centerRight, child: testing
-                  ? ActivityIndicator(size: metrics.delayHeight)
-                  : !tested ? GlyphIcon(AppGlyphs.bolt, size: metrics.delayHeight)
-                  : Text(delayText, maxLines: 1, overflow: TextOverflow.ellipsis,
-                    style: AppTextStyle.caption2.of(context, emphasized: true).copyWith(color: delayColor))),
-              ))),
+              Flexible(child: FadeBox(
+                alignment: metrics.loose ? Alignment.centerLeft : Alignment.centerRight,
+                child: _delayArea(context, metrics, delayText, delayColor, tested),
+              )),
             ])),
           ],
         )),

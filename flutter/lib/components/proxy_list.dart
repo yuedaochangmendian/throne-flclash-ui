@@ -26,10 +26,11 @@ class ProxyListGroup {
 
 class ProxyListView extends StatefulWidget {
   const ProxyListView({super.key, required this.profileKey, required this.groups,
-    required this.testing, required this.cardBuilder, required this.onTest});
+    required this.testing, this.queued = const <String>{}, required this.cardBuilder, required this.onTest});
   final String profileKey;
   final List<ProxyListGroup> groups;
   final Set<String> testing;
+  final Set<String> queued;
   final Widget Function(BuildContext, Json, Json) cardBuilder;
   final Future<void> Function(String) onTest;
   @override State<ProxyListView> createState() => _ProxyListViewState();
@@ -109,7 +110,7 @@ class _ProxyListViewState extends State<ProxyListView> {
     Widget buildGroup(ProxyListGroup group) => _GroupSliver(
       key: ValueKey(group.name), group: group, columns: _columns, gap: _gap,
       extent: ProxyCardMetrics.of(context, context.box.preferences).rowExtent,
-      expanded: _unfolded!.contains(group.name), testing: widget.testing,
+      expanded: _unfolded!.contains(group.name), testing: widget.testing, queued: widget.queued,
       cardBuilder: widget.cardBuilder, onToggle: _toggle, onLocate: _locate, onTest: widget.onTest,
     );
     return Scrollbar(controller: _controller, thumbVisibility: true, child: CustomScrollView(
@@ -133,13 +134,13 @@ class _ProxyListViewState extends State<ProxyListView> {
 
 class _GroupSliver extends StatefulWidget {
   const _GroupSliver({super.key, required this.group, required this.columns, required this.gap,
-    required this.extent, required this.expanded, required this.testing, required this.cardBuilder,
-    required this.onToggle, required this.onLocate, required this.onTest});
+    required this.extent, required this.expanded, required this.testing, required this.queued,
+    required this.cardBuilder, required this.onToggle, required this.onLocate, required this.onTest});
   final ProxyListGroup group;
   final int columns;
   final double gap, extent;
   final bool expanded;
-  final Set<String> testing;
+  final Set<String> testing, queued;
   final Widget Function(BuildContext, Json, Json) cardBuilder;
   final void Function(String) onToggle, onLocate;
   final Future<void> Function(String) onTest;
@@ -165,7 +166,8 @@ class _GroupSliverState extends State<_GroupSliver> with SingleTickerProviderSta
       widget.expanded ? _controller.forward() : _controller.reverse();
     }
     if (widget.group.group != oldWidget.group.group || !listEquals(widget.group.nodes, oldWidget.group.nodes) ||
-        widget.columns != oldWidget.columns || widget.extent != oldWidget.extent || !setEquals(widget.testing, oldWidget.testing)) {
+        widget.columns != oldWidget.columns || widget.extent != oldWidget.extent ||
+        !setEquals(widget.testing, oldWidget.testing) || !setEquals(widget.queued, oldWidget.queued)) {
       _rows = null;
     }
   }
@@ -238,6 +240,7 @@ class _GroupSliverState extends State<_GroupSliver> with SingleTickerProviderSta
         Positioned(top: -cover, left: 0, right: 0, height: cover + height / 2, child: ColoredBox(color: pageColor)),
         SizedBox(height: height, child: ProxyGroupHeader(group: widget.group.group, expanded: widget.expanded,
           unfolded: unfolded, floating: floating, lift: lift, testing: widget.testing.contains(widget.group.name),
+          queued: widget.queued.contains(widget.group.name),
           onToggle: () => widget.onToggle(widget.group.name), onLocate: () => widget.onLocate(widget.group.name),
           onTest: () => widget.onTest(widget.group.name))),
       ])));
@@ -247,9 +250,10 @@ class _GroupSliverState extends State<_GroupSliver> with SingleTickerProviderSta
 
 class ProxyGroupHeader extends StatelessWidget {
   const ProxyGroupHeader({super.key, required this.group, required this.expanded, required this.unfolded,
-    required this.floating, required this.lift, required this.testing, required this.onToggle, required this.onLocate, required this.onTest});
+    required this.floating, required this.lift, required this.testing, this.queued = false,
+    required this.onToggle, required this.onLocate, required this.onTest});
   final Json group;
-  final bool expanded, unfolded, testing;
+  final bool expanded, unfolded, testing, queued;
   final double floating, lift;
   final VoidCallback onToggle, onLocate, onTest;
 
@@ -281,8 +285,11 @@ class ProxyGroupHeader extends StatelessWidget {
               TonalButtonTheme(size: TonalButtonSize.compact, child: Row(children: [
                 if (expanded) TonalButtonGroup(size: TonalButtonSize.compact, children: [
                   IconButton(tooltip: context.tr('Scroll to selected'), onPressed: onLocate, iconSize: 19, icon: const GlyphIcon(AppGlyphs.locate)),
-                  IconButton(tooltip: context.tr('Test latency'), onPressed: testing ? null : onTest,
-                    icon: testing ? ActivityIndicator(size: TonalButtonSize.compact.icon) : const GlyphIcon(AppGlyphs.bolt)),
+                  IconButton(tooltip: context.tr('Test latency'), onPressed: testing || queued ? null : onTest,
+                    icon: testing ? ActivityIndicator(size: TonalButtonSize.compact.icon)
+                      : queued ? GlyphIcon(AppGlyphs.clock, size: TonalButtonSize.compact.icon,
+                          color: context.colorScheme.onSurfaceVariant.withValues(alpha: .38))
+                      : const GlyphIcon(AppGlyphs.bolt)),
                 ]) else Text(group['type'] as String? ?? (group['selectable'] == true ? 'Selector' : 'URLTest'),
                   maxLines: 1, overflow: TextOverflow.ellipsis, style: AppTextStyle.caption1.of(context, emphasized: true).toLight),
                 const SizedBox(width: 6),
