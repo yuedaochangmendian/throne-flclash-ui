@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/services.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import '../widgets.dart';
 import '../components/form.dart';
 import '../components/profile_card.dart';
@@ -471,126 +470,61 @@ class ScanPage extends StatefulWidget {
   @override State<ScanPage> createState() => _ScanPageState();
 }
 class _ScanPageState extends State<ScanPage> {
-  // `autoStart: false`: the camera is started here, after the host has answered the permission
-  // request. The plugin's own request only completes if the host forwards the result, and a request
-  // that is never answered leaves a black preview with no error to show — the "scan does nothing"
-  // report this screen used to produce.
-  final _camera = MobileScannerController(formats: const [BarcodeFormat.qrCode], autoStart: false);
-  final _session = DateTime.now().microsecondsSinceEpoch.toString();
   BoxController? _box;
-  bool _complete = false, _busy = false;
-  int _decoded = 0, _total = 0;
+  bool _busy = false;
   String? _error;
-  /// Why the preview never appeared: a denied permission or the scanner's own exception.
-  String? _cameraFailure;
-  /// True once the start attempt has been pending for a few seconds, so the screen can say so.
-  bool _slow = false;
-  Timer? _slowTimer;
-  /// The payload that failed to import and when: the camera re-delivers it every frame, so retrying
-  /// immediately would only flash the same error. A different code retries at once.
-  String? _failed;
-  DateTime? _failedAt;
 
   @override void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) => _startCamera());
+    WidgetsBinding.instance.addPostFrameCallback((_) => _startScan());
   }
 
   @override void didChangeDependencies() { super.didChangeDependencies(); _box ??= context.box; }
 
-  @override void dispose() {
-    _slowTimer?.cancel();
-    _box?.profileScanClose(_session);
-    _camera.dispose();
-    super.dispose();
-  }
-
-  /// Asks for the permission, then starts the camera; every failure becomes a message on screen.
-  Future<void> _startCamera() async {
-    if (!mounted || _camera.value.isInitialized) return;
-    setState(() { _cameraFailure = null; _slow = false; });
-    _slowTimer?.cancel();
-    _slowTimer = Timer(const Duration(seconds: 5), () {
-      if (mounted && !_camera.value.isInitialized) setState(() => _slow = true);
-    });
+  /// The camera now lives in the host's ZXing activity, not in a Flutter plugin:
+  /// one channel call opens it and the decoded payload (multi-frame symbols are
+  /// assembled on the host) comes back when it closes. A refused permission or a
+  /// dismissed activity leaves a retry on screen instead of a black preview.
+  Future<void> _startScan() async {
+    if (_busy) return;
+    setState(() { _busy = true; _error = null; });
     try {
       final granted = await _box!.ensureCameraPermission();
       if (!mounted) return;
       if (!granted) {
-        setState(() => _cameraFailure =
-            'The camera permission is denied. Grant it in the system settings, then try again.');
+        setState(() => _error = 'The camera permission is denied. Grant it in the system settings, then try again.');
         return;
       }
-      await _camera.start();
+      final text = await _box!.scanQrCode();
+      if (!mounted) return;
+      if (text == null || text.isEmpty) {
+        setState(() => _error = 'Scanning was cancelled. Tap retry to open the camera again.');
+        return;
+      }
+      final profile = await decodeImport(_box!, text);
+      if (mounted) context.safeNestedPop(profile);
     } catch (error) {
-      if (mounted) setState(() => _cameraFailure = BoxController.describe(error));
+      if (mounted) setState(() => _error = BoxController.describe(error));
     } finally {
-      _slowTimer?.cancel();
+      if (mounted) setState(() => _busy = false);
     }
-  }
-
-  Future<void> _scan(String text) async {
-    if (_busy || _complete) return;
-    // A payload that just failed is not retried frame after frame; the same code retries after a
-    // pause (a transient failure), a different one immediately.
-    final failedAt = _failedAt;
-    if (text == _failed && failedAt != null && DateTime.now().difference(failedAt) < const Duration(seconds: 3)) return;
-    _busy = true;
-    try {
-      final result = json(await _box!.profileScan(_session, text));
-      if (!mounted) return;
-      // An incomplete multi-frame payload still carries its partial text (decoded: 0); opening it
-      // would fail on every intermediate frame. Only a payload the bridge marks complete gets parsed.
-      final decoded = (result['decoded'] as num?)?.toInt() ?? 0;
-      final profile = result['profile'] is Map ? json(result['profile'])
-          : decoded > 0 && result['text'] is String ? await decodeImport(_box!, result['text'] as String) : null;
-      if (!mounted) return;
-      if (profile != null) { _complete = true; context.safeNestedPop(profile); }
-      else { setState(() { _decoded = decoded; _total = (result['total'] as num).toInt(); _error = null; }); }
-    } catch (error) {
-      if (mounted) setState(() { _error = BoxController.describe(error); _failed = text; _failedAt = DateTime.now(); });
-    } finally { _busy = false; }
   }
   @override Widget build(BuildContext context) => Scaffold(
     title: context.tr('Scan QR code'),
-    iconActions: [IconButtonData(glyph: AppGlyphs.torch, tooltip: 'Flash', onPressed: _camera.toggleTorch)],
-    body: Padding(padding: EdgeInsets.only(top: context.appBarInset), child: Column(children: [Expanded(child: Stack(fit: StackFit.expand, children: [
-      MobileScanner(
-        controller: _camera,
-        onDetect: (capture) {
-          if (_complete || _busy) return;
-          for (final code in capture.barcodes) {
-            final text = code.rawValue;
-            if (text == null || text.isEmpty) continue;
-            _scan(text);
-            break;
-          }
-        },
-        errorBuilder: (context, error) => ErrorState(error, retry: _startCamera),
-      ),
-      // The plugin renders black until the camera is ready, and gives no reason when it never is.
-      if (_cameraFailure != null)
-        ColoredBox(color: context.colorScheme.surface, child: ErrorState(context.tr(_cameraFailure!), retry: _startCamera))
-      else ValueListenableBuilder<MobileScannerState>(
-        valueListenable: _camera,
-        builder: (context, state, _) {
-          if (state.isInitialized) return const SizedBox.shrink();
-          return ColoredBox(color: context.colorScheme.surface, child: Center(child: Column(mainAxisSize: MainAxisSize.min, spacing: 12, children: [
-            const CircularProgressIndicator(),
-            Text(context.tr('Starting the camera…'), style: AppTextStyle.subheadline.of(context)),
-            if (_slow) Padding(padding: const EdgeInsets.symmetric(horizontal: 32), child: Text(
-              context.tr('The camera is taking longer than usual. If this stays black, check that the app may use the camera in the system settings.'),
-              textAlign: TextAlign.center, style: AppTextStyle.footnote.of(context).copyWith(color: context.colorScheme.onSurfaceVariant))),
-            if (_slow) TextButton(onPressed: _startCamera, child: Text(context.tr('Try again'))),
-          ])));
-        },
-      ),
-    ])),
-      if (_total > 0) Padding(padding: const EdgeInsets.all(16), child: Column(children: [
-        LinearProgressIndicator(value: _decoded / _total),
-        Text('${context.tr('Scanning configuration')} $_decoded / $_total'),
-      ])),
-      if (_error != null) Padding(padding: const EdgeInsets.all(16), child: Text(_error!)),
-    ])),
+    body: Padding(padding: EdgeInsets.only(top: context.appBarInset), child: Center(child: Padding(
+      padding: const EdgeInsets.all(32), child: Column(mainAxisSize: MainAxisSize.min, spacing: 16, children: [
+        if (_error != null) ErrorState(context.tr(_error!), retry: _startScan)
+        else ...[
+          if (_busy) const CircularProgressIndicator(),
+          Text(
+            context.tr('The camera opens in the scanning screen. Point it at a configuration QR code.'),
+            textAlign: TextAlign.center,
+            style: AppTextStyle.subheadline.of(context),
+          ),
+          if (_busy) Text(context.tr('Waiting for a QR code…'),
+              style: AppTextStyle.footnote.of(context).copyWith(color: context.colorScheme.onSurfaceVariant)),
+        ],
+      ]),
+    ))),
   );
 }

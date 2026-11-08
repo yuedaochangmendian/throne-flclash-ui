@@ -727,11 +727,15 @@ class ThroneBoxBridge(
                 "wifiPermissions.ensure" -> result.respond {
                     (activity as? BboxFlutterActivity)?.ensureWifiPermissions() ?: false
                 }
-                // The scan screen asks for the camera before it starts the scanner: the plugin would
-                // ask too, but its request only completes if the host answers the permission result,
-                // and a request that never answers leaves a black preview with nothing to report.
+                // The scan screen asks for the camera before the host's scan activity opens:
+                // a refusal comes back as false rather than an activity that closes with no reason.
                 "permissions.camera" -> result.respond {
                     (activity as? BboxFlutterActivity)?.ensureCameraPermission() ?: false
+                }
+                // The scan screen opens the host's ZXing activity; the decoded payload comes
+                // back when the activity closes (null when it was dismissed).
+                "scan.qr" -> result.respond {
+                    (activity as? BboxFlutterActivity)?.scanQrCode()
                 }
                 "url.open" -> {
                     val url = call.argument<String>("url").orEmpty()

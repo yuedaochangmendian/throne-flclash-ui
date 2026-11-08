@@ -10,9 +10,9 @@ import android.view.KeyEvent
 import androidx.core.content.ContextCompat
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.preference.PreferenceDataStore
+import com.king.zxing.CameraScan
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
-import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.nekohasekai.sagernet.Key
 import io.nekohasekai.sagernet.SagerNet
 import io.nekohasekai.sagernet.database.DataStore
@@ -62,6 +62,17 @@ class BboxFlutterActivity : FlutterFragmentActivity(), OnPreferenceDataStoreChan
     ) { granted ->
         cameraHandler?.invoke(granted)
         cameraHandler = null
+    }
+
+    /** The one QR scan in flight; the scan screen awaits its decoded payload. */
+    private var qrScanHandler: ((String?) -> Unit)? = null
+
+    private val qrScanLauncher = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        val text = if (result.resultCode == RESULT_OK) result.data?.let { CameraScan.parseScanResult(it) } else null
+        qrScanHandler?.invoke(text)
+        qrScanHandler = null
     }
 
     // Registered at construction (before CREATED), as the framework requires. Two separate launchers keep the
@@ -147,29 +158,10 @@ class BboxFlutterActivity : FlutterFragmentActivity(), OnPreferenceDataStoreChan
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-        registerScannerPlugin(flutterEngine)
         bridge = ThroneBoxBridge(this, flutterEngine.dartExecutor.binaryMessenger).also { it.attach() }
         // The UI really came up: give the next crash its full restart budget back, so a
         // startup crash that always recurs cannot restart the app forever.
         CrashHandler.noteStarted()
-    }
-
-    /**
-     * Registers mobile_scanner explicitly, on top of the automatic registration.
-     *
-     * Flutter finds the module AAR's `GeneratedPluginRegistrant` by reflection and **swallows the
-     * failure** (it logs a warning and carries on), so a registrant that cannot be loaded shows up
-     * much later as `MissingPluginException` on the scanner channel — the camera preview then never
-     * appears. Adding the plugin here is a no-op when it is already registered (the engine's registry
-     * keys plugins by class) and, when the class is absent from the APK, logs the reason instead of
-     * leaving a silent black screen.
-     */
-    private fun registerScannerPlugin(engine: FlutterEngine) {
-        val name = "dev.steenbakker.mobile_scanner.MobileScannerPlugin"
-        runCatching {
-            val plugin = Class.forName(name).getDeclaredConstructor().newInstance() as FlutterPlugin
-            engine.plugins.add(plugin)
-        }.onFailure { Logs.w("scanner: $name is not in this build: ${it.message}") }
     }
 
     override fun cleanUpFlutterEngine(flutterEngine: FlutterEngine) {
@@ -242,12 +234,9 @@ class BboxFlutterActivity : FlutterFragmentActivity(), OnPreferenceDataStoreChan
     }
 
     /**
-     * Asks for the camera permission before the scanner starts.
-     *
-     * mobile_scanner requests it itself, but that request runs through the plugin's own listener and a
-     * host that never answers it leaves the scanner waiting on a black preview with no error to show.
-     * Asking here first means the plugin finds the permission already granted and starts the camera
-     * immediately; a refusal comes back as `false` so the screen can say what to do about it.
+     * Asks for the camera permission before the host's scan activity opens. The activity asks on
+     * its own too, but a refusal there just closes it with no reason to show; asking here first
+     * returns `false` so the screen can tell the user to grant it in the system settings.
      */
     suspend fun ensureCameraPermission(): Boolean {
         val granted = ContextCompat.checkSelfPermission(this, Manifest.permission.CAMERA) ==
@@ -263,6 +252,25 @@ class BboxFlutterActivity : FlutterFragmentActivity(), OnPreferenceDataStoreChan
                     if (continuation.isActive) continuation.resume(false)
                 }
         }
+    }
+
+    /**
+     * Opens the host's ZXing scan activity and waits for the decoded payload. One scan at a time:
+     * a concurrent call would overwrite the single result slot and leave the first caller hanging.
+     * Null means the activity was dismissed or the camera permission was refused.
+     */
+    suspend fun scanQrCode(): String? = suspendCancellableCoroutine { continuation ->
+        if (qrScanHandler != null) {
+            continuation.resume(null)
+            return@suspendCancellableCoroutine
+        }
+        qrScanHandler = { text -> if (continuation.isActive) continuation.resume(text) }
+        continuation.invokeOnCancellation { qrScanHandler = null }
+        runCatching { qrScanLauncher.launch(Intent(this, BboxQrScanActivity::class.java)) }
+            .onFailure {
+                qrScanHandler = null
+                if (continuation.isActive) continuation.resume(null)
+            }
     }
 
     /**
