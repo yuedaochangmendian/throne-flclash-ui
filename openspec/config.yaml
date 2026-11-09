@@ -3,7 +3,8 @@ schema: spec-driven
 # Project context (optional)
 # This is shown to AI when creating artifacts.
 context: |
-  ThroneForAndroid (nb4a) 是基于 SagerNet 代码线的 Android 代理客户端（v2.0.0 起，包名 com.nb4a.throne）。
+  Flrone 是 throneproj/ThroneForAndroid（SagerNet 代码线）的下游发行版：核心沿用 Throne，界面、桥接层与发布线由本仓库维护。
+  当前 applicationId 为 com.throneflclash；Flutter 模块包名与 AAR 坐标为 io.flrone.ui，桥接通道为 io.flrone/*。
   Android 端使用 Kotlin/Java 与传统 View/Fragment；代理核心为 throneproj/Throne 桌面同源核心，
   以 nb4a.properties 的 THRONE_CORE_REF 为唯一来源，由 CI 构建 ThroneCore.aar 与 sing-box 选项 schema，
   应用版本以 nb4a.properties 的 VERSION_NAME/VERSION_CODE/PACKAGE_NAME 为唯一真实来源。

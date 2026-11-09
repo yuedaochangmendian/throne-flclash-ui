@@ -2,7 +2,7 @@
 
 ## Purpose
 
-定义 ThroneForAndroid 的仓库边界、规范来源、构建协作方式、版本与核心来源以及发布工作流，避免项目知识和维护约定随人员或大版本更替再次散落。
+定义 Flrone（throneproj/ThroneForAndroid 的下游发行版）的仓库边界、规范来源、构建协作方式、版本与核心来源以及发布工作流，避免项目知识和维护约定随人员或大版本更替再次散落。
 
 ## Requirements
 

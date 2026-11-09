@@ -20,7 +20,7 @@ import java.io.IOException
 import java.io.InputStream
 
 /**
- * GitHub releases of ThroneForAndroid (the desktop's CheckUpdate: `allow_beta_update` admits pre-releases). A release
+ * Flrone's GitHub releases (the desktop's CheckUpdate: `allow_beta_update` admits pre-releases). A release
  * built by CI carries `throne-update.json` (buildScript/release_assets.py) and can be installed in-app; older releases
  * are offered in the browser only.
  */
