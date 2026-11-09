@@ -125,44 +125,10 @@ object BboxCommands : BboxActions {
         BboxBridge.scheduleRefresh(immediate = true)
     }
 
-    override fun testGroup(group: String) {
-        scope.launch {
-            val target = withContext(Dispatchers.IO) {
-                val g = GroupRepo.all().firstOrNull { it.displayName() == group } ?: return@withContext null
-                g to ProfileManager.memberIds(g.id)
-            } ?: return@launch
-            if (target.second.isEmpty()) return@launch
-            val started = TestSessionClient.start(
-                TestSpec(
-                    kind = TestSpec.KIND_URL,
-                    profileIds = target.second.toLongArray(),
-                    scopeLabel = target.first.displayName(),
-                ),
-                target.first.id,
-            )
-            if (started) watchTestSession()
-        }
-    }
-
-    override fun testProxy(group: String, tag: String) {
-        scope.launch {
-            val profile = withContext(Dispatchers.IO) {
-                val g = GroupRepo.all().firstOrNull { it.displayName() == group } ?: return@withContext null
-                ProfileManager.members(g.id).firstOrNull { it.displayName() == tag }
-            } ?: return@launch
-            val started = TestSessionClient.start(
-                TestSpec(kind = TestSpec.KIND_URL, profileIds = longArrayOf(profile.id), scopeLabel = profile.displayName()),
-                profile.groupId,
-            )
-            if (started) watchTestSession()
-        }
-    }
-
     /**
      * The proxy page's card and group actions need the call to live for as long
-     * as the spinner should. Resolve the same target as the fire-and-forget
-     * [testGroup] / [testProxy] paths, start one session, and answer once that
-     * session has finished.
+     * as the spinner should. Resolve the target, start one session, and answer
+     * once that session has finished.
      */
     suspend fun testNodeAwait(tag: String): Boolean {
         val target = withContext(Dispatchers.IO) {

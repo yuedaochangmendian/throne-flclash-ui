@@ -109,8 +109,6 @@ interface BboxActions {
     fun toggleService() {}
     fun setMode(mode: String) {}
     fun selectProxy(group: String, tag: String) {}
-    fun testGroup(group: String) {}
-    fun testProxy(group: String, tag: String) {}
     fun refreshEgress() {}
     fun selectProfile(id: Long) {}
     fun editProfile(id: Long) {}

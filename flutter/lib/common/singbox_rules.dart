@@ -162,7 +162,7 @@ class RuleImporter {
   /// The rule list(s) the document names, plus the schema node that describes its shape.
   _Shape _shape(Object? plain, RuleImportKind kind) {
     if (plain is List) {
-      return _Shape.rules(plain, kind, list: true);
+      return _Shape.rules(plain, kind, container: _RuleContainer.array);
     }
     if (plain is! Map) {
       return const _Shape.error('The fragment must be a JSON object or an array of rules');
@@ -191,10 +191,10 @@ class RuleImporter {
     final rules = plain['rules'];
     // A logical rule carries its own `rules` array; only a bare container is a list of rules.
     if (rules is List && !_looksLikeRule(plain)) {
-      return _Shape.rules(rules, kind, list: true);
+      return _Shape.rules(rules, kind, container: _RuleContainer.wrapped);
     }
     // A bare rule object: classify from its members, falling back to the page it was opened from.
-    return _Shape.rules([plain], kind, list: false);
+    return _Shape.rules([plain], kind, container: _RuleContainer.object);
   }
 
   List<Object?> _rulesOf(Map<dynamic, dynamic> container) {
@@ -291,13 +291,15 @@ class RuleImporter {
   }
 }
 
+enum _RuleContainer { array, wrapped, object }
+
 /// The document's rule lists and the schema node describing its shape; [schemaNode] null means the
 /// whole document is a config and the schema root applies.
 class _Shape {
   const _Shape({required this.route, required this.dns, required this.schemaNode}) : error = null;
   const _Shape.error(this.error) : route = const [], dns = const [], schemaNode = null;
 
-  factory _Shape.rules(List<Object?> rules, RuleImportKind fallback, {required bool list}) {
+  factory _Shape.rules(List<Object?> rules, RuleImportKind fallback, {required _RuleContainer container}) {
     final route = <Object?>[];
     final dns = <Object?>[];
     for (final rule in rules) {
@@ -313,11 +315,26 @@ class _Shape {
     final onlyRoute = dns.isEmpty && route.isNotEmpty;
     final onlyDns = route.isEmpty && dns.isNotEmpty;
     final ref = onlyDns ? SchemaStore.dnsRule : SchemaStore.rule;
-    final schemaNode = onlyRoute || onlyDns
-        ? list
-            ? {'type': 'array', 'items': {r'$ref': ref}}
-            : {r'$ref': ref}
-        : null;
+    final item = onlyRoute || onlyDns
+        ? {r'$ref': ref}
+        : {
+            'anyOf': [
+              {r'$ref': SchemaStore.rule},
+              {r'$ref': SchemaStore.dnsRule},
+            ],
+          };
+    final schemaNode = switch (container) {
+      _RuleContainer.array => {'type': 'array', 'items': item},
+      _RuleContainer.wrapped => {
+          'type': 'object',
+          'properties': {
+            'rules': {'type': 'array', 'items': item},
+          },
+          'required': ['rules'],
+          'additionalProperties': false,
+        },
+      _RuleContainer.object => item,
+    };
     return _Shape(route: route, dns: dns, schemaNode: schemaNode);
   }
 

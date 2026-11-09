@@ -16,6 +16,7 @@ class _ProxiesPageState extends State<ProxiesPage> {
   // the one under test a spinner, and finished groups their delays.
   final _queued = <String>{};
   Json _session = const {};
+  int _sessionRequestedAt = 0;
   final _scrolls = <String, ScrollController>{};
   final _selectedOffsets = <String, double>{};
   String? _currentGroup;
@@ -55,7 +56,10 @@ class _ProxiesPageState extends State<ProxiesPage> {
   // profile, and a selection is a stored preference the next start reads, so neither waits for the VPN.
   Future<void> _test(String tag) async {
     if (_testing.contains(tag) || _queued.contains(tag)) return;
-    setState(() { _session = const {}; _testing.add(tag); });
+    setState(() {
+      _sessionRequestedAt = DateTime.now().millisecondsSinceEpoch;
+      _testing.add(tag);
+    });
     await context.box.groupTest(tag);
     if (mounted) setState(() => _testing.remove(tag));
   }
@@ -84,9 +88,12 @@ class _ProxiesPageState extends State<ProxiesPage> {
   Widget _card(BuildContext context, Json group, Json node) {
     final groupTag = group['tag'].toString(), nodeTag = node['tag'].toString();
     final id = (node['id'] as num?)?.toInt();
-    final row = rows(_session['rows'])
-        .where((row) => (row['id'] as num?)?.toInt() == id)
-        .firstOrNull;
+    final startedAt = (_session['startedAt'] as num?)?.toInt() ?? 0;
+    final row = startedAt < _sessionRequestedAt
+        ? null
+        : rows(_session['rows'])
+            .where((row) => (row['id'] as num?)?.toInt() == id)
+            .firstOrNull;
     final phase = switch (row?['phase']) {
       'TESTING' => ProxyTestPhase.running,
       'QUEUED' => ProxyTestPhase.queued,
@@ -182,7 +189,11 @@ class _ProxiesPageState extends State<ProxiesPage> {
           setState(() => _queued.addAll(tags));
           for (final tag in tags) {
             if (!mounted) return;
-            setState(() { _session = const {}; _queued.remove(tag); _testing.add(tag); });
+            setState(() {
+              _sessionRequestedAt = DateTime.now().millisecondsSinceEpoch;
+              _queued.remove(tag);
+              _testing.add(tag);
+            });
             await context.box.groupTest(tag);
             if (!mounted) return;
             setState(() => _testing.remove(tag));
