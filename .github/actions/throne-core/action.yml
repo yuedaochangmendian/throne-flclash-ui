@@ -1,36 +1,21 @@
 name: Build ThroneCore AAR
 description: >-
   Builds app/libs/ThroneCore.aar and generates app/src/main/assets/schema/sing-box.json (with the Android build tags)
-  from throneproj/Throne at the THRONE_CORE_REF pinned in nb4a.properties. Both are cached on the resolved commit and
-  the core build script.
+  from throneproj/Throne at the THRONE_CORE_REF pinned in nb4a.properties. Both are cached on the pinned ref, the
+  composite action and the core bridge patch before any upstream checkout.
 runs:
   using: composite
   steps:
-    - name: Checkout Throne
+    - name: Read core pin
       shell: bash
       run: |
         set -euo pipefail
         REF=$(sed -n 's/^THRONE_CORE_REF=//p' nb4a.properties | tr -d '\r[:space:]')
         test -n "$REF"
-        THRONE_DIR="$(dirname "$GITHUB_WORKSPACE")/Throne"
-        rm -rf "$THRONE_DIR"
-        git init -q "$THRONE_DIR"
-        git -C "$THRONE_DIR" remote add origin https://github.com/throneproj/Throne
-        git -C "$THRONE_DIR" fetch -q --depth 1 origin "$REF"
-        git -C "$THRONE_DIR" checkout -q --detach FETCH_HEAD
-        {
-          echo "THRONE_CORE_REF=$REF"
-          echo "THRONE_DIR=$THRONE_DIR"
-          echo "THRONE_CORE_SHA=$(git -C "$THRONE_DIR" rev-parse HEAD)"
-          echo "THRONE_CORE_SCRIPT_SHA=$(sha256sum "$THRONE_DIR/script/build_android.sh" | cut -d' ' -f1)"
-        } >> "$GITHUB_ENV"
-    - name: Apply core bridge patch
-      shell: bash
-      run: |
-        set -euo pipefail
-        # Additive only: the throne_* C ABI lands in core/mobile so the AAR's
-        # shared library exports it for Dart FFI and the android/core JNI shim.
-        bash buildScript/apply-core-patch.sh "$THRONE_DIR"
+        echo "THRONE_CORE_REF=$REF" >> "$GITHUB_ENV"
+    # THRONE_CORE_REF is pinned to an immutable commit, so the resolved SHA and
+    # its build script hash from a fresh checkout were redundant in this key.
+    # Restoring here avoids cloning and patching Throne on every cache hit.
     - name: ThroneCore cache
       id: cache
       uses: actions/cache@v6
@@ -38,7 +23,27 @@ runs:
         path: |
           app/libs/ThroneCore.aar
           app/src/main/assets/schema/sing-box.json
-        key: throne-core-${{ env.THRONE_CORE_REF }}-${{ env.THRONE_CORE_SHA }}-${{ env.THRONE_CORE_SCRIPT_SHA }}-${{ hashFiles('.github/actions/throne-core/action.yml', 'buildScript/core-patch/**') }}
+        key: throne-core-${{ runner.os }}-${{ env.THRONE_CORE_REF }}-${{ hashFiles('.github/actions/throne-core/action.yml', 'buildScript/core-patch/**') }}
+    - name: Checkout Throne
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        THRONE_DIR="$(dirname "$GITHUB_WORKSPACE")/Throne"
+        rm -rf "$THRONE_DIR"
+        git init -q "$THRONE_DIR"
+        git -C "$THRONE_DIR" remote add origin https://github.com/throneproj/Throne
+        git -C "$THRONE_DIR" fetch -q --depth 1 origin "$THRONE_CORE_REF"
+        git -C "$THRONE_DIR" checkout -q --detach FETCH_HEAD
+        echo "THRONE_DIR=$THRONE_DIR" >> "$GITHUB_ENV"
+    - name: Apply core bridge patch
+      if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Additive only: the throne_* C ABI lands in core/mobile so the AAR's
+        # shared library exports it for Dart FFI and the android/core JNI shim.
+        bash buildScript/apply-core-patch.sh "$THRONE_DIR"
     - name: Install Golang
       if: steps.cache.outputs.cache-hit != 'true'
       uses: actions/setup-go@v7
@@ -50,7 +55,7 @@ runs:
       uses: actions/cache@v6
       with:
         path: ~/go/pkg/mod
-        key: go-mod-throne-${{ runner.os }}-${{ env.THRONE_CORE_SHA }}
+        key: go-mod-throne-${{ runner.os }}-${{ env.THRONE_CORE_REF }}
         restore-keys: |
           go-mod-throne-${{ runner.os }}-
     - name: Setup Java

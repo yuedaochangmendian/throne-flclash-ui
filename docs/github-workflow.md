@@ -2,7 +2,7 @@
 
 本文是仓库在 GitHub 上的**唯一流程基准**：分支、PR、发版、tag、release、更新器契约与 CI 职责。`CONTRIBUTING.md` 第 3 节与 `docs/release-runbook.md` 是它的执行细则，冲突时以本文为准。配置真源是仓库内文件（`nb4a.properties`、`.github/workflows/`、`buildScript/`），本文不复制具体数值，只固定规则。
 
-配套自动校验：`tools/diagnostics/github_governance.py`（`Repository governance` workflow 定时运行）。**新增违规会阻断，历史遗留列在 `github_governance_baseline.json`，修复一项就从基线删一项。**
+配套自动校验：`tools/diagnostics/github_governance.py`（`Repository governance` workflow 每周运行，治理文件改动时也会立即运行）。**新增违规会阻断，历史遗留列在 `github_governance_baseline.json`，修复一项就从基线删一项。**
 
 ## 1. 分支模型
 
@@ -41,7 +41,7 @@
 
 - `release_assets.py` 会拒绝 `channel` 与 `versionName` 不匹配、签名者不唯一、ABI 缺失；stable 的 `Changelog` 步骤会拒绝缺少 `#### <version>` 段落，preview 从基础版本 `#### X.Y.Z` 取说明。**发版前必须先写 CHANGELOG 段落**。
 - 一个 tag 对应一个 release；tag 不复用、不改名、不删除重建。
-- `release.yml` 统一处理两个 channel：`main` CI 成功后由 `workflow_run` 自动发布 preview，手动构建仍可用 `channel=preview|stable`，tag 推送按 `-pre.N` 自动判断；`Version` 步骤会校验基础版本、当前 `main`、tag 未被占用，`publish_release.sh` 对每次写操作重试 3 次并保留 `dist/` 供降级补发。
+- `release.yml` 统一处理两个 channel：`main` CI 成功后由 `workflow_run` 自动发布 preview；若距最近 release tag 没有应用或构建输入变化，则自动跳过。手动构建仍可用 `channel=preview|stable`，tag 推送按 `-pre.N` 自动判断；`Version` 步骤会校验基础版本、当前 `main`、tag 未被占用，`publish_release.sh` 对每次写操作重试 3 次并保留 `dist/` 供降级补发。
 
 ## 4. tag 与 release 命名
 
@@ -63,9 +63,9 @@
 
 | workflow | 触发 | 职责 | 对外产物 |
 |---|---|---|---|
-| `ci.yml` | push `main` / PR to `main` | 静态分析、单测、契约审计；功能分支只跑 PR，避免 push/PR 双份验证 | 无（报告 artifact） |
-| `release.yml` | CI `workflow_run` / `workflow_dispatch` / push `v*` tag | CI 成功后自动发布 preview，并统一处理手动 preview/stable，构建、签名、生成资产、创建 release | GitHub release / prerelease |
-| `governance.yml` | 定时 / 手动 / 治理文件改动 | 校验仓库状态是否符合本文 | Step Summary |
+| `ci.yml` | push `main` / PR to `main` | 轻量变更检测后运行静态分析、单测、契约审计；文档-only 变更走快速成功路径，artifact 只在失败或 main 上传 | 无（按需报告 artifact） |
+| `release.yml` | CI `workflow_run` / `workflow_dispatch` / push `v*` tag | CI 成功后，仅在存在应用或构建输入变化时自动发布 preview；同时统一处理手动 preview/stable、签名、资产和 release | GitHub release / prerelease |
+| `governance.yml` | 每周 / 手动 / 治理文件改动 | 校验仓库状态是否符合本文 | Step Summary |
 
 `release.yml` 的自动、dispatch 和 tag 路径都会处理 preview：自动/dispatch 按距最近 stable tag 的提交数计算 `-pre.N`，tag 路径使用 tag 中的 `-pre.N`。自动路径只在触发提交仍是当前 `main` 时运行，并在 tag 已存在时安全跳过；手动路径在 tag 已存在时拒绝复用。所有 preview 都不得占用 `releases/latest`，也不得携带 `throne-update.json`。
 
