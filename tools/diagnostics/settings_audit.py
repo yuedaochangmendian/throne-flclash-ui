@@ -139,6 +139,14 @@ RESTORE_ONLY = {
     "xray_geosite_url",      # XrayGeoAssets reads it when a config needs geosite.dat
 }
 
+# Desktop presets that Throne for Android deliberately does not surface (decision D8).
+# They remain valid bridge keys for restore compatibility but have no Android control.
+ANDROID_OMITTED = {
+    "tlsSpoof",
+    "tlsSpoofDefaultOn",
+    "tlsSpoofMethod",
+}
+
 # Every book the three-way diff consults before it names a store key as a gap.
 NON_ACTIONABLE = NON_SETTING | SHELL_OWNED | RESTORE_ONLY
 
@@ -209,7 +217,9 @@ def main() -> int:
 
     registry_missing = sorted(key for key in registry if key not in covered_rows and key not in NON_ACTIONABLE)
     constants_missing = sorted(key for key in constants if key not in covered_rows and key not in NON_ACTIONABLE)
-    bridge_missing_ui = sorted(key for key in bridge if key not in ui_controls and key not in NON_SETTING)
+    bridge_missing_ui = sorted(
+        key for key in bridge
+        if key not in ui_controls and key not in NON_SETTING and key not in ANDROID_OMITTED)
     ui_missing_bridge = sorted(
         key for key in ui_controls if key not in bridge and key not in NON_SETTING and key not in OVERLAY_SETTING)
     restored_missing_control = sorted(key for key in ui_restored if key not in ui_controls)

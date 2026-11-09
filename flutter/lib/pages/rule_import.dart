@@ -59,14 +59,15 @@ Future<void> applyRuleImport(BoxController box, RuleImportRequest request, {int?
 class _RuleImportPageState extends State<RuleImportPage> {
   String _input = '';
   Timer? _debounce;
-  RuleImportKind _pickedKind = RuleImportKind.route;
   RuleImportResult? _result;
   Map<String, int> _outboundIds = const {};
 
   /// The DNS page has no profile to add route rules to, so it only ever reads `dns.rules`.
   bool get _dnsOnly => widget.profileId == null;
 
-  RuleImportKind get _kind => _dnsOnly ? RuleImportKind.dns : _pickedKind;
+  /// A completely ambiguous bare rule follows the page it was opened from; rules with route or
+  /// DNS-specific members are classified by the importer itself.
+  RuleImportKind get _fallbackKind => _dnsOnly ? RuleImportKind.dns : RuleImportKind.route;
 
   @override
   void initState() {
@@ -107,7 +108,7 @@ class _RuleImportPageState extends State<RuleImportPage> {
       if (mounted) setState(() { _result = null; });
       return;
     }
-    final result = await RuleImporter(outboundIds: _outboundIds).run(text, kind: _kind);
+    final result = await RuleImporter(outboundIds: _outboundIds).run(text, kind: _fallbackKind);
     if (!mounted) return;
     setState(() {
       _result = result;
@@ -133,21 +134,8 @@ class _RuleImportPageState extends State<RuleImportPage> {
               style: AppTextStyle.title3.of(context, emphasized: true)),
             const SizedBox(height: 12),
             Flexible(child: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Text(context.tr('Paste a sing-box fragment carrying route or DNS rules; it is checked against the schema first.'),
+                Text(context.tr('Paste a sing-box fragment carrying route or DNS rules; both are recognised automatically and checked against the schema first.'),
                   style: AppTextStyle.caption1.of(context)),
-                if (!_dnsOnly) ...[
-                  const SizedBox(height: 10),
-                  generateSection(items: [
-                    ListItem(
-                      title: Text(context.tr('Rule kind')),
-                      subtitle: Text(context.tr(
-                        'Used for a bare rule or a bare "rules" array; a fragment with "route" or "dns" says it itself.')),
-                      trailing: Text(context.tr(_kind == RuleImportKind.dns ? 'DNS' : 'Route'),
-                        style: context.listValueStyle),
-                      onTap: _pickKind,
-                    ),
-                  ]),
-                ],
                 const SizedBox(height: 10),
                 SizedBox(height: 210, child: TextField(
                   key: const Key('rule-import-field'),
@@ -174,27 +162,6 @@ class _RuleImportPageState extends State<RuleImportPage> {
         ),
       ),
     );
-  }
-
-  Future<void> _pickKind() async {
-    final picked = await showDialog<RuleImportKind>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: Text(context.tr('Rule kind'), style: AppTextStyle.title3.of(context, emphasized: true)),
-        children: [
-          for (final (value, label) in [
-            (RuleImportKind.route, 'Route'), (RuleImportKind.dns, 'DNS'),
-          ])
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, value),
-              child: Text(context.tr(label), style: AppTextStyle.body.of(context)),
-            ),
-        ],
-      ),
-    );
-    if (picked == null || !mounted) return;
-    setState(() => _pickedKind = picked);
-    await _parse();
   }
 
   /// The preview: what the import would add, what it would leave out, and why.

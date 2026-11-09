@@ -1,4 +1,5 @@
 import '../widgets.dart';
+import '../components/data_subscription.dart';
 import '../components/group_tabs.dart';
 import '../components/proxy_card.dart';
 import '../components/proxy_list.dart';
@@ -14,6 +15,7 @@ class _ProxiesPageState extends State<ProxiesPage> {
   // FlClash runs a batch as a queue: groups waiting their turn show a clock,
   // the one under test a spinner, and finished groups their delays.
   final _queued = <String>{};
+  Json _session = const {};
   final _scrolls = <String, ScrollController>{};
   final _selectedOffsets = <String, double>{};
   String? _currentGroup;
@@ -53,7 +55,7 @@ class _ProxiesPageState extends State<ProxiesPage> {
   // profile, and a selection is a stored preference the next start reads, so neither waits for the VPN.
   Future<void> _test(String tag) async {
     if (_testing.contains(tag) || _queued.contains(tag)) return;
-    setState(() => _testing.add(tag));
+    setState(() { _session = const {}; _testing.add(tag); });
     await context.box.groupTest(tag);
     if (mounted) setState(() => _testing.remove(tag));
   }
@@ -81,9 +83,20 @@ class _ProxiesPageState extends State<ProxiesPage> {
 
   Widget _card(BuildContext context, Json group, Json node) {
     final groupTag = group['tag'].toString(), nodeTag = node['tag'].toString();
-    final phase = _testing.contains(groupTag) || _testing.contains(nodeTag)
-        ? ProxyTestPhase.running
-        : _queued.contains(groupTag) ? ProxyTestPhase.queued : ProxyTestPhase.idle;
+    final id = (node['id'] as num?)?.toInt();
+    final row = rows(_session['rows'])
+        .where((row) => (row['id'] as num?)?.toInt() == id)
+        .firstOrNull;
+    final phase = switch (row?['phase']) {
+      'TESTING' => ProxyTestPhase.running,
+      'QUEUED' => ProxyTestPhase.queued,
+      'DONE' => ProxyTestPhase.idle,
+      _ when _testing.contains(nodeTag) => ProxyTestPhase.running,
+      // A group test starts as a queue, then the session's row phases take over
+      // one card at a time, matching FlClash's per-node animation.
+      _ when _testing.contains(groupTag) || _queued.contains(groupTag) => ProxyTestPhase.queued,
+      _ => ProxyTestPhase.idle,
+    };
     return ProxyNodeCard(
       group: group, node: node, phase: phase,
       onSelect: () => _select(group, node), onTest: () => _test(nodeTag),
@@ -118,6 +131,7 @@ class _ProxiesPageState extends State<ProxiesPage> {
 
   @override Widget build(BuildContext context) {
     final box = context.box;
+    _session = context.watchBox(BoxAspect.testSession).testSession;
     // The screen follows the configuration selection: whichever profile is selected, its nodes are
     // what shows here. A selection that names nothing on the wire (or none yet) falls back to all.
     final selectedId = box.selectedProfileId;
@@ -145,7 +159,7 @@ class _ProxiesPageState extends State<ProxiesPage> {
       final withNodes = groups.where((group) => ((group['nodeCount'] as num?)?.toInt() ?? 0) > 0);
       _currentGroup = (withNodes.isNotEmpty ? withNodes.first : groups.firstOrNull)?['tag'] as String?;
     }
-    return Scaffold(
+    return BoxDataSubscription(data: BoxData.testSession, child: Scaffold(
       title: context.tr('Proxies'),
       searchState: AppBarSearchState(onSearch: (query) => setState(() => _query = query)),
       primaryAction: list ? null : IconButtonData(glyph: AppGlyphs.bolt, tooltip: context.tr('Test latency'),
@@ -168,7 +182,7 @@ class _ProxiesPageState extends State<ProxiesPage> {
           setState(() => _queued.addAll(tags));
           for (final tag in tags) {
             if (!mounted) return;
-            setState(() { _queued.remove(tag); _testing.add(tag); });
+            setState(() { _session = const {}; _queued.remove(tag); _testing.add(tag); });
             await context.box.groupTest(tag);
             if (!mounted) return;
             setState(() => _testing.remove(tag));
@@ -205,6 +219,6 @@ class _ProxiesPageState extends State<ProxiesPage> {
           ]),
         ),
       ),
-    );
+    ));
   }
 }

@@ -11,6 +11,8 @@ class LineChart extends StatefulWidget {
     required this.minScale,
     required this.color,
     required this.baselineRatio,
+    this.secondaryValues,
+    this.secondaryColor,
   }) : assert(capacity > 1),
        assert(minScale > 0);
 
@@ -27,6 +29,11 @@ class LineChart extends StatefulWidget {
 
   final Color color;
 
+  /// A second line drawn against the same scale, used by the speed test's
+  /// upload and download graph. Both lists are sampled in the same window.
+  final List<double>? secondaryValues;
+  final Color? secondaryColor;
+
   /// Where the zero line sits, as a share of the height from the top.
   final double baselineRatio;
 
@@ -36,11 +43,15 @@ class LineChart extends StatefulWidget {
 
 class _LineChartState extends State<LineChart> {
   late _Series _series;
+  _Series? _secondarySeries;
 
   @override
   void initState() {
     super.initState();
     _series = _Series.of(widget.values, _seriesLength);
+    _secondarySeries = widget.secondaryValues == null
+        ? null
+        : _Series.of(widget.secondaryValues!, _seriesLength);
   }
 
   int get _seriesLength => widget.capacity + _Series.radius + 1;
@@ -51,12 +62,29 @@ class _LineChartState extends State<LineChart> {
     final appended = widget.revision - oldWidget.revision;
     if (widget.capacity != oldWidget.capacity ||
         appended < 0 ||
-        appended > widget.values.length) {
+        appended > widget.values.length ||
+        (widget.secondaryValues != null &&
+            (oldWidget.secondaryValues == null ||
+                appended > widget.secondaryValues!.length))) {
       _series = _Series.of(widget.values, _seriesLength);
+      _secondarySeries = widget.secondaryValues == null
+          ? null
+          : _Series.of(widget.secondaryValues!, _seriesLength);
     } else if (appended > 0) {
       _series = _series.append(
         widget.values.sublist(widget.values.length - appended),
       );
+      if (_secondarySeries != null) {
+        _secondarySeries = _secondarySeries!.append(
+          widget.secondaryValues!.sublist(
+            widget.secondaryValues!.length - appended,
+          ),
+        );
+      }
+    } else if (widget.secondaryValues == null || oldWidget.secondaryValues == null) {
+      _secondarySeries = widget.secondaryValues == null
+          ? null
+          : _Series.of(widget.secondaryValues!, _seriesLength);
     }
   }
 
@@ -70,6 +98,8 @@ class _LineChartState extends State<LineChart> {
             capacity: widget.capacity,
             minScale: widget.minScale,
             color: widget.color,
+            secondarySeries: _secondarySeries,
+            secondaryColor: widget.secondaryColor,
             baselineRatio: widget.baselineRatio,
           ),
         ),
@@ -144,6 +174,8 @@ class _LineChartPainter extends CustomPainter {
     required this.minScale,
     required this.color,
     required this.baselineRatio,
+    this.secondarySeries,
+    this.secondaryColor,
   }) : _strokePaint = Paint()
          ..color = color
          ..strokeWidth = _strokeWidth
@@ -158,12 +190,33 @@ class _LineChartPainter extends CustomPainter {
   final int capacity;
   final double minScale;
   final Color color;
+  final _Series? secondarySeries;
+  final Color? secondaryColor;
   final double baselineRatio;
 
   final Paint _strokePaint;
 
   @override
   void paint(Canvas canvas, Size size) {
+    final top = math.max(
+      minScale,
+      [series, ?secondarySeries]
+          .expand((item) => item.heights)
+          .fold<double>(0, math.max),
+    );
+    _paintSeries(canvas, size, series, color, top);
+    if (secondarySeries != null) {
+      _paintSeries(canvas, size, secondarySeries!, secondaryColor ?? color, top);
+    }
+  }
+
+  void _paintSeries(
+    Canvas canvas,
+    Size size,
+    _Series series,
+    Color color,
+    double top,
+  ) {
     final step = size.width / (capacity - 1);
     final baseline = size.height * baselineRatio;
     final heights = series.heights;
@@ -187,7 +240,6 @@ class _LineChartPainter extends CustomPainter {
       x = nextX;
       y = nextY;
     }
-    final top = math.max(minScale, -curve.getBounds().top);
     final yScale = (baseline - _strokeWidth) / top;
     final line = curve.transform(
       (Matrix4.identity()
@@ -205,7 +257,11 @@ class _LineChartPainter extends CustomPainter {
       ..save()
       ..clipRect(Offset.zero & size)
       ..drawPath(area, fillPaint)
-      ..drawPath(line, _strokePaint)
+      ..drawPath(
+        line,
+        _strokePaint
+          ..color = color,
+      )
       ..restore();
   }
 
@@ -215,6 +271,8 @@ class _LineChartPainter extends CustomPainter {
         oldDelegate.capacity != capacity ||
         oldDelegate.minScale != minScale ||
         oldDelegate.color != color ||
+        oldDelegate.secondarySeries != secondarySeries ||
+        oldDelegate.secondaryColor != secondaryColor ||
         oldDelegate.baselineRatio != baselineRatio;
   }
 }

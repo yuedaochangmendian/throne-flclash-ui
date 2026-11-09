@@ -1,32 +1,35 @@
 import 'package:material_ui/material_ui.dart' as material;
 import '../widgets.dart';
 
+Widget _enabledSetting(bool enabled, Widget child) =>
+    enabled ? child : Opacity(opacity: .38, child: IgnorePointer(child: child));
+
 /// Throne settings that the B-box UI never had.
 ///
 /// They use the same primitives as every other sheet here ([ListItem.toggle],
 /// [ListItem.input], [ListItem.options]) and write through `settings.set` with the Throne key name,
 /// so nothing here introduces a second storage or a second restart story.
 class SettingToggle extends StatelessWidget {
-  const SettingToggle(this.title, this.setting, {super.key, this.restart = true, this.autoRestart = false});
+  const SettingToggle(this.title, this.setting, {super.key, this.restart = true, this.autoRestart = false, this.enabled = true});
   final String title, setting;
-  final bool restart, autoRestart;
+  final bool restart, autoRestart, enabled;
   @override Widget build(BuildContext context) {
     final box = context.box;
-    return ListItem.toggle(
+    return _enabledSetting(enabled, ListItem.toggle(
       title: Text(context.tr(title)), value: box.settings[setting] == true,
-      onChanged: box.serviceSettingsChanging || autoRestart && box.transitioning && !box.remote
+      onChanged: !enabled || box.serviceSettingsChanging || autoRestart && box.transitioning && !box.remote
         ? null : (value) => box.setSetting(setting, value, restart: restart, autoRestart: autoRestart),
-    );
+    ));
   }
 }
 
 class SettingNumber extends StatelessWidget {
-  const SettingNumber(this.title, this.setting, {super.key, this.min, this.max, this.unit, this.autoRestart = false});
+  const SettingNumber(this.title, this.setting, {super.key, this.min, this.max, this.unit, this.autoRestart = false, this.enabled = true});
   final String title, setting;
   final int? min, max;
   final String? unit;
-  final bool autoRestart;
-  @override Widget build(BuildContext context) => ListItem.input(
+  final bool autoRestart, enabled;
+  @override Widget build(BuildContext context) => _enabledSetting(enabled, ListItem.input(
     title: Text(context.tr(title)), dialogTitle: context.tr(title),
     value: (context.box.settings[setting] ?? 0).toString(),
     suffixText: unit, keyboardType: TextInputType.number,
@@ -37,28 +40,28 @@ class SettingNumber extends StatelessWidget {
       if (max != null && number > max!) return '$min–$max';
       return null;
     },
-    onChanged: (value) { if (value != null) context.box.setSetting(setting, int.parse(value), autoRestart: autoRestart); },
-  );
+    onChanged: (value) { if (enabled && value != null) context.box.setSetting(setting, int.parse(value), autoRestart: autoRestart); },
+  ));
 }
 
 class SettingText extends StatelessWidget {
-  const SettingText(this.title, this.setting, {super.key, this.hint, this.restart = true});
+  const SettingText(this.title, this.setting, {super.key, this.hint, this.restart = true, this.enabled = true});
   final String title, setting;
   final String? hint;
   /// False when the host applies the value on its own next read (a notification text,
   /// say) and no restart badge should appear for a running service.
-  final bool restart;
+  final bool restart, enabled;
   @override Widget build(BuildContext context) {
     final value = (context.box.settings[setting] ?? '').toString();
     // The row carries the stored value; the hint (an example, an "empty means…") is the dialog's
     // placeholder, and only stands in on the row while nothing is configured yet.
-    return ListItem.input(
+    return _enabledSetting(enabled, ListItem.input(
       title: Text(context.tr(title)),
       subtitle: value.isEmpty && hint != null ? Text(context.tr(hint!)) : null,
       dialogTitle: context.tr(title), value: value,
       hintText: hint == null ? null : context.tr(hint!),
-      onChanged: (value) { if (value != null) context.box.setSetting(setting, value, restart: restart); },
-    );
+      onChanged: (value) { if (enabled && value != null) context.box.setSetting(setting, value, restart: restart); },
+    ));
   }
 }
 
@@ -201,18 +204,18 @@ class _DnsServerDialogState extends State<_DnsServerDialog> {
 }
 
 class SettingChoice<T> extends StatelessWidget {
-  const SettingChoice(this.title, this.setting, {super.key, required this.options, required this.text, this.autoRestart = false});
+  const SettingChoice(this.title, this.setting, {super.key, required this.options, required this.text, this.autoRestart = false, this.enabled = true});
   final String title, setting;
   final List<T> options;
   final String Function(T value) text;
-  final bool autoRestart;
+  final bool autoRestart, enabled;
   @override Widget build(BuildContext context) {
     final value = context.box.settings[setting];
-    return ListItem<T>.options(
+    return _enabledSetting(enabled, ListItem<T>.options(
       title: Text(context.tr(title)), options: options, textBuilder: (value) => context.tr(text(value)),
       value: value is T ? value : options.first,
-      onChanged: (value) => context.box.setSetting(setting, value, autoRestart: autoRestart),
-    );
+      onChanged: (value) { if (enabled) context.box.setSetting(setting, value, autoRestart: autoRestart); },
+    ));
   }
 }
 
@@ -749,7 +752,10 @@ const muxProtocols = ['h2mux', 'smux', 'yamux'];
 const muxModes = ['max_streams', 'max_connections'];
 const xrayXudpModes = ['reject', 'allow', 'skip'];
 const fragmentImplementations = ['built-in', 'custom'];
-const tlsSpoofMethods = ['', 'wrong-sequence', 'wrong-checksum', 'wrong-ack', 'wrong-md5', 'wrong-timestamp'];
+const utlsFingerprints = [
+  '', 'chrome', 'firefox', 'edge', 'safari', '360', 'qq', 'ios', 'android',
+  'random', 'randomized', 'unsafe',
+];
 
 /// The defaults the importer stamps on the nodes it builds — Mux, Xray multiplex, fragment, TLS
 /// tricks, HTTP/2 tuning and the QUIC dialer. A running configuration is never rebuilt from these;
@@ -757,31 +763,40 @@ const tlsSpoofMethods = ['', 'wrong-sequence', 'wrong-checksum', 'wrong-ack', 'w
 class PresetsPage extends StatelessWidget {
   const PresetsPage({super.key});
   @override Widget build(BuildContext context) {
-    final brutal = context.box.settings['muxBrutal'] == true;
+    final settings = context.box.settings;
+    final brutal = settings['muxBrutal'] == true;
+    final muxMode = settings['muxMode']?.toString() ?? 'max_streams';
+    final brutalReady = (settings['muxBrutalUpMbps'] as num? ?? 0) > 0 &&
+        (settings['muxBrutalDownMbps'] as num? ?? 0) > 0;
+    final fragmentCustom = settings['fragmentImplementation'] == 'custom';
+    final fingerprint = settings['utlsFingerprint']?.toString() ?? '';
+    final fingerprints = utlsFingerprints.contains(fingerprint)
+        ? utlsFingerprints
+        : [fingerprint, ...utlsFingerprints];
     return BoxPage(title: 'Node presets', actions: [
       restoreDefaultsAction(context, const [
         'muxProtocol', 'muxMode', 'muxConcurrency', 'muxMaxConnections', 'muxMinStreams', 'muxPadding',
         'muxBrutal', 'muxBrutalUpMbps', 'muxBrutalDownMbps', 'muxDefaultOn', 'xrayMuxConcurrency',
         'xrayMuxMaxConnections', 'xrayMuxXudpConcurrency', 'xrayMuxXudpProxyUdp443', 'xrayMuxDefaultOn',
         'fragmentDefaultOn', 'fragmentImplementation', 'fragmentSize', 'fragmentSleep', 'tlsTricksDefaultOn',
-        'tlsSpoofDefaultOn',
-        'utlsFingerprint', 'tlsSpoof', 'tlsSpoofMethod', 'h2IdleTimeout', 'h2KeepAlivePeriod',
+        'utlsFingerprint', 'h2IdleTimeout', 'h2KeepAlivePeriod',
         'h2StreamReceiveWindow', 'h2ConnectionReceiveWindow', 'h2MaxConcurrentStreams',
         'quicInitialPacketSize', 'quicDisablePathMtuDiscovery',
       ]),
     ], children: [
       generateSection(title: context.tr('Mux'), items: [
         SettingChoice<String>('Mux protocol', 'muxProtocol', options: muxProtocols, text: (value) => value),
-        SettingChoice<String>('Mux mode', 'muxMode', options: muxModes, text: _muxModeName),
-        SettingNumber('Mux concurrency', 'muxConcurrency', min: 0),
-        SettingNumber('Mux max connections', 'muxMaxConnections', min: 0),
-        SettingNumber('Mux min streams', 'muxMinStreams', min: 0),
+        SettingChoice<String>('Mux mode', 'muxMode', options: muxModes, text: _muxModeName, enabled: !brutal),
+        if (muxMode == 'max_connections')
+          SettingNumber('Mux max connections', 'muxMaxConnections', min: 1, enabled: !brutal)
+        else
+          SettingNumber('Mux concurrency', 'muxConcurrency', min: 1, enabled: !brutal),
+        if (muxMode == 'max_connections')
+          SettingNumber('Mux min streams', 'muxMinStreams', min: 0, enabled: !brutal),
         SettingToggle('Mux padding', 'muxPadding'),
-        SettingToggle('Brutal congestion', 'muxBrutal'),
-        if (brutal) ...[
-          SettingNumber('Brutal upload', 'muxBrutalUpMbps', min: 0, unit: 'Mbps'),
-          SettingNumber('Brutal download', 'muxBrutalDownMbps', min: 0, unit: 'Mbps'),
-        ],
+        SettingToggle('Brutal congestion', 'muxBrutal', enabled: brutal || brutalReady),
+        SettingNumber('Brutal upload', 'muxBrutalUpMbps', min: 0, unit: 'Mbps'),
+        SettingNumber('Brutal download', 'muxBrutalDownMbps', min: 0, unit: 'Mbps'),
         SettingToggle('Enable Mux by default', 'muxDefaultOn'),
       ], footer: context.tr('Applied when a node is imported, not to nodes already saved.')),
       generateSection(title: context.tr('Xray multiplex'), items: [
@@ -792,44 +807,39 @@ class PresetsPage extends StatelessWidget {
         SettingToggle('Enable Xray Mux by default', 'xrayMuxDefaultOn'),
       ]),
       generateSection(title: context.tr('Fragment'), items: [
-        SettingToggle('Fragment by default', 'fragmentDefaultOn'),
         SettingChoice<String>('Fragment implementation', 'fragmentImplementation',
-          options: fragmentImplementations, text: (value) => value),
-        SettingText('Fragment size', 'fragmentSize', hint: 'e.g. 10-100, empty uses the built-in range'),
-        SettingText('Fragment sleep', 'fragmentSleep', hint: 'e.g. 2-5, empty uses the built-in range'),
+          options: fragmentImplementations, text: _fragmentImplementationName),
+        SettingText('Fragment size', 'fragmentSize', enabled: fragmentCustom,
+          hint: 'custom only: e.g. 10-100, empty uses the built-in range'),
+        SettingText('Fragment sleep', 'fragmentSleep', enabled: fragmentCustom,
+          hint: 'custom only: e.g. 2-5, empty uses the built-in range'),
+        SettingToggle('Fragment by default', 'fragmentDefaultOn'),
       ]),
       generateSection(title: context.tr('TLS tricks'), items: [
         SettingToggle('TLS tricks by default', 'tlsTricksDefaultOn'),
-        SettingToggle('TLS spoof by default', 'tlsSpoofDefaultOn'),
-        SettingText('uTLS fingerprint', 'utlsFingerprint', hint: 'e.g. chrome, firefox, safari'),
-        SettingText('TLS spoof', 'tlsSpoof', hint: 'a SNI to offer instead of the real one'),
-        SettingChoice<String>('TLS spoof method', 'tlsSpoofMethod', options: tlsSpoofMethods, text: _tlsSpoofName),
       ]),
-      generateSection(title: context.tr('HTTP/2'), items: [
+      generateSection(title: context.tr('uTLS'), items: [
+        SettingChoice<String>('uTLS fingerprint', 'utlsFingerprint', options: fingerprints, text: _utlsFingerprintName),
+      ]),
+      generateSection(title: context.tr('HTTP/2 and QUIC'), items: [
         SettingText('Idle timeout', 'h2IdleTimeout', hint: 'e.g. 5m, empty to use the core default'),
         SettingText('Keep-alive period', 'h2KeepAlivePeriod', hint: 'e.g. 30s, empty to use the core default'),
         SettingText('Stream receive window', 'h2StreamReceiveWindow'),
         SettingText('Connection receive window', 'h2ConnectionReceiveWindow'),
         SettingNumber('Max concurrent streams', 'h2MaxConcurrentStreams', min: 0),
-      ]),
-      generateSection(title: context.tr('QUIC'), items: [
         SettingNumber('Initial packet size', 'quicInitialPacketSize', min: 0, unit: 'B'),
         SettingToggle('Disable path MTU discovery', 'quicDisablePathMtuDiscovery'),
-      ]),
+      ], footer: context.tr('Used by Hysteria, Hysteria2, TUIC and MASQUE profiles that leave a field empty. Empty keeps the core default.')),
     ]);
   }
 }
 
 String _muxModeName(String value) => value == 'max_connections' ? 'Max connections' : 'Max streams';
 
-String _tlsSpoofName(String value) => switch (value) {
-  'wrong-sequence' => 'Wrong sequence',
-  'wrong-checksum' => 'Wrong checksum',
-  'wrong-ack' => 'Wrong acknowledgement',
-  'wrong-md5' => 'Wrong MD5',
-  'wrong-timestamp' => 'Wrong timestamp',
-  _ => 'Off',
-};
+String _fragmentImplementationName(String value) =>
+    value == 'custom' ? 'Custom (dialer)' : 'Built-in (sing-box)';
+
+String _utlsFingerprintName(String value) => value.isEmpty ? 'Default' : value;
 
 // ---------------------------------------------------------------------------------------- subscriptions
 
