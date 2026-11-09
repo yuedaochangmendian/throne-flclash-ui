@@ -240,8 +240,11 @@ Widget ruleRowSubtitle(BuildContext context, Json rule) {
   final actionColor = routeActionColor(
       context, action, (rule['outbound_id'] as num?)?.toInt() ?? 0);
   final base = context.listSubtitleStyle;
+  final colorScheme = Theme.of(context).colorScheme;
+  final state = context.tr(rule['disabled'] == true ? 'Disabled' : 'Enabled');
   return Text.rich(
     TextSpan(children: [
+      TextSpan(text: '$state · ', style: base.copyWith(color: rule['disabled'] == true ? colorScheme.error : null)),
       TextSpan(
           text: ruleActionText(rule),
           style: base.copyWith(color: actionColor, fontWeight: FontWeight.w500)),

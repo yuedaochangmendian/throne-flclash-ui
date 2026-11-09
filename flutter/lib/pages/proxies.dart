@@ -60,8 +60,11 @@ class _ProxiesPageState extends State<ProxiesPage> {
       _sessionRequestedAt = DateTime.now().millisecondsSinceEpoch;
       _testing.add(tag);
     });
-    await context.box.groupTest(tag);
-    if (mounted) setState(() => _testing.remove(tag));
+    try {
+      await context.box.groupTest(tag).timeout(const Duration(seconds: 60));
+    } finally {
+      if (mounted) setState(() => _testing.remove(tag));
+    }
   }
 
   Future<void> _select(Json group, Json node) async {
@@ -187,18 +190,23 @@ class _ProxiesPageState extends State<ProxiesPage> {
           if (_testing.isNotEmpty || _queued.isNotEmpty) return;
           final tags = groups.map((group) => group['tag'].toString()).toList(growable: false);
           setState(() => _queued.addAll(tags));
-          for (final tag in tags) {
-            if (!mounted) return;
-            setState(() {
-              _sessionRequestedAt = DateTime.now().millisecondsSinceEpoch;
-              _queued.remove(tag);
-              _testing.add(tag);
-            });
-            await context.box.groupTest(tag);
-            if (!mounted) return;
-            setState(() => _testing.remove(tag));
+          try {
+            for (final tag in tags) {
+              if (!mounted) return;
+              setState(() {
+                _sessionRequestedAt = DateTime.now().millisecondsSinceEpoch;
+                _queued.remove(tag);
+                _testing.add(tag);
+              });
+              try {
+                await context.box.groupTest(tag).timeout(const Duration(seconds: 60));
+              } finally {
+                if (mounted) setState(() => _testing.remove(tag));
+              }
+            }
+          } finally {
+            if (mounted) setState(() => _queued.clear());
           }
-          if (mounted) setState(() => _queued.clear());
         }),
         PopupMenuItem(glyph: AppGlyphs.dashboard, label: context.tr('Test panel'), onPressed: () => openForm(context, const TestPanelPage())),
         PopupMenuItem(glyph: AppGlyphs.connections, label: context.tr('Close connections after switching'), checked: box.preferences['closeConnectionsOnSelect'] == true,

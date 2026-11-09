@@ -139,6 +139,9 @@ object BboxEgress {
     private var tunnelClientPort = -1
 
     @Volatile
+    private var tunnelClientHost = ""
+
+    @Volatile
     private var directClient: OkHttpClient? = null
 
     fun cached(direct: Boolean = false): Info = if (direct) cachedDirect else cached
@@ -165,7 +168,7 @@ object BboxEgress {
             now - cachedAt < TTL_MS && !cached.isEmpty
         }
         if (!force && fresh) return cached(direct)
-        val http = clientFor(direct) ?: return cached(direct)
+        val http = clientFor(direct)
         val failure = AtomicReference<String?>(null)
         val answer = race(http, failure)
         if (answer != null && !answer.isEmpty) {
@@ -235,22 +238,36 @@ object BboxEgress {
         }
     }
 
-    /** The client for one route; null when the tunnel is asked for but no inbound is configured yet. */
-    private fun clientFor(direct: Boolean): OkHttpClient? {
-        if (direct) {
-            return directClient ?: newClient(null).also { directClient = it }
-        }
-        val port = DataStore.inboundSocksPort
-        if (port <= 0) return null
+    /** The client for one route; the mixed HTTP proxy is used only when the core actually serves it. */
+    private fun clientFor(direct: Boolean): OkHttpClient {
+        if (direct) return directClient ?: newClient(null).also { directClient = it }
+        val port = mixedProxyPort() ?: return directClient ?: newClient(null).also { directClient = it }
+        val host = DataStore.inboundAddress.let { if (it == "::") SettingsRegistry.LOOPBACK_ADDRESS else it }
         val cached = tunnelClient
-        if (cached != null && tunnelClientPort == port) return cached
-        val client = newClient(port)
+        if (cached != null && tunnelClientPort == port && tunnelClientHost == host) return cached
+        val client = newClient(port, host)
+        cached?.let(::closeClient)
         tunnelClient = client
         tunnelClientPort = port
+        tunnelClientHost = host
         return client
     }
 
-    private fun newClient(port: Int?): OkHttpClient {
+    /** Null when no mixed inbound answers HTTP proxy requests; the request then follows the VPN/device network. */
+    internal fun mixedProxyPort(): Int? {
+        if (!DataStore.serviceState.connected || DataStore.mixedInboundDisabled) return null
+        if (DataStore.inboundAuth) return null
+        return DataStore.inboundSocksPort.takeIf { it > 0 }
+    }
+
+    private fun closeClient(client: OkHttpClient) {
+        runCatching { client.dispatcher.cancelAll() }
+        runCatching { client.connectionPool.evictAll() }
+        runCatching { client.cache?.close() }
+        runCatching { client.dispatcher.executorService.shutdown() }
+    }
+
+    private fun newClient(port: Int?, host: String = SettingsRegistry.LOOPBACK_ADDRESS): OkHttpClient {
         val builder = OkHttpClient.Builder()
             .dns(timedDns)
             .connectTimeout(6, TimeUnit.SECONDS)
@@ -258,7 +275,6 @@ object BboxEgress {
             .callTimeout(12, TimeUnit.SECONDS)
             .retryOnConnectionFailure(false)
         if (port == null) return builder.build()
-        val host = DataStore.inboundAddress.ifBlank { SettingsRegistry.LOOPBACK_ADDRESS }
         return builder.proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress(host, port))).build()
     }
 
@@ -293,8 +309,10 @@ object BboxEgress {
         cachedDirect = Info()
         cachedDirectAt = 0L
         // The route changed, so the pooled sockets of the previous route are worthless.
-        runCatching { tunnelClient?.connectionPool?.evictAll() }
-        runCatching { directClient?.connectionPool?.evictAll() }
+        for (client in listOfNotNull(tunnelClient, directClient)) {
+            runCatching { client.dispatcher.cancelAll() }
+            runCatching { client.connectionPool.evictAll() }
+        }
     }
 
     private fun parseIpSb(json: JSONObject): Info = Info(

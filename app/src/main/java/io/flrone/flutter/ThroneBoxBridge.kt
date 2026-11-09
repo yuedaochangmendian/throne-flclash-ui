@@ -188,9 +188,11 @@ class ThroneBoxBridge(
         memoryJob?.cancel()
         reportsJob?.cancel()
         testSessionJob?.cancel()
+        testSessionJob = null
+        probes.keys.forEach { closeProbe(it) }
+        probes.clear()
         BboxLogs.stop()
         BboxLogcat.stop()
-        probes.keys.forEach { closeProbe(it) }
         channel.setMethodCallHandler(null)
         events.setStreamHandler(null)
         sink = null
@@ -1242,9 +1244,8 @@ class ThroneBoxBridge(
             .retryOnConnectionFailure(false)
         // Same route as the egress probe: the mixed inbound only while the core answers it, the device network
         // otherwise, so a session opened while stopped still reaches the quality sources.
-        if (!DataStore.serviceState.connected) return builder.build()
-        val host = DataStore.inboundAddress.ifBlank { SettingsRegistry.LOOPBACK_ADDRESS }
-        val port = DataStore.inboundSocksPort
+        val port = BboxEgress.mixedProxyPort() ?: return builder.build()
+        val host = DataStore.inboundAddress.let { if (it == "::") SettingsRegistry.LOOPBACK_ADDRESS else it }
         return builder.proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress(host, port))).build()
     }
 
@@ -1266,9 +1267,12 @@ class ThroneBoxBridge(
         // than leaving the card blank while stopped, ask over the phone's own connection: the answer is the address
         // this device appears as without the tunnel, and `direct` tells the screen which of the two it is looking at.
         val direct = !DataStore.serviceState.connected
+        val cachedAt = BboxEgress.cachedAt(direct)
         var failure: String? = null
         val info = BboxEgress.probe(force = force, direct = direct) { failure = it }
-        if (info.isEmpty && failure != null) error(failure!!)
+        val checkedAt = BboxEgress.cachedAt(direct)
+        if (force && failure != null && checkedAt == cachedAt) error(failure!!)
+        if (info.isEmpty) error(failure ?: "Unreachable")
         mapOf(
             "ip" to info.ip,
             "country" to info.country,
@@ -1281,10 +1285,9 @@ class ThroneBoxBridge(
             "type" to info.type,
             "direct" to direct,
             "ipSource" to (info.source?.substringAfter("://")?.substringBefore('/') ?: "ipwho.is"),
-            // A fresh probe just updated the cache time; a served-from-cache or
-            // failure-path answer carries the moment it was actually measured.
-            "checkedAt" to (BboxEgress.cachedAt(direct).takeIf { it > 0 }
-                ?: System.currentTimeMillis()),
+            // A fresh probe carries the moment it was measured; a normal cache hit keeps that
+            // honest time, while a forced failure above never reaches this wire at all.
+            "checkedAt" to (checkedAt.takeIf { it > 0 } ?: System.currentTimeMillis()),
         )
     }
 

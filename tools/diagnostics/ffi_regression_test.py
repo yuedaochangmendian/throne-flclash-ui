@@ -153,6 +153,12 @@ class FfiHardeningTests(unittest.TestCase):
                     'dto["httpProxyServerPort"] = int32(0)', 'dto["httpProxyBypassDomain"] = []string{}'):
             self.assertIn(key, runtime, f"missing proxy field default: {key}")
 
+    def test_ip_probe_uses_the_live_core(self) -> None:
+        self.assertIn("startIPTestLive(", self.calls,
+                      "the IP probe must measure the running core, not a second box")
+        self.assertIn("probe.LiveInstance(probe.TestContext())", self.runtime)
+        self.assertIn("prepareTestEnv(current, true, platform, request)", self.runtime)
+
     def test_tun_spec_json_marshals_every_builder_field(self) -> None:
         """VpnService.Builder needs the same fields the old gobind path fed it."""
         runtime = (ROOT / "buildScript" / "core-patch" / "core" / "mobile" /

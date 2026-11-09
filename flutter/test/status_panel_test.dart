@@ -356,6 +356,22 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('IP details use the arrival time of a refreshed egress answer', (tester) async {
+    final dashboard = _Dashboard()..autoQuality = true;
+    await dashboard.mount(tester);
+    await tester.pumpAndSettle();
+    final calls = dashboard.calls.where((call) => call.method == 'dashboard.egress').length;
+    final before = DateTime.now().millisecondsSinceEpoch;
+    await tester.tap(find.byTooltip('Retry'));
+    await tester.pumpAndSettle();
+    expect(dashboard.calls.where((call) => call.method == 'dashboard.egress'), hasLength(calls + 1));
+    await tester.tap(find.text('203.0.113.9'));
+    await tester.pumpAndSettle();
+    final details = tester.widget<EgressDetails>(find.byType(EgressDetails));
+    expect((details.info['checkedAt'] as num).toInt(), greaterThanOrEqualTo(before));
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('quality failure retains the IP and the badge retries immediately', (tester) async {
     final dashboard = _Dashboard()..failQuality = true;
     await dashboard.mount(tester);

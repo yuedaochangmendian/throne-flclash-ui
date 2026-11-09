@@ -71,8 +71,8 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
       } else {
         rules[widget.index] = _rule;
       }
-      await box.routeSaveRules(widget.profileId, rules);
-      if (mounted) context.safeNestedPop(true);
+      final saved = json(await box.routeSaveRules(widget.profileId, rules));
+      if (mounted) context.safeNestedPop(saved);
     } catch (error) {
       if (!mounted) return;
       setState(() { _saving = false; _error = BoxController.describe(error); });
@@ -93,8 +93,8 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
     final box = context.box;
     try {
       final rules = [...widget.rules]..removeAt(widget.index);
-      await box.routeSaveRules(widget.profileId, rules);
-      if (mounted) context.safeNestedPop(true);
+      final saved = json(await box.routeSaveRules(widget.profileId, rules));
+      if (mounted) context.safeNestedPop(saved);
     } catch (error) {
       if (mounted) box.report(error);
     }
@@ -156,9 +156,10 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
         onChanged: (value) => _set('name', value),
       )),
       ListItem.toggle(
-        title: Text(context.tr('Disabled')),
-        value: _rule['disabled'] == true,
-        onChanged: (value) => _set('disabled', value),
+        title: Text(context.tr('Enabled')),
+        subtitle: Text(context.tr(_rule['disabled'] == true ? 'Disabled' : 'Enabled')),
+        value: _rule['disabled'] != true,
+        onChanged: (value) => _set('disabled', !value),
       ),
       ListItem(
         title: Text(context.tr('Type')),

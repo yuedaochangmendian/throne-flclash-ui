@@ -286,6 +286,43 @@ void main() {
     await events.close();
   });
 
+  testWidgets('a failing delay test clears its spinner', (tester) async {
+    reportFlutterErrors();
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final events = StreamController<dynamic>.broadcast();
+    const channel = MethodChannel('test.proxy-delay-failure');
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'ready') {
+        return {'version': 'test', 'coreVersion': 'test',
+          'dashboard': {'status': 'Started'}, 'preferences': {'locale': 'en'}};
+      }
+      if (call.method == 'groups.test') {
+        throw PlatformException(code: 'failed', message: 'test failed');
+      }
+      return null;
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+    await tester.pumpWidget(BoxApp(controller: BoxController(channel: channel, events: events.stream)));
+    await tester.pumpAndSettle();
+    events.add({'type': 'groups', 'value': [{
+      'tag': 'Group A', 'selected': 'Node A', 'selectable': true,
+      'items': [{'id': 10, 'tag': 'Node A', 'type': 'direct', 'delay': 12, 'testedAt': 1}],
+    }]});
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Proxies').last);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('12 ms'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('proxy-test-running')), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await events.close();
+  });
+
   testWidgets('the node speed test panel hides IP check, test kind and scope', (tester) async {
     reportFlutterErrors();
     tester.view.physicalSize = const Size(360, 800);

@@ -996,7 +996,7 @@ func throne_Mobile_setup(options C.int64_t)  {
 //export throne_Mobile_startIPTest
 func throne_Mobile_startIPTest(request C.int64_t, handler C.int64_t)  {
 	defer guardExport("throne_Mobile_startIPTest")
-	if err := StartIPTest(bridgePlatform, handleGet(int64(request)).(*TestRequest), portIPTest{port: int64(handler)}); err != nil { setErr(err) }
+	if err := startIPTestLive(bridgePlatform, handleGet(int64(request)).(*TestRequest), portIPTest{port: int64(handler)}); err != nil { setErr(err) }
 }
 
 //export throne_Mobile_startSpeedTest

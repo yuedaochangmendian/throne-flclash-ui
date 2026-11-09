@@ -1,5 +1,6 @@
 package io.flrone.bridge
 
+import io.nekohasekai.sagernet.SagerNet
 import io.nekohasekai.sagernet.database.DataStore
 import io.nekohasekai.sagernet.database.RouteManager
 import io.nekohasekai.sagernet.database.RouteRepo
@@ -269,6 +270,21 @@ object BboxRoutes {
 
     private fun str(map: Map<String, Any?>, key: String) = map[key]?.toString().orEmpty()
 
+    /** Legacy rows and codecs may encode a boolean as 0/1 or "true"/"1". */
+    private fun bool(map: Map<String, Any?>, key: String): Boolean = when (val value = map[key]) {
+        true, 1, 1L, "true", "1" -> true
+        "TRUE", "True" -> true
+        else -> false
+    }
+
+    /** A saved rule must take effect in the running config, not only the next cold start. */
+    private fun reloadCurrentRoute(id: Long) {
+        if (id == RouteManager.activeRouteId() && DataStore.serviceState.canStop) {
+            BboxBridge.scheduleRefresh(immediate = true)
+            SagerNet.reloadService()
+        }
+    }
+
     /** One rule as the editor's map: the match attributes, the action fields and the metadata. */
     private fun ruleToMap(rule: RouteRule): Map<String, Any?> {
         val map = LinkedHashMap<String, Any?>()
@@ -287,14 +303,14 @@ object BboxRoutes {
         val rule = RouteRule()
         rule.name = str(map, "name")
         rule.type = RuleType.values().firstOrNull { it.token == str(map, "type") }?.id ?: RuleType.CUSTOM.id
-        rule.disabled = map["disabled"] == true
+        rule.disabled = bool(map, "disabled")
         rule.action = str(map, "action").ifBlank { "route" }
         rule.outbound_id = (map["outbound_id"] as? Number)?.toLong() ?: OutboundIds.DIRECT
         for (field in RouteRule.STRING_FIELDS) field.set(rule, str(map, field.name))
         for (field in RouteRule.LIST_FIELDS) {
             field.set(rule, ArrayList((map[field.name] as? List<*>)?.filterIsInstance<String>().orEmpty()))
         }
-        for (field in RouteRule.BOOL_FIELDS) field.set(rule, map[field.name] == true)
+        for (field in RouteRule.BOOL_FIELDS) field.set(rule, bool(map, field.name))
         return rule
     }
 
@@ -313,6 +329,7 @@ object BboxRoutes {
         if (p.is_raw) error("This profile is read-only")
         p.rules = rules.mapTo(ArrayList()) { ruleFromMap(it) }
         RouteManager.save(p)
+        reloadCurrentRoute(p.id)
         BboxBridge.scheduleRefresh(immediate = true)
         mapOf("rules" to p.rules.map(::ruleToMap))
     }

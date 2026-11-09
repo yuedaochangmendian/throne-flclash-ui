@@ -126,6 +126,7 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
       // A direct answer is this device's own address: the quality sources would grade the phone's uplink
       // rather than an exit, so the card keeps the address, region and carrier and skips the check.
       final direct = result['direct'] == true;
+      if (readIp && force) result['checkedAt'] = DateTime.now().millisecondsSinceEpoch;
       setState(() { _egress = result.isEmpty ? null : result; _checking = false; _qualityChecking = ip != null && !direct; });
       _detailsRevision.value++;
       if (ip == null || direct) return;
