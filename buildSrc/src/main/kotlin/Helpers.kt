@@ -49,11 +49,10 @@ fun Project.updateSignerPin(): String {
 
 fun Project.setupCommon() {
     android.apply {
-        buildToolsVersion = "35.0.1"
-        // The B-box Flutter module (`flutter build aar`) publishes AARs whose metadata declares
-        // minCompileSdk=36 (flutter_debug/…_release are compiled against 36), so the host app has
-        // to compile against 36 too while targetSdk stays 35.
-        compileSdk = 36
+        buildToolsVersion = "37.0.0"
+        // The Flutter AAR declares minCompileSdk=36 and OkHttp 5.5 exposes API-37 TLS types.
+        // Compile against 37 while targetSdk stays 35 until the platform migration is reviewed.
+        compileSdk = 37
         // This app has no C/C++ of its own, but every native library it ships arrives unstripped — including
         // Flutter's engine, whose debugging symbols are 327 MB of the 377 MB libflutter.so. Without an ndkVersion
         // the strip task cannot find llvm-strip and reports "Unable to strip the following libraries, packaging

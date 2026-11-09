@@ -90,14 +90,11 @@ dependencies {
     implementation("com.google.android.material:material:1.8.0")
     implementation("com.google.code.gson:gson:2.15.0")
 
-    implementation("com.github.jenly1314:zxing-lite:2.1.1")
-    // 0.24.x now matches the host's Kotlin 2.2 toolchain, but still needs a separate editor regression pass.
-    // Keep 0.23.7 and its stdlib exclusion until that optional U3 upgrade.
-    implementation("io.github.rosemoe:editor:0.23.7") {
-        exclude(group = "org.jetbrains.kotlin", module = "kotlin-stdlib")
-    }
+    implementation("com.github.jenly1314:zxing-lite:3.5.0")
+    // 0.24.x compiles with the host's Kotlin 2.4 toolchain and no longer needs a stdlib exclusion.
+    implementation("io.github.rosemoe:editor:0.24.7")
 
-    implementation("com.squareup.okhttp3:okhttp:5.0.0-alpha.3")
+    implementation("com.squareup.okhttp3:okhttp:5.5.1")
     implementation("org.yaml:snakeyaml:1.30")
     implementation("com.github.daniel-stoneuk:material-about-library:3.2.0-rc01")
     implementation("com.jakewharton:process-phoenix:2.1.2")

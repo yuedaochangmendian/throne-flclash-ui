@@ -10,7 +10,7 @@ import android.view.KeyEvent
 import androidx.core.content.ContextCompat
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.preference.PreferenceDataStore
-import com.king.zxing.CameraScan
+import com.king.camera.scan.CameraScan
 import io.flutter.embedding.android.FlutterFragmentActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.nekohasekai.sagernet.Key
@@ -136,7 +136,7 @@ class BboxFlutterActivity : FlutterFragmentActivity(), OnPreferenceDataStoreChan
             // A task that is still listed refreshes the reference (a relaunch may have replaced it); an
             // excluded one is not listed any more, and only the reference kept from before can undo it.
             getSystemService(ActivityManager::class.java).appTasks
-                .firstOrNull { it.taskInfo.taskId == taskId }
+                .firstOrNull { it.taskInfo?.taskId == taskId }
                 ?.also { recentsTask = it }
         }.getOrNull() ?: recentsTask
         // A task that ended while the bridge was still writing (a restore that restarts the app) throws here.
