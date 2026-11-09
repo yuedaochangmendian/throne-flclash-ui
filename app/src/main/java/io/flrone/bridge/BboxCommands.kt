@@ -18,7 +18,9 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -34,6 +36,9 @@ object BboxCommands : BboxActions {
 
     /** The session watcher that turns a test's results into catalog refreshes; one at a time. */
     private var testWatcher: Job? = null
+
+    /** A URL test's timeout plus its bind, stop and catalog-refresh allowance. */
+    private const val TEST_NODE_TIMEOUT_MS = 45_000L
 
     /**
      * A test writes its results from the service process ([TestSessionClient]), whose profile updates the catalog's
@@ -155,11 +160,19 @@ object BboxCommands : BboxActions {
                 scopeLabel = profile.displayName(),
             ) to profile.groupId
         } ?: return false
-        val started = TestSessionClient.start(target.first, target.second)
-        if (!started) return false
+        val before = TestSessionClient.state.value
+        if (!TestSessionClient.start(target.first, target.second)) return false
         watchTestSession()
-        TestSessionClient.state.first { !it.running }
-        return true
+        val finished = withTimeoutOrNull(TEST_NODE_TIMEOUT_MS) {
+            TestSessionClient.state.first { state ->
+                !state.running && (state.startedAt > before.startedAt || state.session != before.session)
+            }
+        }
+        if (finished != null) return true
+        TestSessionClient.stop()
+        delay(500)
+        BboxBridge.scheduleRefresh(immediate = true)
+        return false
     }
 
     override fun refreshEgress() {

@@ -958,6 +958,8 @@ def emit_go(surface: dict, idx: GoIndex, classes: dict[str, Cls]) -> str:
             L.append(f"func {sig.symbol}({', '.join(go_params) or ''}) {ret} {{")
             L.append(f'\tdefer guardExport("{sig.symbol}")')
             body = go_expr(idx, sig, classes)
+            if sig.symbol == "throne_Mobile_startIPTest":
+                body = [line.replace("StartIPTest(", "startIPTestLive(") for line in body]
             L.extend("\t" + line for line in body)
             if sig.symbol == "throne_Instance_close":
                 L.append("\tthrone_handle_release(handle)")
@@ -1066,7 +1068,10 @@ import (
 \t"encoding/json"
 \t"errors"
 \t"sync"
+\t"time"
 \t"unsafe"
+
+\t"ThroneCore/internal/probe"
 )
 
 // --- callback table plumbing -----------------------------------------------
@@ -1445,6 +1450,43 @@ func registerInstance(i *Instance) {{
 \tlastInstance.mu.Lock()
 \tlastInstance.inst = i
 \tlastInstance.mu.Unlock()
+}}
+
+// startIPTestLive measures the current core through its proxy outbound when the
+// request carries no probe config. StartIPTest otherwise builds a separate box,
+// which reports the device/Wi-Fi exit on Android instead of the running proxy's.
+func startIPTestLive(platform PlatformInterface, request *TestRequest, handler IPTestHandler) error {{
+\tif request == nil || handler == nil {{
+\t\treturn errors.New("nil request or handler")
+\t}}
+\tif request.CoreConfig != "" {{
+\t\treturn StartIPTest(platform, request, handler)
+\t}}
+\tlastInstance.mu.Lock()
+\tcurrent := lastInstance.inst
+\tlastInstance.mu.Unlock()
+\tif current == nil || !current.running() {{
+\t\treturn errInstanceNotRunning
+\t}}
+\tenv, err := prepareTestEnv(current, true, platform, request)
+\tif err != nil {{
+\t\treturn err
+\t}}
+\ttestCtx := probe.LiveInstance(probe.TestContext())
+\ttimeout := time.Duration(request.TimeoutMs) * time.Millisecond
+\tgo func() {{
+\t\tdefer handler.OnDone()
+\t\tdefer env.close()
+\t\tnewTestReporter(env.tags, probe.IPReporter.Results,
+\t\t\tfunc(result *probe.IPTestResult) string {{ return result.Tag }},
+\t\t\tfunc(result *probe.IPTestResult) {{
+\t\t\t\thandler.OnResult(result.Tag, result.Result.IP, result.Result.CountryCode, errorString(result.Error))
+\t\t\t}},
+\t\t).run(func() []*probe.IPTestResult {{
+\t\t\treturn probe.BatchIPTest(testCtx, env.box, env.tags, int(request.MaxConcurrency), false, timeout)
+\t\t}})
+\t}}()
+\treturn nil
 }}
 
 // --- tun options for VpnService.Builder ------------------------------------

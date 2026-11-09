@@ -84,6 +84,7 @@ void main() {
             for (final rule in (call.arguments as Map)['rules'] as List)
               Map<String, Object?>.from(rule as Map),
           ];
+          rules = savedRules;
           return {'rules': savedRules};
       }
       return null;
@@ -142,6 +143,27 @@ void main() {
     await tester.tap(find.text('Add rule'));
     await tester.pumpAndSettle();
     expect(find.text('Add rule'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a rule enabled state is saved and shown immediately', (tester) async {
+    reportFlutterErrors();
+    rules = [rule(name: 'Direct LAN', domainSuffix: ['.lan'])..['disabled'] = true];
+    await mount(tester);
+    openPage(tester.element(find.byType(HomePage)), const RouteEditorPage(id: 1));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('Disabled'), findsOneWidget,
+      reason: 'the rule list must show the saved disabled state');
+    await tester.tap(find.text('Direct LAN'));
+    await tester.pumpAndSettle();
+    expect(find.text('Enabled'), findsWidgets);
+    expect(find.text('Disabled'), findsWidgets);
+    await tester.tap(find.byType(Switch).first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Save'));
+    await tester.pumpAndSettle();
+    expect(savedRules.single['disabled'], isFalse);
+    expect(find.textContaining('Enabled'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 

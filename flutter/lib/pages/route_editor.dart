@@ -83,13 +83,15 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
       context.box.report(StateError(context.tr('Save the profile first')));
       return;
     }
-    final added = await openPage<bool>(context, RuleEditorPage(
+    final saved = await openPage<Json>(context, RuleEditorPage(
       profileId: widget.id,
       index: index,
       rule: index < 0 ? const {} : _rules[index],
       rules: _rules,
     ));
-    if (added == true && mounted) await _loadRules();
+    if (saved == null || !mounted) return;
+    setState(() => _rules = rows(saved['rules']));
+    await _loadRules();
   }
 
   Future<void> _batchAdd() async {

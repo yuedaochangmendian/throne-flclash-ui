@@ -47,7 +47,10 @@ import (
 	"encoding/json"
 	"errors"
 	"sync"
+	"time"
 	"unsafe"
+
+	"ThroneCore/internal/probe"
 )
 
 // --- callback table plumbing -----------------------------------------------
@@ -452,6 +455,43 @@ func registerInstance(i *Instance) {
 	lastInstance.mu.Lock()
 	lastInstance.inst = i
 	lastInstance.mu.Unlock()
+}
+
+// startIPTestLive measures the current core through its proxy outbound when the
+// request carries no probe config. StartIPTest otherwise builds a separate box,
+// which reports the device/Wi-Fi exit on Android instead of the running proxy's.
+func startIPTestLive(platform PlatformInterface, request *TestRequest, handler IPTestHandler) error {
+	if request == nil || handler == nil {
+		return errors.New("nil request or handler")
+	}
+	if request.CoreConfig != "" {
+		return StartIPTest(platform, request, handler)
+	}
+	lastInstance.mu.Lock()
+	current := lastInstance.inst
+	lastInstance.mu.Unlock()
+	if current == nil || !current.running() {
+		return errInstanceNotRunning
+	}
+	env, err := prepareTestEnv(current, true, platform, request)
+	if err != nil {
+		return err
+	}
+	testCtx := probe.LiveInstance(probe.TestContext())
+	timeout := time.Duration(request.TimeoutMs) * time.Millisecond
+	go func() {
+		defer handler.OnDone()
+		defer env.close()
+		newTestReporter(env.tags, probe.IPReporter.Results,
+			func(result *probe.IPTestResult) string { return result.Tag },
+			func(result *probe.IPTestResult) {
+				handler.OnResult(result.Tag, result.Result.IP, result.Result.CountryCode, errorString(result.Error))
+			},
+		).run(func() []*probe.IPTestResult {
+			return probe.BatchIPTest(testCtx, env.box, env.tags, int(request.MaxConcurrency), false, timeout)
+		})
+	}()
+	return nil
 }
 
 // --- tun options for VpnService.Builder ------------------------------------
