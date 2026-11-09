@@ -176,7 +176,16 @@ internal class TestSession(
         started(profiles.size)
         when (kind) {
             TestSpec.KIND_URL -> {
-                UrlTestRunner(this).run(profiles)
+                val runner = UrlTestRunner(this)
+                val runningId = CoreRuntime.running?.profileId ?: ProfileManager.runningProfileId()
+                if (runningId > 0L && profiles.any { it.id == runningId }) {
+                    // The live exit is measured through the instance already carrying traffic. A failed probe
+                    // box must not be the verdict for that node, including during a group/all test.
+                    runner.run(profiles.filterNot { it.id == runningId })
+                    runner.runCurrent(CoreRuntime.running, persist = true)
+                } else {
+                    runner.run(profiles)
+                }
                 autoClearUnavailable(profiles)
             }
 
@@ -190,7 +199,7 @@ internal class TestSession(
         val running = CoreRuntime.running
         running?.let { ProfileManager.getProfile(it.profileId) }?.let { tested = mapOf(it.id to it) }
         when (kind) {
-            TestSpec.KIND_URL -> UrlTestRunner(this).runCurrent(running)
+            TestSpec.KIND_URL -> UrlTestRunner(this).runCurrent(running, persist = spec.persistCurrentResult)
             TestSpec.KIND_SPEED -> SpeedTestRunner(this).runCurrent(running)
             else -> reportIp(
                 listOf(
@@ -265,9 +274,10 @@ internal class TestSession(
     /** The running connection's URL test is shown, never stored; its error is logged (mainwindow_view.cpp:446-448). */
     fun reportCurrentUrl(result: ProbeResult) {
         if (result.error.isNotEmpty()) Logs.w("UrlTest error: ${result.error}")
-        val latency = latencyCode(result.latency, result.error, result.connectOnly)
+        val latency = if (result.measured) latencyCode(result.latency, result.error, result.connectOnly) else 0
         counted(ProxyEntity.isWorking(latency), ProxyEntity.isUnavailable(latency))
-        notifyClient { it.onUrlResult(result.profileId, latency, if (result.connectOnly) "" else result.error) }
+        val error = if (result.measured || result.error.isEmpty()) result.error else notMeasured(result.error)
+        notifyClient { it.onUrlResult(result.profileId, latency, if (result.connectOnly) "" else error) }
     }
 
     /** applyIpResult (TestRunner.cpp:144-157). */

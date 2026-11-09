@@ -159,6 +159,20 @@ class FfiHardeningTests(unittest.TestCase):
         self.assertIn("probe.LiveInstance(probe.TestContext())", self.runtime)
         self.assertIn("prepareTestEnv(current, true, platform, request)", self.runtime)
 
+    def test_url_probe_uses_the_live_core_for_the_running_exit(self) -> None:
+        self.assertIn("startURLTestLive(", self.calls,
+                      "URL tests must resolve the live instance when the caller has no handle")
+        self.assertIn("request.TestCurrent", self.runtime)
+        self.assertIn("lastInstance.inst", self.runtime)
+        self.assertIn("probe.BatchURLTest(testCtx, env.box, env.tags, request.URL, "
+                      "int(request.MaxConcurrency), false, timeout)", self.runtime,
+                      "a proxy probe must issue one request like FlClash, not two timed requests")
+        commands = (ROOT / "app" / "src" / "main" / "java" / "io" / "flrone" / "bridge" /
+                    "BboxCommands.kt").read_text(encoding="utf-8")
+        self.assertIn("persistCurrentResult = live", commands)
+        self.assertIn("https://www.gstatic.com/generate_204", commands)
+        self.assertIn("maxOf(DataStore.urlTestTimeoutMs, FLCLASH_TEST_TIMEOUT_MS)", commands)
+
     def test_tun_spec_json_marshals_every_builder_field(self) -> None:
         """VpnService.Builder needs the same fields the old gobind path fed it."""
         runtime = (ROOT / "buildScript" / "core-patch" / "core" / "mobile" /

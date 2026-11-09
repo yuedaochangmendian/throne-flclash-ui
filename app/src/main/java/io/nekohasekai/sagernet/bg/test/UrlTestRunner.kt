@@ -35,10 +35,18 @@ internal class UrlTestRunner(session: TestSession) : LatencySweep(session) {
     /** BuildTestConfig marks it SetLatency(-1): a failed test with the generator's reason. */
     override fun invalid(profileId: Long, reason: String) = ProbeResult(profileId, error = reason)
 
-    /** url_test_current (mainwindow_view.cpp:405-433): the running instance's `proxy` exit, shown and never stored. */
-    suspend fun runCurrent(running: CoreRuntime.RunningCore?) {
-        if (running == null) {
-            session.reportCurrentUrl(ProbeResult(0L, error = ERROR_NOT_RUNNING))
+    /**
+     * Measures the running core's actual exit. A missing [running] handle is normal when the service owns the
+     * instance: the patched bridge resolves the last live instance in this process. The proxy page asks for the
+     * result to be stored; the stats bar keeps the original show-only behavior.
+     */
+    suspend fun runCurrent(running: CoreRuntime.RunningCore?, persist: Boolean = false) {
+        val profileId = running?.profileId?.takeIf { it > 0L }
+            ?: ProfileManager.runningProfileId().takeIf { it > 0L }
+            ?: session.spec.profileIds.firstOrNull()?.takeIf { it > 0L }
+            ?: 0L
+        if (profileId <= 0L) {
+            session.reportCurrentUrl(ProbeResult(0L, error = ERROR_NOT_RUNNING, measured = false))
             return
         }
         val request = TestRequest().apply {
@@ -46,26 +54,28 @@ internal class UrlTestRunner(session: TestSession) : LatencySweep(session) {
             url = session.options.url
             timeoutMs = session.options.timeoutMs
             maxConcurrency = 1
-            if (exitsThroughVpn(ProfileManager.getProfile(running.profileId))) addVPNEndpointTag(CoreConfig.TAG_PROXY)
+            if (exitsThroughVpn(ProfileManager.getProfile(profileId))) addVPNEndpointTag(CoreConfig.TAG_PROXY)
         }
-        // The last emitted result wins: the verdict comes after the failure it replaces.
-        val result = AtomicReference(ProbeResult(running.profileId, error = ERROR_NO_RESULT))
+        // The last emitted result wins: the verdict comes after the failure it replaces. A start failure is not a
+        // measurement, so it can never overwrite a working proxy with "Unreachable".
+        val result = AtomicReference(ProbeResult(profileId, error = ERROR_NO_RESULT, measured = false))
         try {
             // Sessions never overlap, so only the stats bar's test can report this tag meanwhile.
             TestTags.holding(listOf(TestTags.CURRENT)) {
                 session.awaitCore { done ->
                     Mobile.startURLTest(
-                        running.instance, CoreRuntime.platform, request,
-                        Handler({ running.profileId }, result::set, done),
+                        running?.instance, CoreRuntime.platform, request,
+                        Handler({ profileId }, result::set, done),
                     )
                 }
             }
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            result.set(ProbeResult(running.profileId, error = e.readableMessage))
+            result.set(ProbeResult(profileId, error = e.readableMessage, measured = false))
         }
-        session.reportCurrentUrl(result.get())
+        val measured = result.get()
+        if (persist && measured.measured) session.reportUrl(listOf(measured)) else session.reportCurrentUrl(measured)
     }
 
     /**
