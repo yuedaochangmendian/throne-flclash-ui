@@ -70,7 +70,7 @@ class ProxyNodeCard extends StatelessWidget {
         behavior: HitTestBehavior.opaque, onTap: onTest,
         child: ConstrainedBox(
           constraints: BoxConstraints(minWidth: 48, minHeight: h),
-          child: Align(alignment: Alignment.centerRight,
+          child: Align(alignment: Alignment.centerRight, widthFactor: 1, heightFactor: 1,
             child: Text(delayText, maxLines: 1, overflow: TextOverflow.ellipsis,
               style: AppTextStyle.caption2.of(context, emphasized: true).copyWith(color: delayColor))),
         ),

@@ -156,8 +156,8 @@ void main() {
     await tester.pumpAndSettle();
     events.add({'type': 'groups', 'value': [
       {'id': 1, 'tag': 'Group A', 'selected': 'Node A', 'selectable': true, 'items': [
-        {'id': 10, 'tag': 'Node A', 'type': 'Shadowsocks', 'delay': 12},
-        {'id': 11, 'tag': 'Node B', 'type': 'Shadowsocks', 'delay': 34},
+        {'id': 10, 'tag': 'Node A', 'type': 'Shadowsocks', 'delay': 12, 'testedAt': 1},
+        {'id': 11, 'tag': 'Node B', 'type': 'Shadowsocks', 'delay': 34, 'testedAt': 1},
       ]},
     ]});
     await tester.pumpAndSettle();
@@ -166,12 +166,26 @@ void main() {
     await tester.tap(find.text('Node B'));
     await tester.pumpAndSettle();
     expect((calls.lastWhere((call) => call.method == 'groups.select').arguments as Map)['tag'], 'Node B');
-    final nodeCard = find.byWidgetPredicate((widget) => widget is ProxyNodeCard && widget.node['tag'] == 'Node B');
-    await tester.tap(find.descendant(of: nodeCard, matching: find.byKey(const ValueKey('glyph:ProxyTestPhase.idle'))));
+
+    // Tapping the selected node's body must not start a test; only the delay
+    // figure has the test action.
+    final nodeACard = find.byWidgetPredicate((widget) => widget is ProxyNodeCard && widget.node['tag'] == 'Node A');
+    final testsBeforeBodyTap = calls.where((call) => call.method == 'groups.test').length;
+    await tester.tap(find.descendant(of: nodeACard, matching: find.text('Shadowsocks')));
     await tester.pumpAndSettle();
+    expect(calls.where((call) => call.method == 'groups.test').length, testsBeforeBodyTap);
+
+    // The completed-delay target shrinks to its 48px minimum instead of
+    // stretching across the rest of the card row.
+    final nodeADelay = find.descendant(of: nodeACard, matching: find.byKey(const ValueKey('delay')));
+    expect(tester.getSize(nodeADelay).width, lessThanOrEqualTo(60));
+    final selectsBeforeDelayTap = calls.where((call) => call.method == 'groups.select').length;
+    await tester.tap(nodeADelay);
+    await tester.pumpAndSettle();
+    expect(calls.where((call) => call.method == 'groups.select').length, selectsBeforeDelayTap);
     final test = calls.lastWhere((call) => call.method == 'groups.test').arguments as Map;
-    expect(test['tag'], 'Node B');
-    expect(test['profileIds'], [11]);
+    expect(test['tag'], 'Node A');
+    expect(test['profileIds'], [10]);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     await events.close();
@@ -275,18 +289,28 @@ void main() {
     }});
     await tester.pump();
     expect(find.byKey(const ValueKey('proxy-test-running')), findsOneWidget);
-    expect(find.byKey(const ValueKey('glyph:ProxyTestPhase.queued')), findsOneWidget);
+    // A single-node action does not turn its siblings into a test queue.
+    expect(find.byKey(const ValueKey('glyph:ProxyTestPhase.queued')), findsNothing);
+    expect(find.text('30 ms'), findsOneWidget);
 
     testDone.complete(null);
-    events.add({'type': 'testSession', 'value': {
-      'kind': 0, 'running': false, 'startedAt': currentSessionStartedAt,
-      'rows': [
-        {'id': 10, 'phase': 'DONE'}, {'id': 11, 'phase': 'DONE'},
-      ],
-    }});
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
+    // The node action owns its spinner: even if the shared session feed still
+    // carries a TESTING row, completing groups.test must clear this card.
     expect(find.byKey(const ValueKey('proxy-test-running')), findsNothing);
+
+    // Result persistence arrives as a catalog update. The proxy page must
+    // rebuild on that event without requiring another node selection.
+    events.add({'type': 'groups', 'value': [{
+      'tag': 'Group A', 'selected': 'Node A', 'selectable': true,
+      'items': [
+        {'id': 10, 'tag': 'Node A', 'type': 'direct', 'delay': 42, 'testedAt': 2},
+        {'id': 11, 'tag': 'Node B', 'type': 'direct', 'delay': 30, 'testedAt': 1},
+      ],
+    }]});
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('42 ms'), findsOneWidget);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     await events.close();
