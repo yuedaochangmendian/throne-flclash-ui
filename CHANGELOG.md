@@ -3,13 +3,12 @@
 Development notes for the next release. This section will be finalized once the 3.3.1 post-release device matrix and the 3.3.2 scope are closed.
 
 * **Speed tiles and delay tests follow FlClash.** The dashboard keeps FlClash's 1.45 tile ratio with the traffic chart filling the area under the title. Queued proxies show a clock, the running group shows a spinner, finished nodes show their delay, and Test all runs as a visible queue in both grid and list layouts
-* **Rule JSON import uses the shared form sheet.** The import flow now opens like the rule editor and batch-add dialog instead of pushing a separate full page, keeping validation and actions consistent across the routes UI
-* **Preview applicationId is derived from PACKAGE_NAME.** The workflow no longer hard-codes the pre-rename debug id; preview builds now use `com.throneflclash.debug`, remain side-by-side installable with stable, and follow future package renames automatically
+* **Rule JSON import uses the same multiline dialog as rule fields.** The import flow opens in the same title/description/text-field/action layout as the IP CIDR editor, while retaining schema parsing and the route/DNS preview
 * **The Kotlin bridge namespace is now `io.flrone`.** Core, model, bridge, Flutter host, manifest, ProGuard rules, tests, JNI names, audit scripts and live docs moved from `io.throne.bbox`; the existing `io.flrone/box` MethodChannel is unchanged
-* **DNS rule import has a form-sheet regression test.** The test taps the sheet's actual Import action instead of bypassing the UI path
+* **DNS rule import has a dialog regression test.** The test enters the JSON in the same dialog field and taps its actual Import action instead of bypassing the UI path
 * **Rule and proxy interactions are tightened.** JSON import now uses the same multiline dialog as the rule fields; the node speed-test panel hides IP check, test kind and scope; clicking a node delay shows a visible running spinner until the test finishes; and upload/download charts use distinct colors
 * **Preview and stable share one package identity and one release workflow.** Both channels now build with `PACKAGE_NAME` (`com.throneflclash`) and the same release signing key, so a preview can upgrade a stable install in place. `release.yml` handles `channel=preview|stable`; the separate preview workflow is removed while GitHub prereleases, artifact-only builds and the no-manifest preview contract remain intact
-* **Verification:** `main@329f46a1` CI, CodeQL and Preview were green before this version bump. The 3.3.1 physical-device matrix remains tracked in Issue #17, and the 3.3.2 scope is tracked in Issue #22
+* **Verification:** `main@86a7f758` CI and CodeQL are green, the unified preview build `3.3.2-pre.11` is published, and 421 Flutter tests pass. The 3.3.1 physical-device matrix remains tracked in Issue #17; the 3.3.2 baseline was closed in Issue #22
 
 #### 3.3.1
 
