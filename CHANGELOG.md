@@ -1,3 +1,14 @@
+#### 3.3.2
+
+Development notes for the next release. This section will be finalized once the 3.3.1 post-release device matrix and the 3.3.2 scope are closed.
+
+* **Speed tiles and delay tests follow FlClash.** The dashboard keeps FlClash's 1.45 tile ratio with the traffic chart filling the area under the title. Queued proxies show a clock, the running group shows a spinner, finished nodes show their delay, and Test all runs as a visible queue in both grid and list layouts
+* **Rule JSON import uses the shared form sheet.** The import flow now opens like the rule editor and batch-add dialog instead of pushing a separate full page, keeping validation and actions consistent across the routes UI
+* **Preview applicationId is derived from PACKAGE_NAME.** The workflow no longer hard-codes the pre-rename debug id; preview builds now use `com.throneflclash.debug`, remain side-by-side installable with stable, and follow future package renames automatically
+* **The Kotlin bridge namespace is now `io.flrone`.** Core, model, bridge, Flutter host, manifest, ProGuard rules, tests, JNI names, audit scripts and live docs moved from `io.throne.bbox`; the existing `io.flrone/box` MethodChannel is unchanged
+* **DNS rule import has a form-sheet regression test.** The test taps the sheet's actual Import action instead of bypassing the UI path
+* **Verification:** `main@329f46a1` CI, CodeQL and Preview were green before this version bump. The 3.3.1 physical-device matrix remains tracked in Issue #17, and the 3.3.2 scope is tracked in Issue #22
+
 #### 3.3.1
 
 The first stable release since 3.3.0. Previews pre.1-pre.23 were the test bed. CI, release-candidate packaging, signature verification and the x86_64 upgrade check passed; the remaining physical-device regression matrix is tracked in Issue #17.
