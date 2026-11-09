@@ -97,8 +97,8 @@ class FfiHardeningTests(unittest.TestCase):
         """The FFI start skips startProcesses(), so openTun would see a null service."""
         base = (ROOT / "app" / "src" / "main" / "java" / "io" / "nekohasekai" /
                 "sagernet" / "bg" / "BaseService.kt").read_text(encoding="utf-8")
-        platform = (ROOT / "app" / "src" / "main" / "java" / "io" / "throne" /
-                    "bbox" / "bridge" / "BboxCorePlatform.kt").read_text(encoding="utf-8")
+        platform = (ROOT / "app" / "src" / "main" / "java" / "io" / "flrone" /
+                    "bridge" / "BboxCorePlatform.kt").read_text(encoding="utf-8")
         self.assertIn("DataStore.vpnService ?: run", platform,
                       "openTun must still depend on the registered VpnService")
         self.assertIn("openTun without a live VpnService", platform,
@@ -116,8 +116,8 @@ class FfiHardeningTests(unittest.TestCase):
         the core's openTun runs first and the start dies with
         "configure tun interface: bridge: platform callback failed".
         """
-        bridge = (ROOT / "app" / "src" / "main" / "java" / "io" / "throne" /
-                  "bbox" / "flutter" / "ThroneBoxBridge.kt").read_text(encoding="utf-8")
+        bridge = (ROOT / "app" / "src" / "main" / "java" / "io" / "flrone" /
+                  "flutter" / "ThroneBoxBridge.kt").read_text(encoding="utf-8")
         self.assertIn('"service.start" -> result.respond {', bridge,
                       "service.start must answer only after the service is ready")
         self.assertNotIn('"service.start" -> {\n                    if (!DataStore.serviceState.canStop) SagerNet.startService()\n                    result.success(null)\n                }',
