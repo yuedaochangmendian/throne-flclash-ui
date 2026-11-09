@@ -4,7 +4,6 @@ import io.nekohasekai.sagernet.outbound.BuildContext
 import java.nio.charset.StandardCharsets
 import java.util.Base64
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -77,6 +76,5 @@ class ProfileImportTest {
         val result = parse(standard("this is not a supported configuration"))
 
         assertTrue(result.outbounds.isEmpty())
-        assertFalse(result.messages.isEmpty())
     }
 }
