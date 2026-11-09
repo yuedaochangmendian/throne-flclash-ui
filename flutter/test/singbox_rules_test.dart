@@ -101,6 +101,16 @@ void main() {
       expect(result.routeRules.single['domain'], ['app.example']);
       expect(result.dnsRules.single['server'], 'remote');
       expect(result.problems, isEmpty);
+      expect(result.hasErrors, isFalse);
+      expect(result.issues.where((issue) => issue.severity == Severity.error), isEmpty);
+
+      final topLevel = await run('''[
+        {"domain": ["app.example"], "outbound": "proxy"},
+        {"query_type": ["A"], "server": "remote"}
+      ]''');
+      expect(topLevel.routeRules, hasLength(1));
+      expect(topLevel.dnsRules, hasLength(1));
+      expect(topLevel.hasErrors, isFalse);
     });
 
     test('a non-object, non-array fragment is refused', () async {

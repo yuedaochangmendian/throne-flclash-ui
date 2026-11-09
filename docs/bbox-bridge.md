@@ -67,7 +67,7 @@ translation, not a set of adapters bolted onto each screen.
 | `toggleService` | `SagerNet.startService()` / `SagerNet.stopService()`; a start with nothing selected is refused and logged. |
 | `setMode` | `BboxMode.set` then `SagerNet.reloadService()` when running. |
 | `selectProxy(group, tag)` | Resolve the profile by name, write `selectedProxy` + `currentProfile`, broadcast `Action.SWITCH_PROFILE` so a running core switches instead of restarting, then reload the rows. |
-| `testGroup` / `testProxy` | `TestSessionClient.start(TestSpec(KIND_URL, ...))`; the results are persisted by `:bg` and arrive back through `ProfileManager.Listener`. |
+| `testNodeAwait` | The `groups.test` handler resolves a group or one node, starts `TestSessionClient` with `TestSpec(KIND_URL, ...)`, and answers when that session finishes; the results are persisted by `:bg` and arrive back through `ProfileManager.Listener`. |
 | `selectProfile` | `GroupRepo.setCurrent`; when stopped, the group's first member becomes the selection. |
 | `updateSubscription` | `SubscriptionQueue.refreshGroup(gid, showDiff = true)`. |
 | `deleteProfile` | `GroupRepo.delete` (its profiles go by the foreign key cascade). |

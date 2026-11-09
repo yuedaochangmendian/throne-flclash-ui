@@ -248,13 +248,21 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Proxies').last);
     await tester.pumpAndSettle();
+    events.add({'type': 'testSession', 'value': {
+      'kind': 0, 'running': false, 'startedAt': 1,
+      'rows': [
+        {'id': 10, 'phase': 'DONE'}, {'id': 11, 'phase': 'DONE'},
+      ],
+    }});
+    await tester.pump();
 
     await tester.tap(find.text('12 ms'));
     await tester.pump();
     expect(tested, isTrue);
     expect(find.byKey(const ValueKey('proxy-test-running')), findsOneWidget);
+    final currentSessionStartedAt = DateTime.now().millisecondsSinceEpoch;
     events.add({'type': 'testSession', 'value': {
-      'kind': 0, 'running': true,
+      'kind': 0, 'running': true, 'startedAt': currentSessionStartedAt,
       'rows': [
         {'id': 10, 'phase': 'TESTING'}, {'id': 11, 'phase': 'QUEUED'},
       ],
@@ -265,7 +273,7 @@ void main() {
 
     testDone.complete(null);
     events.add({'type': 'testSession', 'value': {
-      'kind': 0, 'running': false,
+      'kind': 0, 'running': false, 'startedAt': currentSessionStartedAt,
       'rows': [
         {'id': 10, 'phase': 'DONE'}, {'id': 11, 'phase': 'DONE'},
       ],
