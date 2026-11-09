@@ -61,8 +61,15 @@ def core_ref():
 
 def signer_sha256(apksigner, apk):
     out = run(apksigner, "verify", "--print-certs", str(apk), merge_stderr=True)
-    # "Signer #1 …" or, with a v3.1 rotation target, "Signer (minSdkVersion=…) …"; source stamps are not signers.
-    digests = {d.lower() for d in re.findall(r"^Signer\b.*? certificate SHA-256 digest: ([0-9a-fA-F]{64})\s*$", out, re.M)}
+    # Older build-tools print "Signer #1 …"; build-tools 37 prefixes every
+    # scheme line with "V2 Signer:" / "V3 Signer:". Source stamps are not
+    # certificate signers, so only lines beginning with an optional scheme
+    # prefix plus "Signer" participate.
+    digests = {d.lower() for d in re.findall(
+        r"^(?:V[123](?:\.\d+)?\s+)?Signer\b.*? certificate SHA-256 digest: ([0-9a-fA-F]{64})\s*$",
+        out,
+        re.M,
+    )}
     if len(digests) != 1:
         print(out.strip())
         fail(f"{apk.name}: expected exactly one signer, apksigner printed {len(digests)}")
