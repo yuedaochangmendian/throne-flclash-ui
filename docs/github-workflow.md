@@ -15,7 +15,7 @@
 | 合并后 | 删除源分支（仓库设置 `delete_branch_on_merge=true`）；已合并分支不留残枝 |
 | 保护 | `main` 应配置保护：禁止强制推送与删除、要求经 PR、要求 CI 全绿。**启用前必须确认 CI 依赖可用**，否则会把 `main` 锁死（见第 7 节） |
 
-> **已启用（2026-11-08）**：`main` 要求经 PR、分支保持最新，并通过 `Unit tests and debug build` 与 `Flutter module tests` 两个检查；强推和删除被禁止。单维护者场景不强制审批，避免无人可批导致分支锁死。3.3.1 开发线已于同日以 PR #11 合回 `main`；`v3.3.1-pre.*` 的 tag 仍指向合并前的提交，属已发布历史的正常结果，不回填。
+> **已启用（2026-11-08，管理员约束于 2026-11-09 收紧）**：`main` 要求经 PR、分支保持最新，并通过 `Unit tests and debug build` 与 `Flutter module tests` 两个检查；强推和删除被禁止，管理员同样不能绕过。单维护者场景不强制审批，避免无人可批导致分支锁死。3.3.1 开发线已于同日以 PR #11 合回 `main`；`v3.3.1-pre.*` 的 tag 仍指向合并前的提交，属已发布历史的正常结果，不回填。
 
 ## 2. Pull Request
 
@@ -49,7 +49,7 @@
 - `releases/latest` 只能由资产齐全的 stable release 占用；预览版转正属异常路径（第 7 节），不得常态化。
 - release 的 `name` 与 `tag_name` 保持一致；若就地转正导致不一致，必须在发行说明里写明真实 tag 与产物性质。
 
-> **已修复（2026-11-08）**：`v3.3.1-pre.23` 已恢复为 prerelease，名称改为与 tag 一致，并移除误带的 `throne-update.json`；`releases/latest` 回到稳定的 `v3.3.0`。治理脚本现在会拒绝“preview tag 被标成正式版”，防止同类问题再次进入 Latest 或应用内更新。另有 6 个 2026-11-01 的 debug 构建曾被标为 stable、5 个历史 preview release 误带 `throne-update.json`、3 个 `wip-bbox-*` tag 无 release，均已列入治理基线。
+> **已修复（2026-11-08）**：`v3.3.1-pre.23` 已恢复为 prerelease，名称改为与 tag 一致，并移除误带的 `throne-update.json`。正式 `v3.3.1` 已于 2026-11-08 发布并成为 `releases/latest`，5 个资产与更新清单齐全。治理脚本现在会拒绝“preview tag 被标成正式版”，防止同类问题再次进入 Latest 或应用内更新。另有 6 个 2026-11-01 的 debug 构建曾被标为 stable、5 个历史 preview release 误带 `throne-update.json`、3 个 `wip-bbox-*` tag 无 release，均已列入治理基线。
 
 ## 5. 更新器与签名契约
 
@@ -88,11 +88,11 @@
 
 | 项 | 现状 | 建议动作 | 影响 |
 |---|---|---|---|
-| 标准 `v3.3.1` | 代码与正式 CHANGELOG 已就绪；设备清单尚未跑完 | 完成 `docs/device-checklist.md` 后按第 3 节发布干净 `v3.3.1` | 高，会产生新 release |
+| `v3.3.2` 开发基线 | 版本已提升为 `3.3.2 (162)`；发布后设备矩阵仍由 Issue #17 跟踪 | 完成 3.3.2 范围、CI 与设备验证后按第 3 节发版 | 中 |
 | PR #16 轻量扫码 | CI 全绿，缺少真机冒烟 | 完成单码、多帧码、拒绝权限与返回路径后决定进入后续版本 | 中，避免无设备证据的回归 |
 | 6 个 debug release | 曾标 stable、资产不齐 | 已改标 `prerelease`（可逆）；或删除 | 中 |
 | 5 个 preview 带清单 | v3.2.18–v3.2.22 | 移除 `throne-update.json` 资产，或列入基线保留 | 中 |
 | 3 个 `wip-bbox-*` tag | 无对应 release | 删除调试 tag | 低 |
 | 已合并残枝 / 陈旧 dependabot PR | 分支保留、PR #6/#9 开放、PR #16 已随基线变更改指向 `main` | 清理分支、关闭或合并 PR | 低 |
 
-**已收口（2026-11-08）**：PR #11 以 merge commit `05ef51b7` 合入 `main`（62 提交、115 文件、+9543/−1882），`main` 自此是 3.3.1 基线，`VERSION_NAME` 由 3.3.0 变为 3.3.1。`feat/ffi` 随 `delete_branch_on_merge` 一并删除，其内容已在 `main` 上，后续 `feat/*` 从 `main` 切出。`CHANGELOG.md` 已补正式 `#### 3.3.1` 段落；真机走查（`docs/device-checklist.md`）仍未做，正式 tag 必须等清单完成后发布。
+**已收口（2026-11-08）**：PR #11 以 merge commit `05ef51b7` 合入 `main`，`feat/ffi` 随 `delete_branch_on_merge` 删除；正式 `v3.3.1` 已发布并成为 Latest。2026-11-09 起 `main` 进入 `3.3.2 (162)` 开发线，3.3.1 的发布后设备走查继续由 Issue #17 跟踪。
