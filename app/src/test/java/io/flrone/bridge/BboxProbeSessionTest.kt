@@ -3,6 +3,7 @@ package io.flrone.bridge
 import kotlinx.coroutines.CancellationException
 import okhttp3.Call
 import okhttp3.Callback
+import okhttp3.EventListener
 import okhttp3.MediaType
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
@@ -38,6 +39,7 @@ class BboxProbeSessionTest {
         val cancelled = CountDownLatch(1)
 
         override fun request(): Request = originalRequest
+        override fun addEventListener(eventListener: EventListener) = Unit
         override fun <T : Any> tag(type: KClass<T>): T? = tags[type] as? T
         override fun <T> tag(type: Class<out T>): T? = tags[type.kotlin] as? T
         override fun <T : Any> tag(type: KClass<T>, computeIfAbsent: () -> T): T =
