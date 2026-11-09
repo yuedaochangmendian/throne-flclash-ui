@@ -1,3 +1,7 @@
+#### 4.0.1
+
+* **Proxy latency results now update the active card in place.** The proxy page watches catalog state, so the freshly persisted delay replaces the spinner without selecting another node. Single-node tests keep their own running state instead of inheriting a shared test-session queue, and the hit target shrinks to the delay figure so the rest of the card only changes the selected node.
+
 #### 4.0.0
 
 * **The platform line moves to compileSdk 37 and current dependency majors.** OkHttp is now 5.5.1, ZXingLite 3.5.0, rosemoe editor 0.24.7 without a Kotlin stdlib exclusion, and ThroneCore follows `5e753ce7`; targetSdk remains 35 pending a separate platform behavior review

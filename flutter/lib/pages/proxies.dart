@@ -114,21 +114,27 @@ class _ProxiesPageState extends State<ProxiesPage> {
     final groupTag = group['tag'].toString(), nodeTag = node['tag'].toString();
     final id = (node['id'] as num?)?.toInt();
     final startedAt = (_session['startedAt'] as num?)?.toInt() ?? 0;
-    final row = startedAt < _sessionRequestedAt
-        ? null
-        : rows(_session['rows'])
+    final individualTest = _testing.contains(nodeTag);
+    final groupTest = _testing.contains(groupTag) || _queued.contains(groupTag);
+    // A node tap owns its own spinner. Do not let a stale/global session row
+    // keep that node spinning after groups.test returns; rows are only used
+    // while a group action is driving the shared session.
+    final row = groupTest && !individualTest && _session['running'] == true && startedAt >= _sessionRequestedAt
+        ? rows(_session['rows'])
             .where((row) => (row['id'] as num?)?.toInt() == id)
-            .firstOrNull;
-    final phase = switch (row?['phase']) {
-      'TESTING' => ProxyTestPhase.running,
-      'QUEUED' => ProxyTestPhase.queued,
-      'DONE' => ProxyTestPhase.idle,
-      _ when _testing.contains(nodeTag) => ProxyTestPhase.running,
-      // A group test starts as a queue, then the session's row phases take over
-      // one card at a time, matching FlClash's per-node animation.
-      _ when _testing.contains(groupTag) || _queued.contains(groupTag) => ProxyTestPhase.queued,
-      _ => ProxyTestPhase.idle,
-    };
+            .firstOrNull
+        : null;
+    final phase = individualTest
+        ? ProxyTestPhase.running
+        : switch (row?['phase']) {
+            'TESTING' => ProxyTestPhase.running,
+            'QUEUED' => ProxyTestPhase.queued,
+            'DONE' => ProxyTestPhase.idle,
+            // A group test starts as a queue, then the session's row phases take over
+            // one card at a time, matching FlClash's per-node animation.
+            _ when groupTest => ProxyTestPhase.queued,
+            _ => ProxyTestPhase.idle,
+          };
     return ProxyNodeCard(
       group: group, node: node, phase: phase,
       onSelect: () => _select(group, node),
@@ -163,7 +169,7 @@ class _ProxiesPageState extends State<ProxiesPage> {
   }
 
   @override Widget build(BuildContext context) {
-    final box = context.box;
+    final box = context.watchBox(BoxAspect.state);
     _session = context.watchBox(BoxAspect.testSession).testSession;
     // The screen follows the configuration selection: whichever profile is selected, its nodes are
     // what shows here. A selection that names nothing on the wire (or none yet) falls back to all.
