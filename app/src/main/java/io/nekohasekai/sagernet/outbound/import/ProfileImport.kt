@@ -32,7 +32,7 @@ import java.util.zip.Inflater
 
 /**
  * The desktop's subscription / clipboard / file parser (src/configs/sub/SubscriptionParser.cpp with the scanning
- * helpers of include/configs/sub/SubscriptionProfileImportScan.hpp). [parse] is ParseText: the whole body is base64-decoded
+ * helpers of include/configs/sub/SubscriptionScan.hpp). [parse] is ParseText: the whole body is base64-decoded
  * when it looks like one blob (standard, then a wrapped standard blob, then the url-safe alphabet), then the
  * document is classified in the desktop's order: JSON (Xray outbounds / configs, sing-box outbounds / endpoints,
  * SIP008), Clash YAML, a WireGuard INI file, an OpenVPN profile, an OpenConnect profile, and finally one item per

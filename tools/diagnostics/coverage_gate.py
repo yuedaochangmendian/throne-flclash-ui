@@ -38,7 +38,7 @@ def parse_lcov(path: Path) -> dict[str, tuple[int, int]]:
     for line in path.read_text(errors="replace").splitlines():
         if line.startswith("SF:"):
             flush()
-            current = line[3:].strip()
+            current = line[3:].strip().replace("\\", "/")
         elif line.startswith("LF:"):
             found += int(line[3:] or 0)
         elif line.startswith("LH:"):
