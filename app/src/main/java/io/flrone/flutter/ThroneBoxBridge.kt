@@ -47,6 +47,7 @@ import io.flrone.bridge.BboxLogs
 import io.flrone.bridge.BboxMemory
 import io.flrone.bridge.BboxMode
 import io.flrone.bridge.BboxProbeSession
+import io.flrone.bridge.BboxProfileWire
 import io.flrone.bridge.BboxProfiles
 import io.flrone.bridge.BboxRoutes
 import io.flrone.bridge.BboxScanChunks
