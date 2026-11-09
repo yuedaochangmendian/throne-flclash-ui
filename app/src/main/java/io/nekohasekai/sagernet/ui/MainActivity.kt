@@ -4,7 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import io.nekohasekai.sagernet.ktx.streamUri
 import io.nekohasekai.sagernet.ui.MessageStore.setCurrentActivity
-import io.throne.bbox.flutter.BboxFlutterActivity
+import io.flrone.flutter.BboxFlutterActivity
 
 /**
  * A headless shell (batch L2): the ported Flutter interface is the app's only screen. What is left

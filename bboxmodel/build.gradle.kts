@@ -10,7 +10,7 @@ kotlin {
 }
 
 android {
-    namespace = "io.throne.bbox.model"
+    namespace = "io.flrone.model"
     compileSdk = 35
     defaultConfig {
         minSdk = 24

@@ -13,7 +13,7 @@ class SwitchActivity : ThemedActivity(R.layout.layout_empty) {
         if (savedInstanceState != null) return
         // The profile list lives in the Flutter UI now (batch L2).
         startActivity(
-            Intent(this, io.throne.bbox.flutter.BboxFlutterActivity::class.java)
+            Intent(this, io.flrone.flutter.BboxFlutterActivity::class.java)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
         )
         finish()

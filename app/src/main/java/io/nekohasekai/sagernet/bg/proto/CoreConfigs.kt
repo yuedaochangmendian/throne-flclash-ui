@@ -16,7 +16,7 @@ import io.nekohasekai.sagernet.outbound.config.RoutingInput
 import io.nekohasekai.sagernet.outbound.config.TestCandidate
 import io.nekohasekai.sagernet.route.RouteDns
 import io.nekohasekai.sagernet.route.RouteProfile
-import io.throne.bbox.bridge.BboxRuntime
+import io.flrone.bridge.BboxRuntime
 
 /**
  * The config generator wired to the app: profiles come from the profile table, the settings and the build-time

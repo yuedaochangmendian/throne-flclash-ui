@@ -32,8 +32,8 @@ import io.nekohasekai.sagernet.ktx.runOnDefaultDispatcher
 import io.nekohasekai.sagernet.ui.MainActivity
 import io.nekohasekai.sagernet.update.UpdateManager
 import io.nekohasekai.sagernet.utils.*
-import io.throne.bbox.bridge.BboxMemory
-import io.throne.bbox.bridge.BboxRuntime
+import io.flrone.bridge.BboxMemory
+import io.flrone.bridge.BboxRuntime
 import kotlinx.coroutines.DEBUG_PROPERTY_NAME
 import kotlinx.coroutines.DEBUG_PROPERTY_VALUE_ON
 import java.io.File
@@ -74,7 +74,7 @@ class SagerNet : Application(),
                 AutoSelectorRuntime.install()
                 // The FFI path's platform duties (callbacks from the Go runtime).
                 runCatching {
-                    io.throne.bbox.core.Core.setPlatform(io.throne.bbox.bridge.BboxCorePlatform)
+                    io.flrone.core.Core.setPlatform(io.flrone.bridge.BboxCorePlatform)
                 }.onFailure { Logs.w("bridge: core shim unavailable: ${it.message}") }
             }
 
@@ -175,7 +175,7 @@ class SagerNet : Application(),
                     0,
                     // The ported interface is the app's only screen (batch L0).
                     Intent(
-                        application, io.throne.bbox.flutter.BboxFlutterActivity::class.java
+                        application, io.flrone.flutter.BboxFlutterActivity::class.java
                     ).setFlags(Intent.FLAG_ACTIVITY_REORDER_TO_FRONT),
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
                 )

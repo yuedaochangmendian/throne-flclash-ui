@@ -275,10 +275,10 @@ class BaseService {
             if (intent.action == Action.SERVICE) data.binder else null
 
         fun reload() {
-            if (io.throne.bbox.bridge.BboxKernel.ffiMode) {
+            if (io.flrone.bridge.BboxKernel.ffiMode) {
                 // The core is Dart's; a widget/tile/notification reload asks it to rebuild
                 // instead of bouncing the foreground service.
-                io.throne.bbox.bridge.BboxKernel.onReloadWanted?.invoke()
+                io.flrone.bridge.BboxKernel.onReloadWanted?.invoke()
                 return
             }
             if (DataStore.selectedProxy == 0L) {
@@ -304,7 +304,7 @@ class BaseService {
             }
             // FFI mode: Dart reloads the core on the selection change; a service restart here
             // would only bounce the notification.
-            if (io.throne.bbox.bridge.BboxKernel.ffiMode) {
+            if (io.flrone.bridge.BboxKernel.ffiMode) {
                 Widgets.push(this as Context)
                 return
             }
@@ -423,11 +423,11 @@ class BaseService {
                 // the core; after a Flutter-engine death, the host closes the
                 // numeric handle Dart registered before it died. A restart keeps
                 // its core — it is an in-place rebuild, not a stop.
-                if (!restart && io.throne.bbox.bridge.BboxKernel.ffiMode &&
-                    io.throne.bbox.bridge.BboxKernel.onStopWanted?.invoke() != true
+                if (!restart && io.flrone.bridge.BboxKernel.ffiMode &&
+                    io.flrone.bridge.BboxKernel.onStopWanted?.invoke() != true
                 ) {
                     runOnDefaultDispatcher {
-                        io.throne.bbox.bridge.BboxKernel.closeAdoptedCore()
+                        io.flrone.bridge.BboxKernel.closeAdoptedCore()
                     }
                 }
                 var cleanupError: Throwable? = null
@@ -641,7 +641,7 @@ class BaseService {
             // drop a change that lands between unregister and register.
             if (data.wifiMonitor != null) return
             data.wifiMonitor = WifiStateAccess.Monitor(this) {
-                io.throne.bbox.bridge.BboxKernel.onWifiChanged?.invoke()
+                io.flrone.bridge.BboxKernel.onWifiChanged?.invoke()
                 if (WifiStateAccess.status(this) == WifiStateAccess.Status.OK) {
                     PlatformNotifications.cancelWifiRulesInactive(this)
                 }
@@ -742,7 +742,7 @@ class BaseService {
                 try {
                     // The FFI path drives the core from Dart (zero AIDL): this service only
                     // keeps the foreground notification and the Android duties alive.
-                    if (io.throne.bbox.bridge.BboxKernel.ffiMode) {
+                    if (io.flrone.bridge.BboxKernel.ffiMode) {
                         DataStore.currentProfile = profile.id
                         data.changeState(State.Connected)
                         lateInit()

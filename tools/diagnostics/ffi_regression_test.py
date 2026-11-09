@@ -213,7 +213,7 @@ class FfiHardeningTests(unittest.TestCase):
         self.assertIn('"mode" to BboxMode.get().id', body,
                       "dashboardWire must read the stored mode, not dashboard.mode")
         self.assertNotIn('"mode" to dashboard.mode', body)
-        self.assertIn("import io.throne.bbox.bridge.BboxMode", bridge)
+        self.assertIn("import io.flrone.bridge.BboxMode", bridge)
 
 
 if __name__ == "__main__":

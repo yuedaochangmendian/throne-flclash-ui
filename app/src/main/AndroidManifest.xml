@@ -76,7 +76,7 @@
 
         <!-- B-box's own Flutter interface; the engine keeps running across these changes. -->
         <activity
-            android:name="io.throne.bbox.flutter.BboxFlutterActivity"
+            android:name="io.flrone.flutter.BboxFlutterActivity"
             android:configChanges="uiMode|orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|density|fontScale|layoutDirection|locale|touchscreen|keyboard|navigation"
             android:exported="true"
             android:hardwareAccelerated="true"

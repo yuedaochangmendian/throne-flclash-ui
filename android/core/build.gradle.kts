@@ -4,7 +4,7 @@ plugins {
 }
 
 android {
-    namespace = "io.throne.bbox.core"
+    namespace = "io.flrone.core"
     compileSdk = 35
 
     defaultConfig {

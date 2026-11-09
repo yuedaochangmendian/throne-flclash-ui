@@ -70,7 +70,7 @@ class VpnService : BaseVpnService(),
             // UI still reported Running — because it trusted the previous, already closed
             // descriptor. Dropping the cached fd (and the TunInterface global ref) makes
             // every start ask the platform for a fresh interface.
-            runCatching { io.throne.bbox.core.Core.stopTun() }
+            runCatching { io.flrone.core.Core.stopTun() }
                 .onFailure { Logs.w("bridge: stopTun failed: ${it.message}") }
         }
         super.killProcesses()?.let { error ->
@@ -216,9 +216,9 @@ class VpnService : BaseVpnService(),
      * is fed back through Core.startTun with its TunInterface, so protect /
      * resolverProcess reach the kernel without any bridge.
      */
-    fun openTunJson(specJson: String, tun: io.throne.bbox.core.TunInterface): Int {
+    fun openTunJson(specJson: String, tun: io.flrone.core.TunInterface): Int {
         val fd = buildAndEstablish(JsonTunSpec(specJson))
-        runCatching { io.throne.bbox.core.Core.startTun(fd, tun) }
+        runCatching { io.flrone.core.Core.startTun(fd, tun) }
             .onFailure { Logs.w("bridge: startTun failed: ${it.message}") }
         return fd
     }
@@ -325,7 +325,7 @@ class VpnService : BaseVpnService(),
     override fun onDestroy() {
         // Belt and braces: a service torn down without killProcesses (system reclaim,
         // always-on VPN restart) must not leave the kernel holding a dead descriptor.
-        runCatching { io.throne.bbox.core.Core.stopTun() }
+        runCatching { io.flrone.core.Core.stopTun() }
         DataStore.vpnService = null
         super.onDestroy()
         data.binder.close()
