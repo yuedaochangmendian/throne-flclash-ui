@@ -1,6 +1,6 @@
 # 工具链解钉（upgrade milestones）
 
-> 状态 2026-11-03：U1/U2 已实施，U3 留待独立真机回归。本文件记录
+> 状态 2026-11-10：U1/U2/U3 已实施，compileSdk 37 与 OkHttp 5.5.1 随 v4.0.0 升级；真机回归仍按设备清单执行。本文件记录
 > `docs/roadmap.md` 债项 #1/#2 的解钉方案与仍需保留的门禁。
 
 ## 为什么必须做
@@ -47,10 +47,10 @@ rosemoe 的独立升级仍属 U3。`tools/diagnostics/scan_aar_apis.py` 继续�
 5. `scan_aar_apis.py`：参考基线 stdlib 2.2.20 → 2.4.10。
 6. 验证：同 U1，外加全量 `flutter test`（通道契约不受影响，但 `channel_audit.py` 必须重跑）。
 
-## U3 — rosemoe editor 解钉（可选，跟 U1/U2 之后任意时刻）
+## U3 — rosemoe editor 解钉 ✅
 
-1. `io.github.rosemoe:editor` 0.23.7 → 0.24.x（不再需要 `exclude kotlin-stdlib`）。
-2. 验证：JSON 编辑器页面（schema 校验/补全/格式化）真机走查。
+1. `io.github.rosemoe:editor` 0.23.7 → 0.24.7，并删除 `exclude kotlin-stdlib`。
+2. 验证：JSON 编辑器单测、Flutter 全量测试与 Android debug 构建通过；真机走查仍按设备清单执行。
 
 ## 永久门禁（升级后也不许删）
 

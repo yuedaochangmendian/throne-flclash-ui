@@ -1,3 +1,7 @@
+#### 4.0.0
+
+* **The platform line moves to compileSdk 37 and current dependency majors.** OkHttp is now 5.5.1, ZXingLite 3.5.0, rosemoe editor 0.24.7 without a Kotlin stdlib exclusion, and ThroneCore follows `5e753ce7`; targetSdk remains 35 pending a separate platform behavior review
+
 #### 3.3.2
 
 Development notes for the next release. This section will be finalized once the 3.3.1 post-release device matrix and the 3.3.2 scope are closed.
