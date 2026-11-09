@@ -16,6 +16,7 @@ import 'dart:async';
 import 'dart:ffi';
 import 'dart:isolate';
 
+import 'kernel_heartbeat.dart';
 import 'platform_value.dart';
 import 'throne_ffi.dart';
 
@@ -162,8 +163,7 @@ void _workerMain(List<Object> init) {
   ffi.throne_Mobile_setLogSink();
 
   ThroneInstance? instance;
-  var heartbeatEnabled = false;
-  var lostReported = false;
+  final heartbeatPolicy = KernelHeartbeatPolicy();
   Timer? heartbeat;
   // The core answers a status only once its box is up, and a start can take a
   // few seconds (tun, rule sets, xray assets) before that. Counting raw misses
@@ -171,36 +171,24 @@ void _workerMain(List<Object> init) {
   // the box it had just opened: the service restarted every few seconds and
   // never stayed up. A miss now only counts once the start has had its grace
   // period and the last good beat is older than [heartbeatGiveUpAfter].
-  int? startAtMs;
-  int? lastBeatAtMs;
-
   heartbeat = Timer.periodic(const Duration(seconds: 1), (_) {
     final current = instance;
-    if (!heartbeatEnabled || current == null) return;
+    if (!heartbeatPolicy.enabled || current == null) return;
     final now = DateTime.now().millisecondsSinceEpoch;
-    final startedAt = startAtMs;
-    if (startedAt == null) return;
     final snapshot = throneStatusSnapshot(ffi, current.handle);
-    if (snapshot != null) {
-      lastBeatAtMs = now;
-      lostReported = false;
-      return;
-    }
     // The numbers were unreadable this second. That is not the same as a dead
     // core: reading the traffic counters races a busy box, and a panic there used
     // to end the snapshot and, with it, a tunnel that was carrying traffic all
     // along. Ask the cheap question — is the box still started — before counting
     // a miss, and only a box that really stopped counts as lost.
-    if (ffi.throne_Instance_alive(current.handle) != 0) {
-      lastBeatAtMs = now;
-      lostReported = false;
-      return;
-    }
-    if (now - startedAt < heartbeatGrace.inMilliseconds) return;
-    final since = lastBeatAtMs ?? startedAt;
-    if (now - since < heartbeatGiveUpAfter.inMilliseconds || lostReported) return;
-    lostReported = true;
-    events.send(<String, dynamic>{'type': 'lost', 'error': throneLastError(ffi)});
+    final lost = heartbeatPolicy.observe(
+      nowMs: now,
+      snapshotReadable: snapshot != null,
+      instanceAlive: ffi.throne_Instance_alive(current.handle) != 0,
+      grace: heartbeatGrace,
+      giveUpAfter: heartbeatGiveUpAfter,
+    );
+    if (lost) events.send(<String, dynamic>{'type': 'lost', 'error': throneLastError(ffi)});
   });
 
   ready.send(commands.sendPort);
@@ -227,9 +215,7 @@ void _workerMain(List<Object> init) {
               throw StateError('the kernel refused to create an instance');
             }
             instance = created;
-            startAtMs = null;
-            lastBeatAtMs = null;
-            lostReported = false;
+            heartbeatPolicy.prepare();
             reply.send(created.handle);
           } finally {
             options.release();
@@ -248,9 +234,7 @@ void _workerMain(List<Object> init) {
               finally { previous.release(); }
             }
             instance = ThroneInstance(ffi, adoptedHandle);
-            startAtMs = DateTime.now().millisecondsSinceEpoch;
-            lastBeatAtMs = null;
-            lostReported = false;
+            heartbeatPolicy.start(DateTime.now().millisecondsSinceEpoch);
             reply.send(true);
           }
         case KernelCommand.start:
@@ -259,13 +243,10 @@ void _workerMain(List<Object> init) {
           current.start();
           // The clock for the heartbeat starts here, not at the process start:
           // the grace period exists for the box this call just opened.
-          startAtMs = DateTime.now().millisecondsSinceEpoch;
-          lastBeatAtMs = null;
+          heartbeatPolicy.start(DateTime.now().millisecondsSinceEpoch);
           reply.send(null);
         case KernelCommand.stop:
-          heartbeatEnabled = false;
-          startAtMs = null;
-          lastBeatAtMs = null;
+          heartbeatPolicy.stop();
           final current = instance;
           instance = null;
           if (current != null) {
@@ -274,10 +255,7 @@ void _workerMain(List<Object> init) {
           }
           reply.send(null);
         case KernelCommand.setHeartbeat:
-          heartbeatEnabled = payload as bool;
-          if (heartbeatEnabled && startAtMs == null) startAtMs = DateTime.now().millisecondsSinceEpoch;
-          lastBeatAtMs = null;
-          lostReported = false;
+          heartbeatPolicy.setEnabled(payload as bool, DateTime.now().millisecondsSinceEpoch);
           reply.send(null);
         case KernelCommand.warpRegister:
           final data = asStringKeyedMap(payload, context: 'warpRegister payload');
@@ -293,7 +271,7 @@ void _workerMain(List<Object> init) {
           instance?.updateWIFIState();
           reply.send(null);
         case KernelCommand.dispose:
-          heartbeatEnabled = false;
+          heartbeatPolicy.stop();
           heartbeat?.cancel();
           // Release any still-running instance so the native handle is not orphaned.
           final current = instance;

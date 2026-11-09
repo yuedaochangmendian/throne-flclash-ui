@@ -47,6 +47,7 @@ import io.flrone.bridge.BboxLogs
 import io.flrone.bridge.BboxMemory
 import io.flrone.bridge.BboxMode
 import io.flrone.bridge.BboxProbeSession
+import io.flrone.bridge.BboxProfileWire
 import io.flrone.bridge.BboxProfiles
 import io.flrone.bridge.BboxRoutes
 import io.flrone.bridge.BboxScanChunks
@@ -727,11 +728,15 @@ class ThroneBoxBridge(
                 "wifiPermissions.ensure" -> result.respond {
                     (activity as? BboxFlutterActivity)?.ensureWifiPermissions() ?: false
                 }
-                // The scan screen asks for the camera before it starts the scanner: the plugin would
-                // ask too, but its request only completes if the host answers the permission result,
-                // and a request that never answers leaves a black preview with nothing to report.
+                // The scan screen asks for the camera before the host's scan activity opens:
+                // a refusal comes back as false rather than an activity that closes with no reason.
                 "permissions.camera" -> result.respond {
                     (activity as? BboxFlutterActivity)?.ensureCameraPermission() ?: false
+                }
+                // The scan screen opens the host's ZXing activity; the decoded payload comes
+                // back when the activity closes (null when it was dismissed).
+                "scan.qr" -> result.respond {
+                    (activity as? BboxFlutterActivity)?.scanQrCode()
                 }
                 "url.open" -> {
                     val url = call.argument<String>("url").orEmpty()
@@ -1685,21 +1690,7 @@ class ThroneBoxBridge(
     }
 
     private fun profilesWire(state: BboxUiState): List<Map<String, Any?>> =
-        state.profiles.map { profile ->
-            mapOf(
-                "id" to profile.id.toInt(),
-                "name" to profile.name,
-                "type" to profile.type,
-                "remote" to (profile.type == "subscription"),
-                "url" to profile.url,
-                "traffic" to profile.traffic,
-                "expiry" to profile.expiry,
-                "selected" to profile.selected,
-                "updatedAt" to profile.updatedAt,
-                "autoUpdate" to profile.autoUpdate,
-                "interval" to profile.interval,
-            )
-        }
+        BboxProfileWire.profiles(state.profiles)
 
     /**
      * The groups the UI renders. [withItems] is false until the Proxies screen asks for them; the

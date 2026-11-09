@@ -117,9 +117,7 @@ dependencies {
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.3")
 }
 
-// Flutter plugin AARs and the host now share one Kotlin toolchain: the host builds on Kotlin 2.4.10,
-// which reads the 2.4.0 metadata that mobile_scanner_release (pulled in by the B-box Flutter module)
-// was compiled with, so no `force` or `-Xskip-metadata-version-check` is needed to bridge the gap.
-// CameraX likewise resolves to 1.6.1 on its own (AGP 8.12.3 satisfies its min AGP 8.9.1). The one
-// thing still enforced out-of-band is CI's tools/diagnostics/scan_aar_apis.py, which proves the AAR
-// references nothing the resolved stdlib/coroutines versions don't provide.
+// QR scanning is a host activity now (ZXingLite 2.1.1: CameraX + ZXing, both Java), not a Flutter
+// plugin AAR, so mobile_scanner's ML Kit native libs and tflite models are no longer in the APK.
+// The host still builds on Kotlin 2.4.10, and CI's tools/diagnostics/scan_aar_apis.py remains the
+// out-of-band check that the Flutter AAR references nothing the resolved stdlib/coroutines lack.

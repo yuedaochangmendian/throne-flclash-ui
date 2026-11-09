@@ -45,10 +45,10 @@ packages:
     dependency: transitive
     description:
       name: cupertino_ui
-      sha256: a47c4e7c66fd7444a063a602597fceb238f705c3f6b1322bc0053d0a2638ee6e
+      sha256: "369e39a1c5c030a6212589c3da1809920b1c2cfade7b02aade7695bfa4b88c3a"
       url: "https://pub.dev"
     source: hosted
-    version: "1.1.4"
+    version: "1.1.6"
   fake_async:
     dependency: transitive
     description:
@@ -85,11 +85,6 @@ packages:
     version: "0.0.0"
   flutter_test:
     dependency: "direct dev"
-    description: flutter
-    source: sdk
-    version: "0.0.0"
-  flutter_web_plugins:
-    dependency: transitive
     description: flutter
     source: sdk
     version: "0.0.0"
@@ -197,14 +192,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.19.0"
-  mobile_scanner:
-    dependency: "direct main"
-    description:
-      name: mobile_scanner
-      sha256: "5a51ea79f0cf8293f616a5d08baae185b59b5e6bb24df01f2a63037ade0bade0"
-      url: "https://pub.dev"
-    source: hosted
-    version: "7.4.2"
   path:
     dependency: transitive
     description:
@@ -221,14 +208,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "1.1.0"
-  plugin_platform_interface:
-    dependency: transitive
-    description:
-      name: plugin_platform_interface
-      sha256: "4820fbfdb9478b1ebae27888254d445073732dae3d6ea81f0b7e06d5dedc3f02"
-      url: "https://pub.dev"
-    source: hosted
-    version: "2.1.8"
   sky_engine:
     dependency: transitive
     description: flutter
@@ -306,14 +285,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "15.4.0"
-  web:
-    dependency: transitive
-    description:
-      name: web
-      sha256: e119e82ac4795c7925103b7cf3768191f33941b99e7ccffbd6c645201d9f606b
-      url: "https://pub.dev"
-    source: hosted
-    version: "1.1.2"
 sdks:
   dart: ">=3.13.0 <4.0.0"
   flutter: ">=3.47.0"

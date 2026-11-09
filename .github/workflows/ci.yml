@@ -163,7 +163,14 @@ jobs:
         working-directory: flutter
         # --report-dirs prints every lib/<dir> percentage so per-directory floors
         # (--min-dir lib/data:NN) can be set from a measured number, not a guess.
-        run: python3 ../tools/diagnostics/coverage_gate.py coverage/lcov.info --min 40 --report-dirs
+        run: |
+          python3 ../tools/diagnostics/coverage_gate.py coverage/lcov.info \
+            --min 60 \
+            --exclude 'lib/core/throne_ffi.dart' \
+            --exclude 'lib/ui/**' \
+            --min-dir lib/box_api.dart:32 \
+            --min-dir lib/pages:50 \
+            --report-dirs
       - name: Upload coverage
         if: ${{ always() && needs.changes.outputs.code == 'true' && (github.event_name == 'push' || failure()) }}
         uses: actions/upload-artifact@v7

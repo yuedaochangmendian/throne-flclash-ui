@@ -72,14 +72,14 @@ object ProfileImport {
         preference: OutboundFactory.XrayVlessPreference = OutboundFactory.DEFAULT_XRAY_VLESS_PREFERENCE,
         ctx: BuildContext = BuildContext.DEFAULT,
     ): Result {
-        var body = Scan.trim(text)
+        var body = ProfileImportScan.trim(text)
         if (body.isEmpty()) return Result(emptyList(), emptyList())
-        if (Scan.looksLikeBase64(body)) {
-            Scan.decodeBase64(body)?.let { body = it }
-        } else if (Scan.looksLikeWrappedBase64(body)) {
-            Scan.decodeBase64Lenient(body)?.let { body = it }
-        } else if (Scan.looksLikeUrlSafeBase64(body)) {
-            Scan.decodeBase64UrlSafe(body)?.let { body = it }
+        if (ProfileImportScan.looksLikeBase64(body)) {
+            ProfileImportScan.decodeBase64(body)?.let { body = it }
+        } else if (ProfileImportScan.looksLikeWrappedBase64(body)) {
+            ProfileImportScan.decodeBase64Lenient(body)?.let { body = it }
+        } else if (ProfileImportScan.looksLikeUrlSafeBase64(body)) {
+            ProfileImportScan.decodeBase64UrlSafe(body)?.let { body = it }
         }
         val parser = Parser(preference, ctx)
         parser.document(body, allowBase64 = false, needParse = true, depth = 0)
@@ -88,18 +88,18 @@ object ProfileImport {
 
     /** ShippedRoutingLink (SubscriptionParser.cpp:1223): the first `<scheme>://routing/...` line of a body, plain or base64; "" when none. */
     fun shippedRoutingLink(text: String): String {
-        var body = Scan.trim(text)
+        var body = ProfileImportScan.trim(text)
         if (body.isEmpty()) return ""
-        if (Scan.looksLikeBase64(body)) {
-            Scan.decodeBase64(body)?.let { body = it }
-        } else if (Scan.looksLikeWrappedBase64(body)) {
-            Scan.decodeBase64Lenient(body)?.let { body = it }
-        } else if (Scan.looksLikeUrlSafeBase64(body)) {
-            Scan.decodeBase64UrlSafe(body)?.let { body = it }
+        if (ProfileImportScan.looksLikeBase64(body)) {
+            ProfileImportScan.decodeBase64(body)?.let { body = it }
+        } else if (ProfileImportScan.looksLikeWrappedBase64(body)) {
+            ProfileImportScan.decodeBase64Lenient(body)?.let { body = it }
+        } else if (ProfileImportScan.looksLikeUrlSafeBase64(body)) {
+            ProfileImportScan.decodeBase64UrlSafe(body)?.let { body = it }
         }
         var found = ""
-        Scan.forEachLine(body) { raw ->
-            val line = Scan.trim(raw)
+        ProfileImportScan.forEachLine(body) { raw ->
+            val line = ProfileImportScan.trim(raw)
             if (!isRoutingLink(line)) return@forEachLine true
             found = line
             false
@@ -147,7 +147,7 @@ object ProfileImport {
     /** INI sections ("[Interface]", "[General]") also open with '['; JSON arrays hold values, not bare words. */
     private fun looksLikeJson(text: String): Boolean {
         if (text[0] == '{') return true
-        val rest = Scan.trim(text.substring(1))
+        val rest = ProfileImportScan.trim(text.substring(1))
         if (rest.isEmpty()) return false
         val c = rest[0]
         return c == '{' || c == '[' || c == '"' || c == ']' || c == '-' || c in '0'..'9'
@@ -406,13 +406,13 @@ object ProfileImport {
         /** Parser::document (SubscriptionParser.cpp); [overrideName] names a WireGuard profile that has none. */
         fun document(raw: String, allowBase64: Boolean, needParse: Boolean, depth: Int, overrideName: String = "") {
             if (depth > MAX_DEPTH) return
-            val text = Scan.trim(raw)
+            val text = ProfileImportScan.trim(raw)
             if (text.isEmpty()) return
 
             if (allowBase64) {
                 val decoded = when {
-                    Scan.looksLikeBase64(text) -> Scan.decodeBase64(text)
-                    Scan.looksLikeUrlSafeBase64(text) -> Scan.decodeBase64UrlSafe(text)
+                    ProfileImportScan.looksLikeBase64(text) -> ProfileImportScan.decodeBase64(text)
+                    ProfileImportScan.looksLikeUrlSafeBase64(text) -> ProfileImportScan.decodeBase64UrlSafe(text)
                     else -> null
                 }
                 if (decoded != null) {
@@ -423,7 +423,7 @@ object ProfileImport {
 
             if (text[0] == '{' || text[0] == '[') {
                 // QJsonDocument::fromJson rejects trailing content, which org.json would silently ignore
-                if (Scan.matchingClose(text, 0) == text.length - 1) {
+                if (ProfileImportScan.matchingClose(text, 0) == text.length - 1) {
                     val value = JsonInput.parseValue(text)
                     if (value is JsonObject || value is JsonArray) {
                         json(value, text)
@@ -465,7 +465,7 @@ object ProfileImport {
             }
 
             if (needParse && text.contains('\n')) {
-                Scan.forEachItem(text) { item ->
+                ProfileImportScan.forEachItem(text) { item ->
                     document(item, allowBase64 = true, needParse = false, depth = depth + 1, overrideName = overrideName)
                 }
                 return
@@ -978,8 +978,8 @@ object ProfileImport {
             val before = produced.size
             val reportedBefore = reports.size
             val text = String(data, Charsets.UTF_8)
-            val trimmed = Scan.trim(text)
-            val doc = if (trimmed.startsWith("{") && Scan.matchingClose(trimmed, 0) == trimmed.length - 1) {
+            val trimmed = ProfileImportScan.trim(text)
+            val doc = if (trimmed.startsWith("{") && ProfileImportScan.matchingClose(trimmed, 0) == trimmed.length - 1) {
                 JsonInput.parseObjectOrNull(trimmed)
             } else {
                 null
@@ -1069,8 +1069,8 @@ object ProfileImport {
             var hasRemote = false
             var hasClientMarker = false
             var result = false
-            Scan.forEachLine(text) { raw ->
-                val line = Scan.trim(raw)
+            ProfileImportScan.forEachLine(text) { raw ->
+                val line = ProfileImportScan.trim(raw)
                 if (line.isEmpty() || line[0] == '#' || line[0] == ';') return@forEachLine true
                 if (line.startsWith("remote ") || line == "<ca>" || line == "<tls-auth>" || line == "<tls-crypt>" ||
                     line == "<tls-crypt-v2>" || line == "<secret>"
@@ -1093,7 +1093,7 @@ object ProfileImport {
             if (text.contains("<AnyConnectProfile") || text.contains("<ServerList")) return true
             var matched = false
             if (text.contains("protocol")) {
-                Scan.forEachLine(text) { raw ->
+                ProfileImportScan.forEachLine(text) { raw ->
                     if (!raw.contains("protocol")) return@forEachLine true
                     matched = OPENCONNECT_CLI.containsMatchIn(raw) || OPENCONNECT_FILE.matches(raw)
                     !matched
@@ -1101,8 +1101,8 @@ object ProfileImport {
             }
             if (matched) return true
             var result = false
-            Scan.forEachLine(text) { raw ->
-                val line = Scan.trim(raw)
+            ProfileImportScan.forEachLine(text) { raw ->
+                val line = ProfileImportScan.trim(raw)
                 if (line.isEmpty() || line[0] == '#') return@forEachLine true
                 result = line.startsWith("openconnect ")
                 false
@@ -1155,8 +1155,8 @@ object ProfileImport {
         val out = WireGuardNames()
         var lastComment = ""
 
-        Scan.forEachLine(text) { raw ->
-            val line = Scan.trim(raw)
+        ProfileImportScan.forEachLine(text) { raw ->
+            val line = ProfileImportScan.trim(raw)
             val isComment = line.isNotEmpty() && (line[0] == '#' || line[0] == ';')
             if (!isComment) {
                 // Assigned on every [Peer]: the name comes from the last peer, the one WireGuard.parseFromLink keeps.
@@ -1197,141 +1197,5 @@ object ProfileImport {
     /** ConfigEntry of Parser::vpnLink (SubscriptionParser.cpp:669-673): one config document of a `containers` export. */
     private class VpnConfigEntry(val conf: String, val containerType: String, val isWireGuard: Boolean)
 
-    /** Subscription::scan (include/configs/sub/SubscriptionScan.hpp) on strings. */
-    internal object Scan {
-        private fun isSpace(c: Char): Boolean =
-            c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\u000B' || c == '\u000C'
 
-        private fun isBase64Char(c: Char): Boolean =
-            c in 'A'..'Z' || c in 'a'..'z' || c in '0'..'9' || c == '+' || c == '/' || c == '='
-
-        private fun isUrlSafeBase64Char(c: Char): Boolean =
-            c in 'A'..'Z' || c in 'a'..'z' || c in '0'..'9' || c == '-' || c == '_' || c == '='
-
-        /** scan::trim: ASCII whitespace and NBSP on both ends, a BOM at the front. */
-        fun trim(s: String): String {
-            var start = 0
-            var end = s.length
-            while (start < end) {
-                val c = s[start]
-                if (isSpace(c) || c == '\u00A0' || c == '\uFEFF') start++ else break
-            }
-            while (end > start) {
-                val c = s[end - 1]
-                if (isSpace(c) || c == '\u00A0') end-- else break
-            }
-            return s.substring(start, end)
-        }
-
-        /** scan::matchingClose: the index of the bracket closing the one at [open], honouring JSON string escapes; -1 when unbalanced. */
-        fun matchingClose(s: String, open: Int): Int {
-            var depth = 0
-            var inString = false
-            var escaped = false
-            var i = open
-            while (i < s.length) {
-                val c = s[i]
-                if (inString) {
-                    when {
-                        escaped -> escaped = false
-                        c == '\\' -> escaped = true
-                        c == '"' -> inString = false
-                    }
-                } else if (c == '"') {
-                    inString = true
-                } else if (c == '{' || c == '[') {
-                    depth++
-                } else if (c == '}' || c == ']') {
-                    if (--depth == 0) return i
-                }
-                i++
-            }
-            return -1
-        }
-
-        /** scan::forEachLine: the segments of QString::split('\n'); [fn] returns false to stop. */
-        fun forEachLine(s: String, fn: (String) -> Boolean) {
-            var idx = 0
-            while (true) {
-                val nl = s.indexOf('\n', idx)
-                if (nl < 0) {
-                    fn(s.substring(idx))
-                    return
-                }
-                if (!fn(s.substring(idx, nl))) return
-                idx = nl + 1
-            }
-        }
-
-        /** scan::forEachItem: one item per line, except that a line opening a bracket yields the whole balanced block. */
-        fun forEachItem(s: String, fn: (String) -> Unit) {
-            val n = s.length
-            var idx = 0
-            while (idx < n) {
-                if (s[idx] == '\n') {
-                    idx++
-                    continue
-                }
-                if (s[idx] == '{' || s[idx] == '[') {
-                    val end = matchingClose(s, idx)
-                    if (end >= 0) {
-                        fn(s.substring(idx, end + 1))
-                        idx = end + 1
-                        continue
-                    }
-                }
-                var nl = s.indexOf('\n', idx)
-                if (nl < 0) nl = n
-                fn(s.substring(idx, nl))
-                idx = nl + 1
-            }
-        }
-
-        fun looksLikeBase64(s: String): Boolean = s.isNotEmpty() && s.all { isBase64Char(it) }
-
-        /** The url-safe alphabet, which only counts when a `-` or `_` proves it is not standard base64. */
-        fun looksLikeUrlSafeBase64(s: String): Boolean =
-            s.isNotEmpty() && s.all { isUrlSafeBase64Char(it) } && s.any { it == '-' || it == '_' }
-
-        /** scan::looksLikeWrappedBase64: one blob wrapped at a fixed column, as `base64` and MIME emit it. */
-        fun looksLikeWrappedBase64(s: String): Boolean {
-            var width = 0
-            var lines = 0
-            var sawShort = false
-            var ok = true
-            forEachLine(s) { raw ->
-                var line = raw
-                while (line.isNotEmpty() && isSpace(line[line.length - 1])) line = line.substring(0, line.length - 1)
-                if (line.isEmpty()) return@forEachLine true
-                if (!line.all { isBase64Char(it) }) {
-                    ok = false
-                    return@forEachLine false
-                }
-                lines++
-                if (width == 0) {
-                    width = line.length
-                    return@forEachLine true
-                }
-                if (line.length > width || sawShort) {
-                    ok = false
-                    return@forEachLine false
-                }
-                if (line.length < width) sawShort = true
-                true
-            }
-            return ok && lines >= 2 && width % 4 == 0
-        }
-
-        /** scan::decodeBase64 (AbortOnBase64DecodingErrors): null when invalid or empty. */
-        fun decodeBase64(s: String): String? = Base64Strict.decode(s)?.takeIf { it.isNotEmpty() }?.let { String(it, Charsets.UTF_8) }
-
-        fun decodeBase64UrlSafe(s: String): String? =
-            Base64Strict.decode(s, urlSafe = true)?.takeIf { it.isNotEmpty() }?.let { String(it, Charsets.UTF_8) }
-
-        /** QByteArray::fromBase64 without abort: characters outside the alphabet (line breaks, padding) are skipped. */
-        fun decodeBase64Lenient(s: String): String? {
-            val filtered = s.filter { it in 'A'..'Z' || it in 'a'..'z' || it in '0'..'9' || it == '+' || it == '/' }
-            return decodeBase64(filtered)
-        }
-    }
 }

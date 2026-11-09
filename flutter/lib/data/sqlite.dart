@@ -6,10 +6,9 @@
 //
 // The alternative, sqflite, is a plugin — and a plugin in this module is not
 // free. `flutter build aar` publishes an AAR whose GeneratedPluginRegistrant the
-// host loads by reflection and, on failure, **swallows**; BboxFlutterActivity's
-// `registerScannerPlugin` exists entirely because of that swallow. A
-// DynamicLibrary has no registrant, so the data plane can leave the channel
-// without adding a second plugin to babysit.
+// host loads by reflection and, on failure, **swallows**. A DynamicLibrary has no
+// registrant, so the data plane can leave the channel without adding a plugin to
+// babysit.
 //
 // Everything here is synchronous, because sqlite3 is: a call blocks whichever
 // isolate made it. The live route-profile read runs on the UI isolate — the

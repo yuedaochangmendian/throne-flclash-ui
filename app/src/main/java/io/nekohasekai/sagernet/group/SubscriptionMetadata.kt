@@ -1,7 +1,7 @@
 package io.nekohasekai.sagernet.group
 
 import io.nekohasekai.sagernet.database.SubUserInfo
-import io.nekohasekai.sagernet.outbound.`import`.ProfileImport
+import io.nekohasekai.sagernet.outbound.`import`.ProfileImportScan
 import io.nekohasekai.sagernet.outbound.link.Base64Strict
 
 /**
@@ -14,7 +14,7 @@ internal object SubscriptionMetadata {
     private const val HEAD_CHARS = 16384
     private const val MAX_INTERVAL_HOURS = 24L * 366
 
-    /** ProfileImport.Scan.trim's character sets: a BOM is trimmed only at the front. */
+    /** ProfileImportScan.trim's character sets: a BOM is trimmed only at the front. */
     private const val TRAILING_TRIM = " \t\n\r\u000B\u000C\u00A0"
     private const val LEADING_TRIM = "$TRAILING_TRIM\uFEFF"
 
@@ -47,15 +47,15 @@ internal object SubscriptionMetadata {
             info.valid = true
         }
 
-        ProfileImport.Scan.forEachLine(metadataHead(body)) { rawLine ->
-            val line = ProfileImport.Scan.trim(rawLine)
+        ProfileImportScan.forEachLine(metadataHead(body)) { rawLine ->
+            val line = ProfileImportScan.trim(rawLine)
             if (line.isEmpty()) return@forEachLine true
             if (!line.startsWith('#') && !line.startsWith("//")) return@forEachLine false
-            val comment = ProfileImport.Scan.trim(if (line.startsWith("//")) line.substring(2) else line.substring(1))
+            val comment = ProfileImportScan.trim(if (line.startsWith("//")) line.substring(2) else line.substring(1))
             val colon = comment.indexOf(':')
             if (colon < 0) return@forEachLine true
-            val key = ProfileImport.Scan.trim(comment.substring(0, colon))
-            val value = ProfileImport.Scan.trim(comment.substring(colon + 1))
+            val key = ProfileImportScan.trim(comment.substring(0, colon))
+            val value = ProfileImportScan.trim(comment.substring(colon + 1))
             fun has(prefix: String) = key.startsWith(prefix, ignoreCase = true)
             when {
                 !userInfoSeen && has("subscription-userinfo") -> {
@@ -149,7 +149,7 @@ internal object SubscriptionMetadata {
         while (end > start && body[end - 1] in TRAILING_TRIM) end--
         val head = body.substring(start, minOf(end, start + HEAD_CHARS))
         val compact = head.filterNot { it == ' ' || it == '\t' || it == '\n' || it == '\r' || it == '\u000B' || it == '\u000C' }
-        if (compact.isEmpty() || !ProfileImport.Scan.looksLikeBase64(compact)) return head
+        if (compact.isEmpty() || !ProfileImportScan.looksLikeBase64(compact)) return head
         return String(Base64Strict.decodeLenient(compact.substring(0, compact.length and 3.inv())), Charsets.UTF_8)
     }
 }
