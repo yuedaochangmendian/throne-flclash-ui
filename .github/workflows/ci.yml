@@ -1,9 +1,13 @@
 name: CI
 on:
+  # Feature branches are validated through their PR only. Running both push and
+  # pull_request for every branch duplicated the same jobs and artifact uploads.
   push:
     branches:
-      - '**'
+      - main
   pull_request:
+    branches:
+      - main
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true

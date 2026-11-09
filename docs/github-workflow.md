@@ -63,7 +63,7 @@
 
 | workflow | 触发 | 职责 | 对外产物 |
 |---|---|---|---|
-| `ci.yml` | push / PR | 静态分析、单测、契约审计 | 无（报告 artifact） |
+| `ci.yml` | push `main` / PR to `main` | 静态分析、单测、契约审计；功能分支只跑 PR，避免 push/PR 双份验证 | 无（报告 artifact） |
 | `release.yml` | CI `workflow_run` / `workflow_dispatch` / push `v*` tag | CI 成功后自动发布 preview，并统一处理手动 preview/stable，构建、签名、生成资产、创建 release | GitHub release / prerelease |
 | `governance.yml` | 定时 / 手动 / 治理文件改动 | 校验仓库状态是否符合本文 | Step Summary |
 
