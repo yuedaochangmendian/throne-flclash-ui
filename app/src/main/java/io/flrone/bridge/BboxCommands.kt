@@ -18,6 +18,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -155,6 +156,44 @@ object BboxCommands : BboxActions {
             )
             if (started) watchTestSession()
         }
+    }
+
+    /**
+     * The proxy page's card and group actions need the call to live for as long
+     * as the spinner should. Resolve the same target as the fire-and-forget
+     * [testGroup] / [testProxy] paths, start one session, and answer once that
+     * session has finished.
+     */
+    suspend fun testNodeAwait(tag: String): Boolean {
+        val target = withContext(Dispatchers.IO) {
+            val groups = GroupRepo.all()
+            val group = groups.firstOrNull { it.displayName() == tag }
+            if (group != null) {
+                val ids = ProfileManager.memberIds(group.id)
+                return@withContext if (ids.isEmpty()) null else {
+                    TestSpec(
+                        kind = TestSpec.KIND_URL,
+                        profileIds = ids.toLongArray(),
+                        scopeLabel = group.displayName(),
+                    ) to group.id
+                }
+            }
+            val owner = groups.firstOrNull { candidate ->
+                ProfileManager.members(candidate.id).any { it.displayName() == tag }
+            } ?: return@withContext null
+            val profile = ProfileManager.members(owner.id).firstOrNull { it.displayName() == tag }
+                ?: return@withContext null
+            TestSpec(
+                kind = TestSpec.KIND_URL,
+                profileIds = longArrayOf(profile.id),
+                scopeLabel = profile.displayName(),
+            ) to profile.groupId
+        } ?: return false
+        val started = TestSessionClient.start(target.first, target.second)
+        if (!started) return false
+        watchTestSession()
+        TestSessionClient.state.first { !it.running }
+        return true
     }
 
     override fun refreshEgress() {

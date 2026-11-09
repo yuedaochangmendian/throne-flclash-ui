@@ -262,7 +262,7 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
           if (!_isRaw) ListItem(
             leading: const GlyphIcon(AppGlyphs.code),
             title: Text(context.tr('Import rules from JSON')),
-            subtitle: Text(context.tr('Paste a sing-box fragment carrying route or DNS rules; it is checked against the schema first.')),
+            subtitle: Text(context.tr('Paste a sing-box fragment carrying route or DNS rules; both are recognised automatically and checked against the schema first.')),
             onTap: () async {
               // The JSON importer uses the same multiline dialog as the
               // per-line rule fields, rather than a separate full-page sheet.

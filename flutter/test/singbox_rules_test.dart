@@ -88,6 +88,21 @@ void main() {
       expect(dns.dnsRules, hasLength(1));
     });
 
+    test('a mixed bare array is classified automatically without a rule kind', () async {
+      const text = '''
+        {"rules": [
+          {"domain": ["app.example"], "outbound": "proxy"},
+          {"query_type": ["A"], "domain_suffix": ["dns.example"], "server": "remote"}
+        ]}
+      ''';
+      final result = await run(text);
+      expect(result.routeRules, hasLength(1));
+      expect(result.dnsRules, hasLength(1));
+      expect(result.routeRules.single['domain'], ['app.example']);
+      expect(result.dnsRules.single['server'], 'remote');
+      expect(result.problems, isEmpty);
+    });
+
     test('a non-object, non-array fragment is refused', () async {
       final result = await run('"just a string"');
       expect(result.error, isNotNull);

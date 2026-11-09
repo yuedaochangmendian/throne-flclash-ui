@@ -127,6 +127,7 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
       // rather than an exit, so the card keeps the address, region and carrier and skips the check.
       final direct = result['direct'] == true;
       setState(() { _egress = result.isEmpty ? null : result; _checking = false; _qualityChecking = ip != null && !direct; });
+      _detailsRevision.value++;
       if (ip == null || direct) return;
       try {
         // The transport opens its native session on first get, so the lookup works on both the
@@ -422,11 +423,21 @@ class EgressDetails extends StatelessWidget {
     // One row, not two: show the source that actually answered (the quality lookup
     // when it ran, otherwise the egress probe), never both side by side.
     'IP source': info['source'] ?? info['ipSource'],
-    'Last checked': localDate(info['qualityCheckedAt'] ?? info['checkedAt'])}),
+    'Last checked': localDate(_latestCheckTimestamp(info))}),
     if (info['qualityError'] != null) generateSection(title: context.tr('IP quality unavailable'), items: [
       for (final failure in rows(info['qualityFailures'])) ListItem(title: Text(failure['source'].toString()),
         trailing: Text(context.tr({'noType': 'No type data', 'timeout': 'Timeout', 'rateLimited': 'Rate limited',
           'failed': 'Unavailable', 'ipMismatch': 'IP mismatch'}[failure['status']] ?? 'Unavailable'), style: context.listValueStyle)),
     ]),
   ]);
+}
+
+/// The IP probe refreshes more often than the quality cache; "last checked" is
+/// whichever answer reached this card most recently, not an older quality hit.
+num? _latestCheckTimestamp(Json info) {
+  final quality = info['qualityCheckedAt'] as num?;
+  final checked = info['checkedAt'] as num?;
+  if (quality == null) return checked;
+  if (checked == null) return quality;
+  return quality > checked ? quality : checked;
 }

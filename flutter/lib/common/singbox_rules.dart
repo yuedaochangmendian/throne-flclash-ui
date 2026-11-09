@@ -11,7 +11,9 @@ import '../ui/json/engine/schema_document.dart';
 import '../ui/json/engine/schema_store.dart';
 import '../ui/json/engine/schema_validator.dart';
 
-/// Which rule list a fragment describes when the JSON itself does not name its container.
+/// The list a bare, structurally ambiguous rule is assumed to belong to. Explicit `route` and
+/// `dns` containers, and rules carrying DNS-only members such as `query_type` or `server`, are
+/// classified automatically regardless of this fallback.
 enum RuleImportKind { route, dns }
 
 /// One rule the importer left out, and why. [rule] is "rule #N" in the fragment's own order.
@@ -88,6 +90,15 @@ const _ruleMarkers = {
   'process_name', 'process_path', 'package_name', 'server', 'query_type',
 };
 
+/// Members that only a DNS rule can carry (ordinary route rules use `outbound` instead of
+/// `server`). These are enough to separate mixed bare arrays without asking for a rule kind.
+const _dnsOnlyMarkers = {
+  'query_type', 'query_client_subnet', 'query_dnssec', 'server', 'response_rcode',
+  'response_answer', 'response_ns', 'response_extra', 'match_response',
+};
+
+const _routeOnlyActions = {'sniff', 'resolve', 'hijack-dns', 'bypass'};
+
 bool _looksLikeRule(Map<dynamic, dynamic> map) => _ruleMarkers.any(map.containsKey);
 
 /// A rule this build cannot store, with the reason shown in the preview.
@@ -151,7 +162,7 @@ class RuleImporter {
   /// The rule list(s) the document names, plus the schema node that describes its shape.
   _Shape _shape(Object? plain, RuleImportKind kind) {
     if (plain is List) {
-      return _Shape.single(plain, kind);
+      return _Shape.rules(plain, kind, list: true);
     }
     if (plain is! Map) {
       return const _Shape.error('The fragment must be a JSON object or an array of rules');
@@ -180,10 +191,10 @@ class RuleImporter {
     final rules = plain['rules'];
     // A logical rule carries its own `rules` array; only a bare container is a list of rules.
     if (rules is List && !_looksLikeRule(plain)) {
-      return _Shape.single(rules, kind);
+      return _Shape.rules(rules, kind, list: true);
     }
-    // A bare rule object: one rule of the chosen kind.
-    return _Shape.rule(plain, kind);
+    // A bare rule object: classify from its members, falling back to the page it was opened from.
+    return _Shape.rules([plain], kind, list: false);
   }
 
   List<Object?> _rulesOf(Map<dynamic, dynamic> container) {
@@ -286,28 +297,47 @@ class _Shape {
   const _Shape({required this.route, required this.dns, required this.schemaNode}) : error = null;
   const _Shape.error(this.error) : route = const [], dns = const [], schemaNode = null;
 
-  factory _Shape.single(List<Object?> rules, RuleImportKind kind) {
-    final ref = kind == RuleImportKind.dns ? SchemaStore.dnsRule : SchemaStore.rule;
-    return _Shape(route: kind == RuleImportKind.dns ? const [] : rules, dns: kind == RuleImportKind.dns ? rules : const [], schemaNode: {
-      'type': 'array',
-      'items': {r'$ref': ref},
-    });
-  }
-
-  /// One rule object at the document root: the schema describes the object itself, not an array.
-  factory _Shape.rule(Object? rule, RuleImportKind kind) {
-    final ref = kind == RuleImportKind.dns ? SchemaStore.dnsRule : SchemaStore.rule;
-    return _Shape(
-      route: kind == RuleImportKind.dns ? const [] : [rule],
-      dns: kind == RuleImportKind.dns ? [rule] : const [],
-      schemaNode: {r'$ref': ref},
-    );
+  factory _Shape.rules(List<Object?> rules, RuleImportKind fallback, {required bool list}) {
+    final route = <Object?>[];
+    final dns = <Object?>[];
+    for (final rule in rules) {
+      final map = rule is Map ? rule : null;
+      if (map != null && _looksLikeDnsRule(map, fallback)) {
+        dns.add(rule);
+      } else if (map == null && fallback == RuleImportKind.dns) {
+        dns.add(rule);
+      } else {
+        route.add(rule);
+      }
+    }
+    final onlyRoute = dns.isEmpty && route.isNotEmpty;
+    final onlyDns = route.isEmpty && dns.isNotEmpty;
+    final ref = onlyDns ? SchemaStore.dnsRule : SchemaStore.rule;
+    final schemaNode = onlyRoute || onlyDns
+        ? list
+            ? {'type': 'array', 'items': {r'$ref': ref}}
+            : {r'$ref': ref}
+        : null;
+    return _Shape(route: route, dns: dns, schemaNode: schemaNode);
   }
 
   final List<Object?> route;
   final List<Object?> dns;
   final Map<String, dynamic>? schemaNode;
   final String? error;
+}
+
+bool _looksLikeDnsRule(Map<dynamic, dynamic> rule, RuleImportKind fallback) {
+  if (_dnsOnlyMarkers.any(rule.containsKey)) return true;
+  if (rule.containsKey('outbound')) return false;
+  final action = _text(rule['action']);
+  if (_routeOnlyActions.contains(action)) return false;
+  final nested = rule['rules'];
+  if (rule['type'] == 'logical' && nested is List && nested.any((item) =>
+      item is Map && _dnsOnlyMarkers.any(item.containsKey))) {
+    return true;
+  }
+  return fallback == RuleImportKind.dns;
 }
 
 /// A list member as strings: sing-box writes arrays, but a single value is accepted too.

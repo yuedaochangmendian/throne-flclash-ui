@@ -240,7 +240,10 @@ void main() {
     await tester.pumpAndSettle();
     events.add({'type': 'groups', 'value': [{
       'tag': 'Group A', 'selected': 'Node A', 'selectable': true,
-      'items': [{'id': 10, 'tag': 'Node A', 'type': 'direct', 'delay': 12, 'testedAt': 1}],
+      'items': [
+        {'id': 10, 'tag': 'Node A', 'type': 'direct', 'delay': 12, 'testedAt': 1},
+        {'id': 11, 'tag': 'Node B', 'type': 'direct', 'delay': 30, 'testedAt': 1},
+      ],
     }]});
     await tester.pumpAndSettle();
     await tester.tap(find.text('Proxies').last);
@@ -250,9 +253,25 @@ void main() {
     await tester.pump();
     expect(tested, isTrue);
     expect(find.byKey(const ValueKey('proxy-test-running')), findsOneWidget);
+    events.add({'type': 'testSession', 'value': {
+      'kind': 0, 'running': true,
+      'rows': [
+        {'id': 10, 'phase': 'TESTING'}, {'id': 11, 'phase': 'QUEUED'},
+      ],
+    }});
+    await tester.pump();
+    expect(find.byKey(const ValueKey('proxy-test-running')), findsOneWidget);
+    expect(find.byKey(const ValueKey('glyph:ProxyTestPhase.queued')), findsOneWidget);
 
     testDone.complete(null);
-    await tester.pumpAndSettle();
+    events.add({'type': 'testSession', 'value': {
+      'kind': 0, 'running': false,
+      'rows': [
+        {'id': 10, 'phase': 'DONE'}, {'id': 11, 'phase': 'DONE'},
+      ],
+    }});
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
     expect(find.byKey(const ValueKey('proxy-test-running')), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
@@ -284,6 +303,21 @@ void main() {
     expect(find.text('Test kind'), findsNothing);
     expect(find.text('IP check'), findsNothing);
     expect(find.text('Scope'), findsNothing);
+    events.add({'type': 'testSession', 'value': {
+      'kind': 2, 'running': false, 'speed': {
+        'profileId': 10, 'name': 'Node A', 'stage': 'Complete',
+        'dlBps': 8000000, 'ulBps': 3000000, 'pingMs': 42,
+        'samples': [[0, 3000000, false], [1, 8000000, false], [2, 3000000, true]],
+      },
+    }});
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(find.text('Last speed test'), findsOneWidget);
+    expect(find.byKey(const ValueKey('speed-curve')), findsOneWidget);
+    final download = tester.widget<LineChart>(find.byKey(const ValueKey('speed-download-curve')));
+    final upload = tester.widget<LineChart>(find.byKey(const ValueKey('speed-upload-curve')));
+    expect(upload.values.any((value) => value > 0), isTrue);
+    expect(upload.color, isNot(download.color));
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     await events.close();

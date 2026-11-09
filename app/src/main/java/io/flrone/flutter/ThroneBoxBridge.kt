@@ -422,8 +422,7 @@ class ThroneBoxBridge(
                 }
                 "groups.test" -> {
                     val tag = call.argument<String>("tag") ?: error("Missing tag")
-                    testNode(tag)
-                    result.success(null)
+                    result.respond { BboxCommands.testNodeAwait(tag) }
                 }
                 // The batch test panel over TestSessionClient: one session at a time, state pushed
                 // while the panel is visible (groups.testSession.visible opens the feed).
@@ -1079,19 +1078,6 @@ class ThroneBoxBridge(
             Logs.w(e)
             result.error("failed", e.message ?: e.javaClass.simpleName, null)
         }
-    }
-
-    /** Tests the group the node belongs to, since Throne measures latency per profile. */
-    private fun testNode(tag: String) {
-        val group = BboxBridge.state.value.dashboard.groups.firstOrNull { it.tag == tag }
-        if (group != null) {
-            BboxCommands.testGroup(group.tag)
-            return
-        }
-        val owner = BboxBridge.state.value.dashboard.groups.firstOrNull { candidate ->
-            candidate.nodes.any { it.tag == tag }
-        } ?: return
-        BboxCommands.testProxy(owner.tag, tag)
     }
 
     // -------------------------------------------------------------------------------------------- live views

@@ -338,6 +338,24 @@ void main() {
     });
   }
 
+  testWidgets('IP details show the newest check even when a quality answer is older', (tester) async {
+    final dashboard = _Dashboard()..autoQuality = true;
+    await dashboard.mount(tester);
+    await tester.pumpAndSettle();
+    final checkedAt = DateTime(2026, 11, 9, 12, 30);
+    final qualityAt = checkedAt.subtract(const Duration(hours: 2));
+    openPage(tester.element(find.byType(HomePage)), EgressDetails(info: {
+      'ip': '203.0.113.9', 'country': 'GB', 'organization': 'Example Business',
+      'type': 'business', 'quality': 'Good', 'source': 'ident.me',
+      'checkedAt': checkedAt.millisecondsSinceEpoch,
+      'qualityCheckedAt': qualityAt.millisecondsSinceEpoch,
+    }));
+    await tester.pumpAndSettle();
+    expect(find.text(localDate(checkedAt.millisecondsSinceEpoch)), findsOneWidget);
+    expect(find.text(localDate(qualityAt.millisecondsSinceEpoch)), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('quality failure retains the IP and the badge retries immediately', (tester) async {
     final dashboard = _Dashboard()..failQuality = true;
     await dashboard.mount(tester);

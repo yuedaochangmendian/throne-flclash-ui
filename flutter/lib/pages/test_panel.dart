@@ -127,9 +127,18 @@ class _TestPanelPageState extends State<TestPanelPage> {
       final list = sample as List;
       return [((list[0] as num).toDouble()), ((list[1] as num).toDouble()), list[2] == true];
     }).toList();
-    final peak = samples.fold<double>(1.0, (peak, sample) => math.max(peak, (sample[1] as num).toDouble()));
+    final download = [for (final sample in samples) sample[2] == true ? 0.0 : sample[1] as double];
+    final upload = [for (final sample in samples) sample[2] == true ? sample[1] as double : 0.0];
+    final peak = samples.fold<double>(1.0, (peak, sample) => math.max(peak, sample[1] as double));
+    final running = session['running'] == true;
+    final downloadColor = context.colorScheme.primary;
+    final uploadColor = context.colorScheme.tertiary;
     String bps(value) => value > 1e6 ? '${(value / 1e6).toStringAsFixed(1)} Mbps' : '${(value / 1e3).toStringAsFixed(0)} kbps';
-    return generateSection(title: context.tr('Testing now'), items: [
+    Widget legend(String label, double value, Color color) => Text(
+      '● ${context.tr(label)}: ${bps(value)}',
+      style: context.listCaptionStyle.copyWith(color: color),
+    );
+    return generateSection(title: context.tr(running ? 'Testing now' : 'Last speed test'), items: [
       DecorationListItem(contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10), title: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 8,
         children: [
@@ -139,18 +148,29 @@ class _TestPanelPageState extends State<TestPanelPage> {
             Text(speed['stage']?.toString() ?? '', style: context.listCaptionStyle),
           ]),
           Wrap(spacing: 12, children: [
-            Text('${context.tr('Download')}: ${bps((speed['dlBps'] as num? ?? 0).toDouble())}'),
-            Text('${context.tr('Upload')}: ${bps((speed['ulBps'] as num? ?? 0).toDouble())}'),
+            legend('Download', (speed['dlBps'] as num? ?? 0).toDouble(), downloadColor),
+            legend('Upload', (speed['ulBps'] as num? ?? 0).toDouble(), uploadColor),
             if ((speed['pingMs'] as num? ?? 0) > 0) Text('${speed['pingMs']} ms'),
           ]),
           if (speed['server']?.toString().isNotEmpty == true)
             Text('${speed['server']} (${speed['serverCountry']})', style: context.listCaptionStyle),
-          SizedBox(height: 72, child: LineChart(
-            key: ValueKey(speed['profileId']),
-            values: [for (final sample in samples) (sample[1] as double) / peak],
-            revision: samples.length, capacity: 600, minScale: 0.1, baselineRatio: 1,
-            color: context.colorScheme.primary,
-          )),
+          // The vendored chart is single-series; two copies share the same
+          // normalized peak and overlay, keeping line_chart.dart identical to
+          // its Prism baseline.
+          SizedBox(height: 72, child: Stack(key: const ValueKey('speed-curve'), children: [
+            Positioned.fill(child: LineChart(
+              key: const ValueKey('speed-download-curve'),
+              values: [for (final value in download) value / peak],
+              revision: samples.length, capacity: 600, minScale: 1, baselineRatio: 1,
+              color: downloadColor,
+            )),
+            Positioned.fill(child: LineChart(
+              key: const ValueKey('speed-upload-curve'),
+              values: [for (final value in upload) value / peak],
+              revision: samples.length, capacity: 600, minScale: 1, baselineRatio: 1,
+              color: uploadColor,
+            )),
+          ])),
         ],
       )),
     ]);
@@ -262,7 +282,9 @@ class _TestPanelPageState extends State<TestPanelPage> {
               generateSection(title: context.tr('Latency histogram'), items: [
                 DecorationListItem(contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), title: _histogram(session)),
               ]),
-            if (session['speed'] != null && session['running'] == true) _speedLive(session),
+            // Keep the finished graph in the panel until the session is dismissed so the two
+            // curves and their final figures remain inspectable after the test stops.
+            if (session['speed'] != null) _speedLive(session),
             if (ranking.isNotEmpty) generateSection(title: context.tr('Fastest servers'), items: [
               for (final (index, ranked) in ranking.indexed)
                 ListItem(

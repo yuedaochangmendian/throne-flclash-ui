@@ -306,6 +306,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Import rules from JSON'), findsWidgets);
     expect(find.textContaining('Paste a sing-box fragment'), findsWidgets);
+    expect(find.text('Rule kind'), findsNothing);
 
     final editor = find.byKey(const Key('rule-import-field'));
     await tester.enterText(editor, '{"domain_suffix": ["a.com"], "outbound": "proxy"}');
