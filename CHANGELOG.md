@@ -2,6 +2,7 @@
 
 Development notes for the next release. This section will be finalized once the 3.3.1 post-release device matrix and the 3.3.2 scope are closed.
 
+* **GitHub delivery now skips redundant work.** ThroneCore restores its AAR cache before cloning the pinned core; docs-only changes take a lightweight CI path; automatic previews skip commits with no app or build-input changes since the latest release tag; CI artifacts upload only on `main` or failure; and the governance audit runs weekly instead of daily
 * **Speed tiles and delay tests follow FlClash.** The dashboard keeps FlClash's 1.45 tile ratio with the traffic chart filling the area under the title. Queued proxies show a clock, the running group shows a spinner, finished nodes show their delay, and Test all runs as a visible queue in both grid and list layouts
 * **Rule JSON import uses the same multiline dialog as rule fields.** The import flow opens in the same title/description/text-field/action layout as the IP CIDR editor, while retaining schema parsing and the route/DNS preview
 * **The Kotlin bridge namespace is now `io.flrone`.** Core, model, bridge, Flutter host, manifest, ProGuard rules, tests, JNI names, audit scripts and live docs moved from `io.throne.bbox`; the existing `io.flrone/box` MethodChannel is unchanged
