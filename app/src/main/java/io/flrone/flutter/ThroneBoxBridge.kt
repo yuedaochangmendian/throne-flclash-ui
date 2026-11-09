@@ -1685,21 +1685,7 @@ class ThroneBoxBridge(
     }
 
     private fun profilesWire(state: BboxUiState): List<Map<String, Any?>> =
-        state.profiles.map { profile ->
-            mapOf(
-                "id" to profile.id.toInt(),
-                "name" to profile.name,
-                "type" to profile.type,
-                "remote" to (profile.type == "subscription"),
-                "url" to profile.url,
-                "traffic" to profile.traffic,
-                "expiry" to profile.expiry,
-                "selected" to profile.selected,
-                "updatedAt" to profile.updatedAt,
-                "autoUpdate" to profile.autoUpdate,
-                "interval" to profile.interval,
-            )
-        }
+        BboxProfileWire.profiles(state.profiles)
 
     /**
      * The groups the UI renders. [withItems] is false until the Proxies screen asks for them; the

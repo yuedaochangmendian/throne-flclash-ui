@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Fail the Flutter test job when line coverage drops below a floor.
 
-Usage: coverage_gate.py <path/to/lcov.info> --min <percent> [--min-dir DIR:PERCENT ...] [--report-dirs]
+Usage: coverage_gate.py <path/to/lcov.info> --min <percent> [--exclude GLOB ...]
+       [--min-dir DIR:PERCENT ...] [--min-file FILE:PERCENT ...] [--report-dirs]
 
 The floor starts deliberately low: it is a regression guard for "the suite
 stopped running" and "coverage collapsed", not a target to optimise for. Raise
@@ -17,6 +18,7 @@ breaks CI on the day it lands.
 """
 
 import argparse
+import fnmatch
 import sys
 from pathlib import Path
 
@@ -56,11 +58,25 @@ def main() -> int:
     parser.add_argument("lcov", type=Path)
     parser.add_argument("--min", type=float, default=0.0, help="minimum line coverage in percent")
     parser.add_argument(
+        "--exclude",
+        action="append",
+        default=[],
+        metavar="GLOB",
+        help="exclude matching lcov SF paths from the overall and per-directory floors",
+    )
+    parser.add_argument(
         "--min-dir",
         action="append",
         default=[],
         metavar="DIR:PERCENT",
         help="minimum line coverage in percent for every file under DIR (lcov SF prefix, e.g. lib/data:80)",
+    )
+    parser.add_argument(
+        "--min-file",
+        action="append",
+        default=[],
+        metavar="FILE:PERCENT",
+        help="minimum line coverage for one exact lcov SF path",
     )
     parser.add_argument(
         "--report-dirs",
@@ -74,6 +90,11 @@ def main() -> int:
         return 1
 
     files = parse_lcov(args.lcov)
+    if args.exclude:
+        files = {
+            path: value for path, value in files.items()
+            if not any(fnmatch.fnmatchcase(path, pattern) for pattern in args.exclude)
+        }
     if not files:
         print(f"::error::{args.lcov} has no LF records: did 'flutter test --coverage' run?")
         return 1
@@ -102,6 +123,22 @@ def main() -> int:
         print(f"line coverage [{directory}]: {hit}/{found} = {covered:.2f}% (floor {floor:.2f}%)")
         if covered < floor:
             problems.append(f"{directory} coverage {covered:.2f}% is below the {floor:.2f}% floor")
+
+    for spec in args.min_file:
+        try:
+            file_path, _, raw_floor = spec.rpartition(":")
+            floor = float(raw_floor)
+        except ValueError:
+            problems.append(f"--min-file {spec!r} is not FILE:PERCENT")
+            continue
+        if file_path not in files:
+            problems.append(f"--min-file {file_path}: no lcov record")
+            continue
+        found, hit = files[file_path]
+        covered = percent(hit, found)
+        print(f"line coverage [{file_path}]: {hit}/{found} = {covered:.2f}% (floor {floor:.2f}%)")
+        if covered < floor:
+            problems.append(f"{file_path} coverage {covered:.2f}% is below the {floor:.2f}% floor")
 
     if args.report_dirs:
         groups: dict[str, list[int]] = {}
