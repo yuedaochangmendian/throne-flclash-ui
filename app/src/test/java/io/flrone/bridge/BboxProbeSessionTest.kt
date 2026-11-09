@@ -21,6 +21,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
 import kotlin.reflect.KClass
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
@@ -31,16 +32,18 @@ import java.util.concurrent.atomic.AtomicInteger
 class BboxProbeSessionTest {
     private class FakeCall(private val executeAction: (FakeCall) -> Response) : Call {
         private val originalRequest = Request.Builder().url("https://probe.invalid/").build()
+        private val tags = ConcurrentHashMap<KClass<*>, Any>()
         val executions = AtomicInteger()
         val cancellations = AtomicInteger()
         val cancelled = CountDownLatch(1)
 
         override fun request(): Request = originalRequest
-        override fun <T : Any> tag(type: KClass<T>): T? = originalRequest.tag(type)
+        override fun <T : Any> tag(type: KClass<T>): T? = tags[type] as? T
+        override fun <T> tag(type: Class<out T>): T? = tags[type.kotlin] as? T
         override fun <T : Any> tag(type: KClass<T>, computeIfAbsent: () -> T): T =
-            originalRequest.tag(type, computeIfAbsent)
+            tags.computeIfAbsent(type) { computeIfAbsent() } as T
         override fun <T : Any> tag(type: Class<T>, computeIfAbsent: () -> T): T =
-            originalRequest.tag(type, computeIfAbsent)
+            tag(type.kotlin, computeIfAbsent)
         override fun execute(): Response {
             executions.incrementAndGet()
             return executeAction(this)
