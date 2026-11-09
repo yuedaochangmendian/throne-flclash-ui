@@ -6,11 +6,10 @@
 
 1. 在 `nb4a.properties` 递增 `VERSION_NAME` / `VERSION_CODE`，在 `CHANGELOG.md` 顶部补对应版本段落（`buildScript/release_notes.sh` 会从这里取正文，缺失会在构建前失败）。
 2. 推送到 `main`，等 CI 全绿（Kotlin 单测 + debug 构建 + cgo preamble 检查 + `flutter analyze --fatal-infos` + `flutter test --coverage` + 各契约审计）。
-3. 触发发布：
-   - 预览：`gh workflow run release.yml --ref main -f channel=preview`，创建 `v<VERSION_NAME>-pre.N` GitHub prerelease（同正式包名，无 `throne-update.json`）
-   - 正式版二选一：`gh workflow run release.yml --ref main -f channel=stable -f publish=true`，或推送 `v<VERSION_NAME>` tag（工作流监听 `push.tags: v*`）
-4. `buildScript/publish_release.sh` 负责创建/复用发行版：每次写操作重试 3 次（间隔 15s），已存在的 release/draft 改为上传资产并取消草稿，最后打印资产清单。
-5. 核对：`gh release view <tag> --json tagName,name,isPrerelease,isDraft,targetCommitish,assets`。stable 必须非 prerelease、名称等于 tag、5 个资产齐全（3 个 ABI APK + `SHA256SUMS` + `throne-update.json`）；preview 必须标记 prerelease、名称等于 tag，且不得带 `throne-update.json`。
+3. CI 成功后，`release.yml` 的 `workflow_run` 会自动以 `channel=preview` 发布 `v<VERSION_NAME>-pre.N` GitHub prerelease（同正式包名，无 `throne-update.json`）。若触发提交已不是当前 `main`，或该 tag 已存在，自动发布会安全跳过。
+4. 正式版二选一：`gh workflow run release.yml --ref main -f channel=stable -f publish=true`，或推送 `v<VERSION_NAME>` tag（工作流监听 `push.tags: v*`）。手动触发预览仍可用于补发：`gh workflow run release.yml --ref main -f channel=preview`。
+5. `buildScript/publish_release.sh` 负责创建/复用发行版：每次写操作重试 3 次（间隔 15s），已存在的 release/draft 改为上传资产并取消草稿，最后打印资产清单。
+6. 核对：`gh release view <tag> --json tagName,name,isPrerelease,isDraft,targetCommitish,assets`。stable 必须非 prerelease、名称等于 tag、5 个资产齐全（3 个 ABI APK + `SHA256SUMS` + `throne-update.json`）；preview 必须标记 prerelease、名称等于 tag，且不得带 `throne-update.json`。
 
 只想要 APK、不创建 Release 时，用 `release.yml -f channel=preview|stable -f publish=false`，产物以 `Flrone-<tag>` artifact 上传（保留 14 天）。发布失败时工作流保留 `Flrone-<tag>-publish-failed` 兜底 artifact。
 
