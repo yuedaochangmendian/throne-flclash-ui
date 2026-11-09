@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flrone/main.dart';
-import 'package:flrone/pages/auto_selector.dart';
 import 'package:flrone/pages/group_settings.dart';
 import 'package:flrone/pages/protocol_form.dart';
 import 'package:flrone/widgets.dart';
