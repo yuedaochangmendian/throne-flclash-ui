@@ -20,6 +20,7 @@ import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.io.IOException
+import kotlin.reflect.KClass
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.Future
@@ -35,8 +36,10 @@ class BboxProbeSessionTest {
         val cancelled = CountDownLatch(1)
 
         override fun request(): Request = originalRequest
-        override fun <T> tag(type: Class<out T>): T? = originalRequest.tag(type)
-        override fun <T> tag(type: Class<out T>, computeIfAbsent: () -> T): T =
+        override fun <T : Any> tag(type: KClass<T>): T? = originalRequest.tag(type)
+        override fun <T : Any> tag(type: KClass<T>, computeIfAbsent: () -> T): T =
+            originalRequest.tag(type, computeIfAbsent)
+        override fun <T : Any> tag(type: Class<T>, computeIfAbsent: () -> T): T =
             originalRequest.tag(type, computeIfAbsent)
         override fun execute(): Response {
             executions.incrementAndGet()
