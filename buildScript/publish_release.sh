@@ -17,7 +17,14 @@ set -euo pipefail
 : "${GITHUB_SHA:?GITHUB_SHA is required}"
 
 NOTES="${RUNNER_TEMP:-/tmp}/release.md"
-bash buildScript/release_notes.sh "$VERSION_NAME" > "$NOTES"
+NOTES_VERSION="${NOTES_VERSION:-$VERSION_NAME}"
+{
+    if [ "${PRERELEASE:-false}" = "true" ]; then
+        echo "> **Preview build for testing only.** This GitHub prerelease does not replace the stable release and carries no \`throne-update.json\`. Install manually from Releases."
+        echo
+    fi
+    bash buildScript/release_notes.sh "$NOTES_VERSION"
+} > "$NOTES"
 
 retry() {
     local attempt
@@ -64,5 +71,5 @@ else
 fi
 
 echo "published $TAG"
-gh release view "$TAG" --json tagName,isDraft,assets \
-    --jq '{tag: .tagName, draft: .isDraft, assets: [.assets[].name]}'
+gh release view "$TAG" --json tagName,isDraft,isPrerelease,assets \
+    --jq '{tag: .tagName, draft: .isDraft, prerelease: .isPrerelease, assets: [.assets[].name]}'
