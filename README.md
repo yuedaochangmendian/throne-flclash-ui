@@ -90,7 +90,7 @@ Deeplinks are also supported, read the [documentation](https://throneproj.github
   [channel contract audit](tools/diagnostics/channel_audit.py) that fails when a bridge method or event loses an
   end, and a scan proving the freshly built Flutter AAR only calls APIs the pinned kotlin-stdlib/coroutines
   provide.
-- **Releases** (`release.yml`, manual): tag = `VERSION_NAME` from `nb4a.properties`, notes from the matching
+- **Releases** (`release.yml`): a successful `main` CI run automatically publishes the next `-pre.N` prerelease; stable releases remain manual/tag-driven. Tag = `VERSION_NAME` from `nb4a.properties`, notes from the matching
   `CHANGELOG.md` section.
 - **Specs**: `openspec/specs/` holds the governing specifications; changes go through `openspec/changes/`.
 - **Design documents**: [docs/bbox-bridge.md](docs/bbox-bridge.md) (the bridge layer),

@@ -15,6 +15,7 @@ set -euo pipefail
 : "${TAG:?TAG is required}"
 : "${VERSION_NAME:?VERSION_NAME is required}"
 : "${GITHUB_SHA:?GITHUB_SHA is required}"
+TARGET_SHA="${TARGET_SHA:-$GITHUB_SHA}"
 
 NOTES="${RUNNER_TEMP:-/tmp}/release.md"
 NOTES_VERSION="${NOTES_VERSION:-$VERSION_NAME}"
@@ -65,7 +66,7 @@ else
         retry gh release create "$TAG" dist/* --title "$TAG" --notes-file "$NOTES" \
             "${PRERELEASE_FLAG[@]}" || fail_with_artifacts
     else
-        retry gh release create "$TAG" dist/* --target "$GITHUB_SHA" \
+        retry gh release create "$TAG" dist/* --target "$TARGET_SHA" \
             --title "$TAG" --notes-file "$NOTES" "${PRERELEASE_FLAG[@]}" || fail_with_artifacts
     fi
 fi
