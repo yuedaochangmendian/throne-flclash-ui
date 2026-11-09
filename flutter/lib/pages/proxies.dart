@@ -54,18 +54,40 @@ class _ProxiesPageState extends State<ProxiesPage> {
 
   // Testing and selecting both work with the service stopped: a test runs over its own instance of the
   // profile, and a selection is a stored preference the next start reads, so neither waits for the VPN.
-  Future<void> _test(String tag) async {
+  // FlClash gives the group button the filtered/visible rows and the node button exactly one row.
+  Future<void> _test(String tag, {List<int>? profileIds}) async {
     if (_testing.contains(tag) || _queued.contains(tag)) return;
+    if (profileIds != null && profileIds.isEmpty) return;
+    final box = context.box;
     setState(() {
       _sessionRequestedAt = DateTime.now().millisecondsSinceEpoch;
       _testing.add(tag);
     });
     try {
-      await context.box.groupTest(tag).timeout(const Duration(seconds: 60));
+      await box.groupTest(tag, profileIds: profileIds).timeout(const Duration(seconds: 60));
+    } catch (error) {
+      if (mounted) box.report(error);
     } finally {
       if (mounted) setState(() => _testing.remove(tag));
     }
   }
+
+  List<int> _nodeIds(Iterable<Json> nodes) => [
+    for (final node in nodes)
+      if ((node['id'] as num?)?.toInt() case final int id) id,
+  ];
+
+  List<int> _visibleIds(String tag) {
+    final group = context.box.groups.where((item) => item['tag'].toString() == tag).firstOrNull;
+    return group == null ? const [] : _nodeIds(_nodes(group));
+  }
+
+  List<int> _allIds(String tag) {
+    final group = context.box.groups.where((item) => item['tag'].toString() == tag).firstOrNull;
+    return group == null ? const [] : _nodeIds(rows(group['items']));
+  }
+
+  Future<void> _testGroup(String tag) => _test(tag, profileIds: _visibleIds(tag));
 
   Future<void> _select(Json group, Json node) async {
     final box = context.box;
@@ -109,7 +131,8 @@ class _ProxiesPageState extends State<ProxiesPage> {
     };
     return ProxyNodeCard(
       group: group, node: node, phase: phase,
-      onSelect: () => _select(group, node), onTest: () => _test(nodeTag),
+      onSelect: () => _select(group, node),
+      onTest: () => _test(nodeTag, profileIds: id == null ? null : [id]),
     );
   }
 
@@ -174,7 +197,7 @@ class _ProxiesPageState extends State<ProxiesPage> {
       searchState: AppBarSearchState(onSearch: (query) => setState(() => _query = query)),
       primaryAction: list ? null : IconButtonData(glyph: AppGlyphs.bolt, tooltip: context.tr('Test latency'),
         isLoading: _testing.contains(_currentGroup),
-        onPressed: _currentGroup != null ? () => _test(_currentGroup!) : null),
+        onPressed: _currentGroup != null ? () => _testGroup(_currentGroup!) : null),
       iconActions: [
         if (!list) IconButtonData(glyph: AppGlyphs.locate, tooltip: context.tr('Scroll to selected'), onPressed: groups.isEmpty ? null : _locate),
       ],
@@ -193,16 +216,8 @@ class _ProxiesPageState extends State<ProxiesPage> {
           try {
             for (final tag in tags) {
               if (!mounted) return;
-              setState(() {
-                _sessionRequestedAt = DateTime.now().millisecondsSinceEpoch;
-                _queued.remove(tag);
-                _testing.add(tag);
-              });
-              try {
-                await context.box.groupTest(tag).timeout(const Duration(seconds: 60));
-              } finally {
-                if (mounted) setState(() => _testing.remove(tag));
-              }
+              setState(() => _queued.remove(tag));
+              await _test(tag, profileIds: _allIds(tag));
             }
           } finally {
             if (mounted) setState(() => _queued.clear());
@@ -219,7 +234,7 @@ class _ProxiesPageState extends State<ProxiesPage> {
         key: ValueKey(box.remote ? 'remote:${box.dashboard['remote']}' : 'local:${box.selectedProfileId}'),
         profileKey: box.remote ? 'remote:${box.dashboard['remote']}' : 'local:${box.selectedProfileId}',
         groups: [for (final group in groups) ProxyListGroup(group, _nodes(group))],
-        testing: Set.of(_testing), queued: Set.of(_queued), cardBuilder: _card, onTest: _test,
+        testing: Set.of(_testing), queued: Set.of(_queued), cardBuilder: _card, onTest: _testGroup,
       ) : DefaultTabController(
         key: ValueKey(groups.map((group) => '${group['tag'].toString().length}:${group['tag']}').join()),
         initialIndex: groups.indexWhere((group) => group['tag'] == _currentGroup).clamp(0, groups.length - 1),

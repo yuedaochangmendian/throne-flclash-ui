@@ -135,8 +135,16 @@ object BboxCommands : BboxActions {
      * as the spinner should. Resolve the target, start one session, and answer
      * once that session has finished.
      */
-    suspend fun testNodeAwait(tag: String): Boolean {
+    suspend fun testNodeAwait(tag: String, profileIds: List<Long> = emptyList()): Boolean {
         val target = withContext(Dispatchers.IO) {
+            if (profileIds.isNotEmpty()) {
+                val ids = profileIds.distinct()
+                return@withContext TestSpec(
+                    kind = TestSpec.KIND_URL,
+                    profileIds = ids.toLongArray(),
+                    scopeLabel = tag,
+                ) to 0L
+            }
             val groups = GroupRepo.all()
             val group = groups.firstOrNull { it.displayName() == tag }
             if (group != null) {
