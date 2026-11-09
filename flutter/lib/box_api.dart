@@ -136,7 +136,11 @@ extension ReportsApi on BoxController {
 }
 
 extension GroupsApi on BoxController {
-  Future<bool> groupTest(dynamic tag) => act('groups.test', {'tag': tag});
+  Future<bool> groupTest(dynamic tag, {List<int>? profileIds}) {
+    final arguments = <String, dynamic>{'tag': tag};
+    if (profileIds != null) arguments['profileIds'] = profileIds;
+    return act('groups.test', arguments);
+  }
   Future<bool> groupSelect(dynamic group, dynamic tag) async {
     if (kernel.ffiMode) {
       final done = await act('groups.select', {'group': group, 'tag': tag});

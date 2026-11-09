@@ -424,7 +424,10 @@ class ThroneBoxBridge(
                 }
                 "groups.test" -> {
                     val tag = call.argument<String>("tag") ?: error("Missing tag")
-                    result.respond { BboxCommands.testNodeAwait(tag) }
+                    val profileIds = call.argument<List<Any>>("profileIds")
+                        .orEmpty()
+                        .mapNotNull { (it as? Number)?.toLong() }
+                    result.respond { BboxCommands.testNodeAwait(tag, profileIds) }
                 }
                 // The batch test panel over TestSessionClient: one session at a time, state pushed
                 // while the panel is visible (groups.testSession.visible opens the feed).

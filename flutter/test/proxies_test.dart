@@ -37,7 +37,7 @@ void main() {
     await tester.pumpWidget(BoxApp(controller: BoxController(channel: channel, events: events.stream)));
     await tester.pumpAndSettle();
     events.add({'type': 'groups', 'value': [{'tag': 'Large group', 'type': 'Selector', 'selectable': true, 'selected': 'Node 150',
-      'items': [for (var index = 0; index < 200; index++) {'tag': 'Node $index', 'type': 'Direct'}]}]});
+      'items': [for (var index = 0; index < 200; index++) {'id': index + 1, 'tag': 'Node $index', 'type': 'Direct'}]}]});
     await tester.pumpAndSettle();
     await tester.tap(find.text('Proxies').last);
     await tester.pumpAndSettle();
@@ -114,7 +114,8 @@ void main() {
     await tester.pumpWidget(BoxApp(controller: BoxController(channel: channel, events: events.stream)));
     await tester.pumpAndSettle();
     events.add({'type': 'groups', 'value': [for (final tag in ['Group A', 'Group B'])
-      {'tag': tag, 'selected': 'Node $tag', 'selectable': true, 'items': [{'tag': 'Node $tag', 'type': 'direct'}]},
+      {'tag': tag, 'selected': 'Node $tag', 'selectable': true,
+        'items': [{'id': tag == 'Group A' ? 10 : 20, 'tag': 'Node $tag', 'type': 'direct'}]},
     ]});
     await tester.pumpAndSettle();
     await tester.tap(find.text('Proxies').last);
@@ -123,7 +124,9 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Test latency').first);
     await tester.pumpAndSettle();
-    expect((calls.lastWhere((call) => call.method == 'groups.test').arguments as Map)['tag'], 'Group B');
+    final test = calls.lastWhere((call) => call.method == 'groups.test').arguments as Map;
+    expect(test['tag'], 'Group B');
+    expect(test['profileIds'], [20]);
     await tester.drag(find.byType(TabBarView), const Offset(280, 0));
     await tester.pumpAndSettle();
     expect(find.byType(ProxiesPage).hitTestable(), findsOneWidget);
@@ -163,9 +166,12 @@ void main() {
     await tester.tap(find.text('Node B'));
     await tester.pumpAndSettle();
     expect((calls.lastWhere((call) => call.method == 'groups.select').arguments as Map)['tag'], 'Node B');
-    await tester.tap(find.byTooltip('Test latency').first);
+    final nodeCard = find.byWidgetPredicate((widget) => widget is ProxyNodeCard && widget.node['tag'] == 'Node B');
+    await tester.tap(find.descendant(of: nodeCard, matching: find.byKey(const ValueKey('glyph:ProxyTestPhase.idle'))));
     await tester.pumpAndSettle();
-    expect((calls.lastWhere((call) => call.method == 'groups.test').arguments as Map)['tag'], 'Group A');
+    final test = calls.lastWhere((call) => call.method == 'groups.test').arguments as Map;
+    expect(test['tag'], 'Node B');
+    expect(test['profileIds'], [11]);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     await events.close();
