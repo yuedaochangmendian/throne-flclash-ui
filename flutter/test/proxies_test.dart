@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flrone/main.dart';
 import 'package:flrone/pages/proxies.dart';
+import 'package:flrone/pages/test_panel.dart';
 import 'package:flrone/widgets.dart';
 import 'package:flrone/components/proxy_card.dart';
 import 'package:flrone/components/proxy_list.dart';
@@ -207,6 +208,82 @@ void main() {
     final tabContext = tester.element(find.byType(TabBarView));
     expect(DefaultTabController.of(tabContext).index, 2);
     expect(find.text('Group B node 150').hitTestable(), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await events.close();
+  });
+
+  testWidgets('clicking a node delay shows the running spinner until the test completes', (tester) async {
+    reportFlutterErrors();
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final events = StreamController<dynamic>.broadcast();
+    const channel = MethodChannel('test.proxy-delay-animation');
+    final testDone = Completer<dynamic>();
+    var tested = false;
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (call) async {
+      if (call.method == 'ready') {
+        return {'version': 'test', 'coreVersion': 'test',
+          'dashboard': {'status': 'Started'}, 'preferences': {'locale': 'en'}};
+      }
+      if (call.method == 'groups.test') {
+        tested = true;
+        return testDone.future;
+      }
+      return null;
+    });
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+    await tester.pumpWidget(BoxApp(controller: BoxController(channel: channel, events: events.stream)));
+    await tester.pumpAndSettle();
+    events.add({'type': 'groups', 'value': [{
+      'tag': 'Group A', 'selected': 'Node A', 'selectable': true,
+      'items': [{'id': 10, 'tag': 'Node A', 'type': 'direct', 'delay': 12, 'testedAt': 1}],
+    }]});
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Proxies').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('12 ms'));
+    await tester.pump();
+    expect(tested, isTrue);
+    expect(find.byKey(const ValueKey('proxy-test-running')), findsOneWidget);
+
+    testDone.complete(null);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('proxy-test-running')), findsNothing);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox());
+    await events.close();
+  });
+
+  testWidgets('the node speed test panel hides IP check, test kind and scope', (tester) async {
+    reportFlutterErrors();
+    tester.view.physicalSize = const Size(360, 800);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final events = StreamController<dynamic>.broadcast();
+    const channel = MethodChannel('test.proxy-speed-only');
+    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    messenger.setMockMethodCallHandler(channel, (call) async => call.method == 'ready' ? {
+      'version': 'test', 'coreVersion': 'test',
+      'dashboard': {'status': 'Started'}, 'preferences': {'locale': 'en'},
+    } : null);
+    addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
+    await tester.pumpWidget(BoxApp(controller: BoxController(channel: channel, events: events.stream)));
+    await tester.pumpAndSettle();
+    openPage(tester.element(find.byType(HomePage)),
+      const TestPanelPage(speedOnly: true, profileIds: [10], initialSpeedMode: 0));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Speed test'), findsOneWidget);
+    expect(find.text('Speed test mode'), findsOneWidget);
+    expect(find.text('Test kind'), findsNothing);
+    expect(find.text('IP check'), findsNothing);
+    expect(find.text('Scope'), findsNothing);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     await events.close();

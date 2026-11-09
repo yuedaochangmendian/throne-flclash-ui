@@ -6,17 +6,17 @@ import 'dart:async';
 import 'dart:convert';
 
 import '../common/singbox_rules.dart';
-import '../components/code_editor.dart';
 import '../components/form.dart';
 import '../ui/json/engine/json_tree.dart';
 import '../widgets.dart';
+import 'package:material_ui/material_ui.dart' as material;
 
 /// Imports a sing-box JSON fragment. From a route profile it takes route rules into the profile and
 /// DNS rules into the DNS object; from Settings, DNS it takes the DNS rules alone and says where a
 /// route rule it finds belongs. Returns true when something was added.
 ///
-/// Opens as a form sheet (`openForm`), the same presentation as the rule editor
-/// and batch-add dialog, so every rule entry on the routes page is a popup.
+/// Opens as the same multiline editor dialog as the rule fields, so importing a
+/// JSON fragment and editing a rule value share one visual treatment.
 class RuleImportPage extends StatefulWidget {
   const RuleImportPage({super.key, this.profileId});
 
@@ -26,15 +26,42 @@ class RuleImportPage extends StatefulWidget {
   @override State<RuleImportPage> createState() => _RuleImportPageState();
 }
 
+/// The parsed fragment handed back to the page that opened the import dialog.
+class RuleImportRequest {
+  const RuleImportRequest(this.result);
+  final RuleImportResult result;
+}
+
+Future<void> applyRuleImport(BoxController box, RuleImportRequest request, {int? profileId}) async {
+  final result = request.result;
+  if (profileId != null && result.routeRules.isNotEmpty) {
+    final existing = json(await box.routeRules(profileId));
+    final rules = [...rows(existing['rules']), ...result.routeRules];
+    await box.routeSaveRules(profileId, rules);
+  }
+  if (result.dnsRules.isNotEmpty) {
+    final raw = (box.settings['dnsObject'] ?? '').toString().trim();
+    var dns = <String, dynamic>{};
+    if (raw.isNotEmpty) {
+      final parsed = JsonTree.parse(raw);
+      final plain = parsed.root == null ? null : JsonTree.toPlain(parsed.root!);
+      if (plain is! Map) {
+        throw StateError('The DNS object is not a JSON object; fix it in Settings, DNS first');
+      }
+      dns = Map<String, dynamic>.from(plain);
+    }
+    final existing = dns['rules'];
+    dns['rules'] = [if (existing is List) ...existing, ...result.dnsRules];
+    await box.setSetting('dnsObject', jsonEncode(dns));
+  }
+}
+
 class _RuleImportPageState extends State<RuleImportPage> {
-  final _text = JsonCodeController();
-  final _undo = UndoHistoryController();
+  String _input = '';
   Timer? _debounce;
   RuleImportKind _pickedKind = RuleImportKind.route;
   RuleImportResult? _result;
   Map<String, int> _outboundIds = const {};
-  bool _saving = false;
-  String? _error;
 
   /// The DNS page has no profile to add route rules to, so it only ever reads `dns.rules`.
   bool get _dnsOnly => widget.profileId == null;
@@ -44,16 +71,12 @@ class _RuleImportPageState extends State<RuleImportPage> {
   @override
   void initState() {
     super.initState();
-    _text.addListener(_changed);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
   @override
   void dispose() {
     _debounce?.cancel();
-    _text.removeListener(_changed);
-    _text.dispose();
-    _undo.dispose();
     super.dispose();
   }
 
@@ -72,105 +95,83 @@ class _RuleImportPageState extends State<RuleImportPage> {
     } catch (_) {}
   }
 
-  void _changed() {
-    if (!mounted) return;
-    setState(() {});
+  void _changed(String value) {
+    _input = value;
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 300), _parse);
   }
 
   Future<void> _parse() async {
-    final text = _text.text.trim();
+    final text = _input.trim();
     if (text.isEmpty) {
-      if (mounted) setState(() { _result = null; _text.issues = const []; });
+      if (mounted) setState(() { _result = null; });
       return;
     }
     final result = await RuleImporter(outboundIds: _outboundIds).run(text, kind: _kind);
     if (!mounted) return;
     setState(() {
       _result = result;
-      _text.issues = result.issues;
     });
   }
 
   bool get _canImport {
     final result = _result;
-    if (_saving || result == null || result.error != null) return false;
+    if (result == null || result.error != null) return false;
     return _dnsOnly ? result.dnsRules.isNotEmpty : result.total > 0;
-  }
-
-  Future<void> _import() async {
-    final result = _result;
-    if (result == null || !_canImport) return;
-    final box = context.box;
-    final profileId = widget.profileId;
-    setState(() { _saving = true; _error = null; });
-    try {
-      if (profileId != null && result.routeRules.isNotEmpty) {
-        final existing = json(await box.routeRules(profileId));
-        final rules = [...rows(existing['rules']), ...result.routeRules];
-        await box.routeSaveRules(profileId, rules);
-      }
-      if (result.dnsRules.isNotEmpty) await _appendDnsRules(box, result.dnsRules);
-      if (mounted) context.safeNestedPop(true);
-    } catch (error) {
-      if (mounted) setState(() { _saving = false; _error = BoxController.describe(error); });
-    }
-  }
-
-  /// Appends to the DNS object's `rules`. The object is the only place this build keeps `dns.rules`,
-  /// so a profile has no DNS rule list of its own; the page says so when the object is switched off.
-  Future<void> _appendDnsRules(BoxController box, List<Map<String, dynamic>> rules) async {
-    final raw = (box.settings['dnsObject'] ?? '').toString().trim();
-    var dns = <String, dynamic>{};
-    if (raw.isNotEmpty) {
-      final parsed = JsonTree.parse(raw);
-      final plain = parsed.root == null ? null : JsonTree.toPlain(parsed.root!);
-      if (plain is! Map) {
-        throw StateError('The DNS object is not a JSON object; fix it in Settings, DNS first');
-      }
-      dns = Map<String, dynamic>.from(plain);
-    }
-    final existing = dns['rules'];
-    dns['rules'] = [
-      if (existing is List) ...existing,
-      ...rules,
-    ];
-    await box.setSetting('dnsObject', jsonEncode(dns));
   }
 
   @override
   Widget build(BuildContext context) {
     final result = _result;
-    return Scaffold(
-      title: context.tr(_dnsOnly ? 'Import DNS rules' : 'Import rules'),
-      isLoading: _saving,
-      confirmationAction: IconButtonData(
-        glyph: AppGlyphs.check, tooltip: context.tr('Import'),
-        onPressed: _canImport ? _import : null,
-      ),
-      body: Padding(
-        padding: EdgeInsets.only(top: context.appBarInset),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          // The DNS sheet reads `dns.rules` only, so there is no kind to choose.
-          if (!_dnsOnly) generateSection(items: [
-            ListItem(
-              title: Text(context.tr('Rule kind')),
-              subtitle: Text(context.tr(
-                'Used for a bare rule or a bare "rules" array; a fragment with "route" or "dns" says it itself.')),
-              trailing: Text(context.tr(_kind == RuleImportKind.dns ? 'DNS' : 'Route'),
-                style: context.listValueStyle),
-              onTap: _pickKind,
+    return material.Dialog(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: 600, maxHeight: MediaQuery.sizeOf(context).height * .82),
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            Text(context.tr(_dnsOnly ? 'Import DNS rules' : 'Import rules from JSON'),
+              style: AppTextStyle.title3.of(context, emphasized: true)),
+            const SizedBox(height: 12),
+            Flexible(child: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Text(context.tr('Paste a sing-box fragment carrying route or DNS rules; it is checked against the schema first.'),
+                  style: AppTextStyle.caption1.of(context)),
+                if (!_dnsOnly) ...[
+                  const SizedBox(height: 10),
+                  generateSection(items: [
+                    ListItem(
+                      title: Text(context.tr('Rule kind')),
+                      subtitle: Text(context.tr(
+                        'Used for a bare rule or a bare "rules" array; a fragment with "route" or "dns" says it itself.')),
+                      trailing: Text(context.tr(_kind == RuleImportKind.dns ? 'DNS' : 'Route'),
+                        style: context.listValueStyle),
+                      onTap: _pickKind,
+                    ),
+                  ]),
+                ],
+                const SizedBox(height: 10),
+                SizedBox(height: 210, child: TextField(
+                  key: const Key('rule-import-field'),
+                  expands: true, minLines: null, maxLines: null,
+                  keyboardType: TextInputType.multiline, textAlignVertical: TextAlignVertical.top,
+                  autocorrect: false, onChanged: _changed,
+                  style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 13),
+                  decoration: const InputDecoration(border: OutlineInputBorder(),
+                    isDense: true, contentPadding: EdgeInsets.fromLTRB(12, 12, 12, 12)),
+                )),
+                if (result != null) ConstrainedBox(
+                  constraints: const BoxConstraints(maxHeight: 150), child: _summary(result)),
+              ])),
             ),
+            const SizedBox(height: 8),
+            Row(mainAxisAlignment: MainAxisAlignment.end, children: [
+              TextButton(onPressed: () => Navigator.pop(context), child: Text(context.tr('Cancel'))),
+              TextButton(
+                onPressed: _canImport ? () => Navigator.pop(context, RuleImportRequest(result!)) : null,
+                child: Text(context.tr('Import')),
+              ),
+            ]),
           ]),
-          if (_error != null) Container(
-            width: double.infinity, padding: const EdgeInsets.all(12),
-            color: context.colorScheme.errorContainer,
-            child: SelectableText(_error!, style: TextStyle(color: context.colorScheme.onErrorContainer))),
-          JsonIssuesStrip(issues: _text.issues, text: _text.text, controller: _text),
-          Expanded(child: CodeEditor(controller: _text, undoController: _undo)),
-          _summary(result),
-        ]),
+        ),
       ),
     );
   }

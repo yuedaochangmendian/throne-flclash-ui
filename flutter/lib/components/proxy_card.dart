@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'package:material_ui/material_ui.dart' as material;
 import 'package:flutter/services.dart';
 import '../widgets.dart';
@@ -21,8 +22,8 @@ class ProxyCardMetrics {
   final bool compact, loose;
   final Measure measure;
   double get nameHeight => measure.textHeight(AppTextStyle.subheadline) * (compact ? 1 : 2);
-  double get detailHeight => measure.textHeight(AppTextStyle.footnote);
-  double get delayHeight => measure.textHeight(AppTextStyle.caption2);
+  double get detailHeight => math.max(measure.textHeight(AppTextStyle.footnote), 20);
+  double get delayHeight => math.max(measure.textHeight(AppTextStyle.caption2), 18);
   double get extent => 28 + nameHeight + detailHeight + (loose ? delayHeight + 6 : 0);
   double get rowExtent => extent + 8;
 }
@@ -49,12 +50,12 @@ class ProxyNodeCard extends StatelessWidget {
     if (phase != ProxyTestPhase.idle || !tested) {
       return SizedBox(
         key: ValueKey('glyph:$phase'),
-        height: h, width: h,
+        height: h, width: math.max(h, 20),
         child: Semantics(button: true, label: label, child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           onTap: phase == ProxyTestPhase.idle ? onTest : null,
           child: switch (phase) {
-            ProxyTestPhase.running => ActivityIndicator(size: h),
+            ProxyTestPhase.running => ActivityIndicator(key: const ValueKey('proxy-test-running'), size: h),
             ProxyTestPhase.queued => GlyphIcon(AppGlyphs.clock, size: h,
               color: context.colorScheme.onSurfaceVariant.withValues(alpha: .38)),
             ProxyTestPhase.idle => GlyphIcon(AppGlyphs.bolt, size: h),
@@ -67,8 +68,12 @@ class ProxyNodeCard extends StatelessWidget {
       button: true, label: label,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque, onTap: onTest,
-        child: Text(delayText, maxLines: 1, overflow: TextOverflow.ellipsis,
-          style: AppTextStyle.caption2.of(context, emphasized: true).copyWith(color: delayColor)),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(minWidth: 48, minHeight: h),
+          child: Align(alignment: Alignment.centerRight,
+            child: Text(delayText, maxLines: 1, overflow: TextOverflow.ellipsis,
+              style: AppTextStyle.caption2.of(context, emphasized: true).copyWith(color: delayColor))),
+        ),
       ),
     );
   }
@@ -89,7 +94,8 @@ class ProxyNodeCard extends StatelessWidget {
         showAppBanner(context, context.tr('A test is already running'));
         return;
       }
-      await openPage(context, const TestPanelPage());
+      await openPage(context, TestPanelPage(speedOnly: true,
+        profileIds: [(node['id'] as num?)?.toInt() ?? 0], initialSpeedMode: speedMode));
     } catch (error) { box.report(error); }
   }
 

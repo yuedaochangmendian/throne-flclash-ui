@@ -444,7 +444,17 @@ class DnsPage extends StatelessWidget {
           leading: const GlyphIcon(AppGlyphs.code),
           title: Text(context.tr('Import DNS rules')),
           subtitle: Text(context.tr('Paste a sing-box fragment with dns.rules; it is checked against the schema first.')),
-          onTap: () => openForm<bool>(context, const RuleImportPage()),
+          onTap: () async {
+            final box = context.box;
+            final request = await showDialog<RuleImportRequest>(context: context,
+              builder: (_) => const RuleImportPage());
+            if (request == null || !context.mounted) return;
+            try {
+              await applyRuleImport(box, request);
+            } catch (error) {
+              box.report(error);
+            }
+          },
         ),
       ], footer: useObject
           ? context.tr('Imported rules are appended to the DNS object above.')
