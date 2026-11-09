@@ -133,7 +133,7 @@ class _SpeedTile extends StatelessWidget {
 
   @override Widget build(BuildContext context) {
     final box = context.watchBox(BoxAspect.traffic), colors = context.colorScheme;
-    final color = upload ? colors.onSurfaceVariant : colors.primary;
+    final color = upload ? colors.tertiary : colors.primary;
     final show = bytes(box.rates[upload ? 'upload' : 'download'] as num? ?? 0).split(' ');
     // The bridge sends the session total as a raw byte count; a pre-formatted string passes through.
     final raw = box.dashboard[upload ? 'uploadTotal' : 'downloadTotal'];
@@ -151,7 +151,7 @@ class _SpeedTile extends StatelessWidget {
             child: RepaintBoundary(child: LineChart(
               values: List.of(upload ? box.uploadHistory : box.downloadHistory), revision: box.sampleRevision,
               capacity: BoxController.trafficWindow, minScale: 8 * 1024, baselineRatio: 1,
-              color: upload ? Color.alphaBlend(colors.primary.withValues(alpha: .45), SurfaceLevel.card.colorOf(colors)) : colors.primary,
+              color: color,
             )),
           ),
           Padding(padding: _padding, child: Column(

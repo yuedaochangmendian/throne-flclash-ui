@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:flrone/components/code_editor.dart';
 import 'package:flrone/main.dart';
 import 'package:flrone/widgets.dart';
 import 'package:flutter/services.dart';
@@ -305,10 +304,10 @@ void main() {
 
     await tester.tap(find.text('Import rules from JSON'));
     await tester.pumpAndSettle();
-    expect(find.text('Import rules'), findsWidgets);
-    expect(find.text('Paste a sing-box rule fragment'), findsOneWidget);
+    expect(find.text('Import rules from JSON'), findsWidgets);
+    expect(find.textContaining('Paste a sing-box fragment'), findsWidgets);
 
-    final editor = find.descendant(of: find.byType(CodeEditor), matching: find.byType(EditableText));
+    final editor = find.byKey(const Key('rule-import-field'));
     await tester.enterText(editor, '{"domain_suffix": ["a.com"], "outbound": "proxy"}');
     // The preview parses after the debounce.
     await tester.pump(const Duration(milliseconds: 400));
@@ -318,7 +317,7 @@ void main() {
     expect(find.text('DNS rules to add'), findsOneWidget);
     expect(tester.takeException(), isNull);
 
-    await tester.tap(find.byTooltip('Import'));
+    await tester.tap(find.text('Import').last);
     await tester.pumpAndSettle();
 
     // The rule reached the profile through routes.saveRules, in the editor's own shape.

@@ -8,16 +8,27 @@ import '../components/form.dart';
 /// the running connection), live progress with the latency histogram, the ranked best results, the
 /// speed test's live curve, and the finished-session actions (sort, remove unavailable, connect).
 class TestPanelPage extends StatefulWidget {
-  const TestPanelPage({super.key});
+  const TestPanelPage({super.key, this.speedOnly = false, this.profileIds = const [], this.initialSpeedMode});
+  /// The proxy card opens this panel for one node's speed test; hide the
+  /// latency/IP/session controls that belong to the general test panel.
+  final bool speedOnly;
+  final List<int> profileIds;
+  final int? initialSpeedMode;
   @override State<TestPanelPage> createState() => _TestPanelPageState();
 }
 
 class _TestPanelPageState extends State<TestPanelPage> {
-  int _kind = 0;
+  late int _kind;
   int? _groupId;
   bool _starting = false;
   // -1 follows the Testing settings' speed test mode until the picker changes it.
-  int _speedMode = -1;
+  late int _speedMode;
+
+  @override void initState() {
+    super.initState();
+    _kind = widget.speedOnly ? 2 : 0;
+    _speedMode = widget.initialSpeedMode ?? -1;
+  }
 
   List<Json> get _scopes => context.box.profiles;
 
@@ -43,10 +54,17 @@ class _TestPanelPageState extends State<TestPanelPage> {
     final scopeId = _scopeId;
     final kind = _kind;
     try {
-      await context.box.groupTestSessionStartChecked({
-        'kind': kind, 'groupId': scopeId,
-        'speedMode': kind == 2 ? _effectiveSpeedMode : -1,
-      });
+      if (widget.speedOnly) {
+        if (widget.profileIds.isEmpty) return;
+        await context.box.groupTestSessionStartChecked({
+          'kind': 2, 'profileIds': widget.profileIds, 'speedMode': _effectiveSpeedMode,
+        });
+      } else {
+        await context.box.groupTestSessionStartChecked({
+          'kind': kind, 'groupId': scopeId,
+          'speedMode': kind == 2 ? _effectiveSpeedMode : -1,
+        });
+      }
     } finally {
       if (mounted) setState(() => _starting = false);
     }
@@ -148,14 +166,14 @@ class _TestPanelPageState extends State<TestPanelPage> {
     final ranking = rows(session['ranking']);
     final scopes = _scopes;
     return BoxDataSubscription(data: BoxData.testSession, child: Scaffold(
-      title: context.tr('Test panel'),
+      title: context.tr(widget.speedOnly ? 'Speed test' : 'Test panel'),
       confirmationAction: running
           ? IconButtonData(glyph: AppGlyphs.playPause(1), tooltip: context.tr('Stop'), onPressed: () => box.groupTestSessionStop())
           : IconButtonData(glyph: AppGlyphs.playPause(0), tooltip: context.tr('Start'), isLoading: _starting, onPressed: _starting ? null : _start),
       menuItems: [
-        if (finished && groupId > 0) PopupMenuItem(glyph: AppGlyphs.sort, label: context.tr('Sort'),
+        if (!widget.speedOnly && finished && groupId > 0) PopupMenuItem(glyph: AppGlyphs.sort, label: context.tr('Sort'),
           onPressed: () => box.groupTestSessionSort(groupId)),
-        if (finished && _failedIds(session).isNotEmpty) PopupMenuItem(glyph: AppGlyphs.delete,
+        if (!widget.speedOnly && finished && _failedIds(session).isNotEmpty) PopupMenuItem(glyph: AppGlyphs.delete,
           label: context.tr('Remove unavailable'), onPressed: () => _removeUnavailable(session)),
         if (finished) PopupMenuItem(glyph: AppGlyphs.close, label: context.tr('Dismiss'),
           onPressed: () => box.groupTestSessionDismiss()),
@@ -164,22 +182,23 @@ class _TestPanelPageState extends State<TestPanelPage> {
         padding: EdgeInsets.fromLTRB(16, context.sectionsTopPadding, 16, 20 + context.bottomInset),
         children: [
           generateSection(items: [
-            _menuRow(context.tr('Test kind'), switch (_kind) {
-              1 => context.tr('IP check'), 2 => context.tr('Speed test'),
-              _ => context.tr('Latency'),
-            }, () async {
-              final picked = await showDialog<int>(context: context, builder: (context) => SimpleDialog(
-                title: Text(context.tr('Test kind')),
-                children: [
-                  for (final (value, label) in [(0, 'Latency'), (1, 'IP check'), (2, 'Speed test')])
-                    SimpleDialogOption(onPressed: () => Navigator.pop(context, value), child: Text(context.tr(label))),
-                ],
-              ));
-              if (picked != null) setState(() => _kind = picked);
-            }),
+            if (!widget.speedOnly)
+              _menuRow(context.tr('Test kind'), switch (_kind) {
+                1 => context.tr('IP check'), 2 => context.tr('Speed test'),
+                _ => context.tr('Latency'),
+              }, () async {
+                final picked = await showDialog<int>(context: context, builder: (context) => SimpleDialog(
+                  title: Text(context.tr('Test kind')),
+                  children: [
+                    for (final (value, label) in [(0, 'Latency'), (1, 'IP check'), (2, 'Speed test')])
+                      SimpleDialogOption(onPressed: () => Navigator.pop(context, value), child: Text(context.tr(label))),
+                  ],
+                ));
+                if (picked != null) setState(() => _kind = picked);
+              }),
             // A speed session measures one direction or both; the mode starts from the Testing
             // setting so the panel and the stored default agree until it is changed here.
-            if (_kind == 2)
+            if (widget.speedOnly || _kind == 2)
               _menuRow(context.tr('Speed test mode'), context.tr(speedTestModeName(_effectiveSpeedMode)), () async {
                 final picked = await showDialog<int>(context: context, builder: (context) => SimpleDialog(
                   title: Text(context.tr('Speed test mode')),
@@ -191,18 +210,19 @@ class _TestPanelPageState extends State<TestPanelPage> {
                 ));
                 if (picked != null) setState(() => _speedMode = picked);
               }),
-            _menuRow(context.tr('Scope'), scopes.where((profile) => profile['id'] == _scopeId)
-                .firstOrNull?['name']?.toString() ?? context.tr('None'), () async {
-              final picked = await showDialog<int>(context: context, builder: (context) => SimpleDialog(
-                title: Text(context.tr('Scope')),
-                children: [
-                  for (final profile in scopes) SimpleDialogOption(
-                    onPressed: () => Navigator.pop(context, (profile['id'] as num).toInt()),
-                    child: Text(profile['name'].toString())),
-                ],
-              ));
-              if (picked != null) setState(() => _groupId = picked);
-            }),
+            if (!widget.speedOnly)
+              _menuRow(context.tr('Scope'), scopes.where((profile) => profile['id'] == _scopeId)
+                  .firstOrNull?['name']?.toString() ?? context.tr('None'), () async {
+                final picked = await showDialog<int>(context: context, builder: (context) => SimpleDialog(
+                  title: Text(context.tr('Scope')),
+                  children: [
+                    for (final profile in scopes) SimpleDialogOption(
+                      onPressed: () => Navigator.pop(context, (profile['id'] as num).toInt()),
+                      child: Text(profile['name'].toString())),
+                  ],
+                ));
+                if (picked != null) setState(() => _groupId = picked);
+              }),
           ]),
           if (!active) const SizedBox.shrink() else ...[
             generateSection(title: context.tr('Progress'), items: [
@@ -238,7 +258,7 @@ class _TestPanelPageState extends State<TestPanelPage> {
                 ],
               )),
             ]),
-            if (session['countryMode'] != true && (session['histogram'] as Map? ?? {}).isNotEmpty && (session['kind'] as num).toInt() == 0)
+            if (!widget.speedOnly && session['countryMode'] != true && (session['histogram'] as Map? ?? {}).isNotEmpty && (session['kind'] as num).toInt() == 0)
               generateSection(title: context.tr('Latency histogram'), items: [
                 DecorationListItem(contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12), title: _histogram(session)),
               ]),
@@ -255,13 +275,13 @@ class _TestPanelPageState extends State<TestPanelPage> {
                     if (ranked['ulSpeed']?.toString().isNotEmpty == true) '↑ ${ranked['ulSpeed']}',
                     if (ranked['country']?.toString().isNotEmpty == true) ranked['country'].toString(),
                   ].join(' · ')),
-                  trailing: index == 0 && !running
+                  trailing: !widget.speedOnly && index == 0 && !running
                       ? TextButton(onPressed: () => box.profileSelect((ranked['profileId'] as num).toInt()),
                           child: Text(context.tr('Connect')))
                       : null,
-                  onTap: running ? null : () => box.profileSelect((ranked['profileId'] as num).toInt()),
+                  onTap: widget.speedOnly || running ? null : () => box.profileSelect((ranked['profileId'] as num).toInt()),
                 ),
-            ], footer: context.tr('Tap a result to connect through it.')),
+            ], footer: widget.speedOnly ? null : context.tr('Tap a result to connect through it.')),
           ],
         ],
       ),

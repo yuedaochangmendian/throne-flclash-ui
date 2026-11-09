@@ -4,7 +4,6 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:flrone/components/code_editor.dart';
 import 'package:flrone/main.dart';
 import 'package:flrone/widgets.dart';
 import 'package:flutter/services.dart';
@@ -52,15 +51,13 @@ void main() {
     // The DNS sheet has no rule kind to choose: it only reads `dns.rules`.
     expect(find.text('Rule kind'), findsNothing);
 
-    final editor = find.descendant(of: find.byType(CodeEditor), matching: find.byType(EditableText));
+    final editor = find.byKey(const Key('rule-import-field'));
     await tester.enterText(editor, '{"rules": [{"domain_suffix": ["a.com"], "action": "reject"}]}');
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
     expect(find.text('DNS rules to add'), findsOneWidget);
     expect(find.text('Route rules to add'), findsNothing);
 
-    // The importer now opens as a form sheet: its confirmation moves to the
-    // sheet's foot as a text button, so there is no Import tooltip to tap.
     await tester.tap(find.text('Import').last);
     await tester.pumpAndSettle();
 
@@ -111,7 +108,7 @@ void main() {
     await tester.tap(find.text('Import DNS rules'));
     await tester.pumpAndSettle();
 
-    final editor = find.descendant(of: find.byType(CodeEditor), matching: find.byType(EditableText));
+    final editor = find.byKey(const Key('rule-import-field'));
     await tester.enterText(editor, '{"route": {"rules": [{"domain_suffix": ["a.com"], "outbound": "proxy"}]}}');
     await tester.pump(const Duration(milliseconds: 400));
     await tester.pumpAndSettle();
@@ -119,8 +116,6 @@ void main() {
     // The rule is reported with where it belongs, and nothing is importable.
     expect(find.text('Route rules belong to a route profile'), findsOneWidget);
     expect(find.text('Open a route profile to import those.'), findsOneWidget);
-    // The importer now opens as a form sheet: its confirmation moves to the
-    // sheet's foot as a text button, so there is no Import tooltip to tap.
     await tester.tap(find.text('Import').last);
     await tester.pumpAndSettle();
     expect(edits, isEmpty);
