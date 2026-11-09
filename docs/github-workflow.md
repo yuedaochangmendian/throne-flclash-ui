@@ -67,6 +67,8 @@
 | `release.yml` | CI `workflow_run` / `workflow_dispatch` / push `v*` tag | CI 成功后，仅在存在应用或构建输入变化时自动发布 preview；同时统一处理手动 preview/stable、签名、资产和 release | GitHub release / prerelease |
 | `governance.yml` | 每周 / 手动 / 治理文件改动 | 校验仓库状态是否符合本文 | Step Summary |
 
+仅涉及文档的 PR 会由 `Detect changed areas` 识别，两个必需 Job 以轻量成功路径结束，不启动 Android/Flutter 构建；同样的文档-only 提交合并到 `main` 后也不会生成新的 preview。
+
 `release.yml` 的自动、dispatch 和 tag 路径都会处理 preview：自动/dispatch 按距最近 stable tag 的提交数计算 `-pre.N`，tag 路径使用 tag 中的 `-pre.N`。自动路径只在触发提交仍是当前 `main` 时运行，并在 tag 已存在时安全跳过；手动路径在 tag 已存在时拒绝复用。所有 preview 都不得占用 `releases/latest`，也不得携带 `throne-update.json`。
 
 ## 7. 降级路径（外部依赖故障）
