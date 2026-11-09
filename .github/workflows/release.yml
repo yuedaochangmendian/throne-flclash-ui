@@ -103,12 +103,13 @@ jobs:
           echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
-      # The release notes are the version's CHANGELOG.md section; a missing one fails before the build.
+          echo "notes_version=$BASE_VERSION" >> "$GITHUB_OUTPUT"
+      # Stable notes use the exact version section; preview tags use the base X.Y.Z section.
       - name: Changelog
         if: ${{ env.PUBLISH == 'true' }}
         env:
-          VERSION_NAME: ${{ steps.version.outputs.version }}
-        run: bash buildScript/release_notes.sh "$VERSION_NAME" > /dev/null
+          NOTES_VERSION: ${{ steps.version.outputs.notes_version }}
+        run: bash buildScript/release_notes.sh "$NOTES_VERSION" > /dev/null
       - name: Build
         uses: ./.github/actions/android-build
         with:
@@ -133,6 +134,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
           VERSION_NAME: ${{ steps.version.outputs.version }}
+          NOTES_VERSION: ${{ steps.version.outputs.notes_version }}
           TAG: ${{ steps.version.outputs.tag }}
           PRERELEASE: ${{ steps.version.outputs.prerelease }}
         run: bash buildScript/publish_release.sh

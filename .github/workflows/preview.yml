@@ -2,13 +2,13 @@ name: Preview
 on:
   workflow_dispatch:
 permissions:
-  contents: read
+  contents: write
 concurrency:
   group: preview-${{ github.ref }}
   cancel-in-progress: true
 jobs:
   preview:
-    name: Build a preview
+    name: Build and publish a preview prerelease
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -23,11 +23,8 @@ jobs:
           fetch-depth: 0
           fetch-tags: true
       # BUILD = commits since the last stable tag (vX.Y.Z), at most 998: previews of X.Y.Z sort below its release (999).
-      # NOTE: this path and the tag path in release.yml number previews differently — this one by
-      # commit count, release.yml by the `-pre.N` suffix in the tag. The tag path is authoritative:
-      # its versionName and versionCode agree by construction, while a dispatch-built artifact here
-      # can carry a different number than the tagged release of the same code. Compare artifacts by
-      # commit, not by preview number, across the two paths.
+      # The tag path in release.yml numbers previews by the -pre.N suffix instead. This workflow refuses to reuse an
+      # existing preview tag; release notes come from the base X.Y.Z CHANGELOG section.
       - name: Build number
         id: version
         run: |
@@ -42,12 +39,39 @@ jobs:
             exit 0
           fi
           BUILD=$(( COUNT > 998 ? 998 : COUNT ))
-          echo "Last stable tag: ${LAST:-none}, $COUNT commits since, preview ${VERSION_NAME}-pre.${BUILD}"
+          PREVIEW="${VERSION_NAME}-pre.${BUILD}"
+          echo "Last stable tag: ${LAST:-none}, $COUNT commits since, preview ${PREVIEW}"
           {
             echo "skip=false"
             echo "build=$BUILD"
-            echo "tag=v${VERSION_NAME}-pre.${BUILD}"
+            echo "version=$PREVIEW"
+            echo "tag=v${PREVIEW}"
+            echo "notes_version=$VERSION_NAME"
           } >> "$GITHUB_OUTPUT"
+      - name: Check preview tag is free
+        if: steps.version.outputs.skip != 'true'
+        env:
+          TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          set -euo pipefail
+          check_rc=0
+          for _ in 1 2 3; do
+            if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
+              check_rc=0
+            else
+              check_rc=$?
+            fi
+            if [ "$check_rc" -eq 0 ] || [ "$check_rc" -eq 2 ]; then break; fi
+            echo "::warning::git ls-remote could not reach origin (exit $check_rc); retrying"
+            sleep 5
+          done
+          if [ "$check_rc" -eq 0 ]; then
+            echo "::error::$TAG already exists: a preview tag is never reused"
+            exit 1
+          elif [ "$check_rc" -ne 2 ]; then
+            echo "::error::could not verify whether $TAG exists (git ls-remote exit $check_rc)"
+            exit 1
+          fi
       - name: Use .debug package name
         if: steps.version.outputs.skip != 'true'
         run: |
@@ -70,7 +94,8 @@ jobs:
       - name: Release assets
         if: steps.version.outputs.skip != 'true'
         run: python3 buildScript/release_assets.py app/build/outputs/apk/oss/release dist preview
-      - name: Upload artifact
+      # Keep signed APKs available even if the GitHub release API fails.
+      - name: Upload fallback artifact
         if: steps.version.outputs.skip != 'true'
         uses: actions/upload-artifact@v7
         with:
@@ -78,3 +103,13 @@ jobs:
           path: dist/
           if-no-files-found: error
           retention-days: 14
+      - name: Publish prerelease
+        if: steps.version.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ steps.version.outputs.tag }}
+          VERSION_NAME: ${{ steps.version.outputs.version }}
+          NOTES_VERSION: ${{ steps.version.outputs.notes_version }}
+          PRERELEASE: 'true'
+        run: bash buildScript/publish_release.sh
