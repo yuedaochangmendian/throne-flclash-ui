@@ -75,22 +75,28 @@ throne 核心 MUST 以 `nb4a.properties` 的 `THRONE_CORE_REF` 为唯一真实�
 - **WHEN** 维护者修改 `nb4a.properties` 的 `VERSION_NAME` 并发布
 - **THEN** 构建产物、发布 tag 与标题均使用新版本号
 
-### Requirement: 发布与预览工作流分离
+### Requirement: 统一发布与预览工作流
 
-GitHub Actions MUST 通过 `release.yml` 与 `preview.yml` 分离正式发布与预览构建。正式发布 MUST 仅允许手动触发，MUST 从 `nb4a.properties` 的 `VERSION_NAME` 派生 tag `v${VERSION_NAME}`；当该 tag 已存在时 MUST 构建失败并提示提升版本号，而不复用旧 tag。发布入口 MUST 支持仅产出 workflow artifact 不创建 Release 的模式。预览 MUST 在推送到主分支时自动构建，版本号 MUST 为 `v${VERSION_NAME}-pre.${N}`（N 为自最近一个正式 tag 起的提交数，上限 998，保证预览排序低于对应正式版），HEAD 恰为正式 tag 时 MUST 跳过预览，且 MUST 以 pre-release 形式发布。
+GitHub Actions MUST 使用 `release.yml` 统一处理 stable 与 preview。正式发布 MUST 通过 `channel=stable` 手动触发，或推送 `v${VERSION_NAME}` tag；当该 tag 已存在时 MUST 构建失败并提示提升版本号，而不复用旧 tag。Preview MUST 通过 `channel=preview` 手动触发，或推送 `v${VERSION_NAME}-pre.${N}` tag；手动触发时 N MUST 为自最近正式 tag 起的提交数（上限 998），HEAD 恰为正式 tag 时 MUST 跳过。发布入口 MUST 支持仅产出 workflow artifact、不创建 Release 的模式。Preview MUST 以 GitHub pre-release 发布，MUST NOT 占用 `releases/latest`，MUST NOT 携带 `throne-update.json`。
+
+所有 stable 与 preview MUST 使用 `nb4a.properties` 的 `PACKAGE_NAME`，MUST NOT 为 preview 派生 `.debug` applicationId；因此 preview 可直接覆盖安装 stable，但二者不能并存安装。
 
 #### Scenario: 手动发布正式版本
 
-- **WHEN** 维护者手动运行 Release 工作流且允许发布
+- **WHEN** 维护者手动运行 `release.yml` 且 `channel=stable`、`publish=true`
 - **THEN** 工作流构建签名 APK 并创建 `v${VERSION_NAME}` 的 GitHub Release 并附加产物
 
 #### Scenario: 版本号未提升时拒绝发布
 
-- **WHEN** 目标 `v${VERSION_NAME}` tag 已存在于远端
-- **THEN** 工作流失败并提示提升 `VERSION_NAME`，不覆盖旧 Release
+- **WHEN** 目标 tag 已存在于远端
+- **THEN** 工作流失败并提示提升 `VERSION_NAME` 或等待新提交，不覆盖旧 Release
 
-#### Scenario: 主分支推送触发预览
+#### Scenario: 手动发布 Preview
 
-- **WHEN** 提交推送到主分支且 HEAD 不是正式 tag
-- **THEN** 工作流按提交数生成预览版本并发布 pre-release
-- **AND** HEAD 为正式 tag 时不发布预览
+- **WHEN** 维护者运行 `release.yml` 且 `channel=preview`
+- **THEN** 工作流按提交数生成 preview 版本，使用正式包名构建并发布 GitHub pre-release
+
+#### Scenario: 通过 Preview tag 发布
+
+- **WHEN** 维护者推送 `vX.Y.Z-pre.N` tag
+- **THEN** 工作流从 tag 解析版本，构建同一包名并发布 GitHub pre-release

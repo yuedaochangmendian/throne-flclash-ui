@@ -74,9 +74,8 @@ CI 只证明「构建得出、测试过」；本清单证明「真机好用」�
 ## 数据层直读（#19，3.3.1-pre.11 起）
 
 > 路由页数据可来自 SQLite 直读或 channel 回退，UI 不可区分是设计使然；以下关注的是「直读路径是否健康」。
-> 观察方法受包体限制：tag 发布的 preview 是 release 包（不可 run-as），要拉库验证请用 preview 工作流的
-> `workflow_dispatch` 产物（包名由 `nb4a.properties` 的 `PACKAGE_NAME` 加 `.debug` 派生，当前为
-> `com.throneflclash.debug`，可 `run-as`）。
+> 所有 Preview/Stable 均使用正式包名 `com.throneflclash`，Preview 可直接覆盖正式版安装。
+> release/preview 均不可 `run-as`；直读健康优先通过覆盖升级和路由页行为验证，只有在可 root 的测试设备上才拉库检查。
 
 - [ ] 覆盖升级：`adb install -r Flrone-3.3.1-pre.11-*.apk` 成功；若失败，记录完整 `Failure [INSTALL_FAILED_…]` 码
       （静态实测三版包名/签名一致、versionCode 单调，失败即设备侧原因）
@@ -84,8 +83,8 @@ CI 只证明「构建得出、测试过」；本清单证明「真机好用」�
       CI 的 schema_audit 只能拦住源码侧漂移）
 - [ ] WAL 并发读：触发订阅更新（写库）的同时反复进出路由页，无可感知卡顿/ANR；
       辅证：`adb shell dumpsys gfxinfo com.throneflclash` 的 jank 统计
-- [ ] 直读路径确认：`adb exec-out run-as com.throneflclash.debug cat databases/sager_net.db > sager_net.db`
-      拉库后本地 `sqlite3 sager_net.db 'PRAGMA user_version'` 应为 19；路由页此刻正常即证明直读可用
+- [ ] 直读路径确认：在可 root 的测试设备读取 `/data/data/com.throneflclash/databases/sager_net.db`，
+      `PRAGMA user_version` 应为 19；若不可 root，记录路由页正常且无回退日志作为辅证
       （回退路径不读该文件）
 
 ## 记录

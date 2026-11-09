@@ -31,7 +31,8 @@
 | | preview | stable |
 |---|---|---|
 | tag | `vX.Y.Z-pre.N`，`N = 1..998`（距上一个 stable tag 的提交数） | `vX.Y.Z` |
-| 触发 | `preview.yml`（`workflow_dispatch`，发布 GitHub prerelease）或推送 `v*pre*` tag 走 `release.yml` | 推送 `vX.Y.Z` tag 或 `release.yml -f publish=true` |
+| 包名 | `PACKAGE_NAME`（与 stable 相同，可直接覆盖安装） | `PACKAGE_NAME` |
+| 触发 | `release.yml -f channel=preview` 或推送 `vX.Y.Z-pre.N` tag | `release.yml -f channel=stable -f publish=true` 或推送 `vX.Y.Z` tag |
 | `versionName` | `X.Y.Z-pre.N` | `X.Y.Z` |
 | `versionCode` | `VERSION_CODE*1000 + N` | `VERSION_CODE*1000 + 999` |
 | GitHub 标记 | `prerelease=true`，**不占 `releases/latest`** | `prerelease=false`，`make_latest=true` |
@@ -40,12 +41,12 @@
 
 - `release_assets.py` 会拒绝 `channel` 与 `versionName` 不匹配、签名者不唯一、ABI 缺失；stable 的 `Changelog` 步骤会拒绝缺少 `#### <version>` 段落，preview 从基础版本 `#### X.Y.Z` 取说明。**发版前必须先写 CHANGELOG 段落**。
 - 一个 tag 对应一个 release；tag 不复用、不改名、不删除重建。
-- `release.yml` 的 `Version` 步骤会校验 tag 基础版本与 `nb4a.properties` 一致、tag 未被占用；`publish_release.sh` 对每次写操作重试 3 次并保留 `dist/` 供降级补发。
+- `release.yml` 统一处理两个 channel：手动构建用 `channel=preview|stable`，tag 推送按 `-pre.N` 自动判断；`Version` 步骤会校验基础版本、tag 未被占用，`publish_release.sh` 对每次写操作重试 3 次并保留 `dist/` 供降级补发。
 
 ## 4. tag 与 release 命名
 
 - 允许：`^v\d+\.\d+\.\d+(-pre\.\d+)?$`。禁止 `wip-*`、`*-debug`、`*-bbox-ui-*`、日期 tag 等非正式命名。
-- 预览构建通过 `preview.yml` 创建 `vX.Y.Z-pre.N` GitHub prerelease；仅调试、不发布时使用 `release.yml -f publish=false`，产物为 workflow artifact（保留 14 天）。
+- 预览构建统一通过 `release.yml -f channel=preview` 创建 `vX.Y.Z-pre.N` GitHub prerelease；仅调试、不发布时加 `-f publish=false`，产物为 workflow artifact（保留 14 天）。
 - `releases/latest` 只能由资产齐全的 stable release 占用；预览版转正属异常路径（第 7 节），不得常态化。
 - release 的 `name` 与 `tag_name` 保持一致；若就地转正导致不一致，必须在发行说明里写明真实 tag 与产物性质。
 
@@ -63,11 +64,10 @@
 | workflow | 触发 | 职责 | 对外产物 |
 |---|---|---|---|
 | `ci.yml` | push / PR | 静态分析、单测、契约审计 | 无（报告 artifact） |
-| `release.yml` | `workflow_dispatch` / push `v*` tag | 构建、签名、生成 5 个资产、创建 release | GitHub release |
-| `preview.yml` | `workflow_dispatch` | 用 `.debug` 包名构建并发布 `vX.Y.Z-pre.N`，不写更新清单 | GitHub prerelease + 兜底 artifact |
+| `release.yml` | `workflow_dispatch` / push `v*` tag | 统一处理 preview/stable，构建、签名、生成资产、创建 release | GitHub release / prerelease |
 | `governance.yml` | 定时 / 手动 / 治理文件改动 | 校验仓库状态是否符合本文 | Step Summary |
 
-`preview.yml` 与「推送 `v*pre*` tag 走 `release.yml`」都会创建 GitHub prerelease：前者按距最近 stable tag 的提交数计算 `-pre.N`，后者使用 tag 中的 `-pre.N`。`preview.yml` 会先检查 tag，已存在则拒绝复用；同一提交如两条通道都构建，以 tag 路径为权威。两种通道都不得占用 `releases/latest`，也不得携带 `throne-update.json`。
+`release.yml` 的 dispatch 路径和 tag 路径都会处理 preview：dispatch 按距最近 stable tag 的提交数计算 `-pre.N`，tag 路径使用 tag 中的 `-pre.N`。tag 已存在时拒绝复用；两种路径都不得占用 `releases/latest`，也不得携带 `throne-update.json`。
 
 ## 7. 降级路径（外部依赖故障）
 
