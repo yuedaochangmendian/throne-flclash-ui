@@ -1,6 +1,6 @@
 name: Android build
 description: >-
-  Shared build steps of ci.yml, preview.yml and release.yml: JDK 17, Flutter module AAR (the gitignored
+  Shared build steps of ci.yml and release.yml (preview and stable): JDK 17, Flutter module AAR (the gitignored
   flutter/build/host/outputs/repo the app links), ThroneCore AAR + sing-box schema, routeprofiles
   snapshot, sing-box dashboard, Gradle, then ./gradlew <tasks>. With sign=true, release builds are signed with the
   SIGNING_* secrets from the job environment; the build fails without them.

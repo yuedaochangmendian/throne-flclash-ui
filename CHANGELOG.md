@@ -7,6 +7,7 @@ Development notes for the next release. This section will be finalized once the 
 * **Preview applicationId is derived from PACKAGE_NAME.** The workflow no longer hard-codes the pre-rename debug id; preview builds now use `com.throneflclash.debug`, remain side-by-side installable with stable, and follow future package renames automatically
 * **The Kotlin bridge namespace is now `io.flrone`.** Core, model, bridge, Flutter host, manifest, ProGuard rules, tests, JNI names, audit scripts and live docs moved from `io.throne.bbox`; the existing `io.flrone/box` MethodChannel is unchanged
 * **DNS rule import has a form-sheet regression test.** The test taps the sheet's actual Import action instead of bypassing the UI path
+* **Preview and stable share one package identity and one release workflow.** Both channels now build with `PACKAGE_NAME` (`com.throneflclash`) and the same release signing key, so a preview can upgrade a stable install in place. `release.yml` handles `channel=preview|stable`; the separate preview workflow is removed while GitHub prereleases, artifact-only builds and the no-manifest preview contract remain intact
 * **Verification:** `main@329f46a1` CI, CodeQL and Preview were green before this version bump. The 3.3.1 physical-device matrix remains tracked in Issue #17, and the 3.3.2 scope is tracked in Issue #22
 
 #### 3.3.1

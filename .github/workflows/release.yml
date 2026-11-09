@@ -2,8 +2,15 @@ name: Release
 on:
   workflow_dispatch:
     inputs:
+      channel:
+        description: "Build channel: preview (prerelease) or stable"
+        type: choice
+        options:
+          - preview
+          - stable
+        default: preview
       publish:
-        description: Publish the release v<VERSION_NAME> at this commit (otherwise the APKs are only uploaded as a workflow artifact)
+        description: "Publish the release (otherwise upload only a workflow artifact)"
         type: boolean
         default: true
   push:
@@ -12,6 +19,7 @@ on:
 env:
   # A pushed v* tag publishes without a manual dispatch.
   PUBLISH: ${{ inputs.publish == true || startsWith(github.ref, 'refs/tags/v') }}
+  DISPATCH_CHANNEL: ${{ inputs.channel || 'stable' }}
 concurrency:
   group: release
   cancel-in-progress: false
@@ -30,24 +38,83 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-      # The tag is v<VERSION_NAME>; a published release never reuses an existing tag.
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      # One workflow serves both channels. A tag decides its own version; a manual
+      # preview uses commits since the last stable tag (max 998), while a manual
+      # stable build uses VERSION_NAME from nb4a.properties. Both channels keep the
+      # same applicationId so a preview can upgrade a stable install in place.
       - name: Version
         id: version
         run: |
           set -euo pipefail
+          DECLARED=$(sed -n 's/^VERSION_NAME=//p' nb4a.properties | tr -d '\r[:space:]')
+          test -n "$DECLARED"
+          SKIP=false
+
           if [ "${GITHUB_REF_TYPE:-}" = "tag" ]; then
             TAG="$GITHUB_REF_NAME"
             VERSION_NAME="${TAG#v}"
+            if [[ "$VERSION_NAME" == *-pre.* ]]; then
+              CHANNEL=preview
+              PRERELEASE=true
+              BASE_VERSION="${VERSION_NAME%%-pre.*}"
+              BUILD_NUMBER="${VERSION_NAME##*-pre.}"
+              [[ "$BUILD_NUMBER" =~ ^[0-9]+$ ]] || {
+                echo "::error::preview tag must end in -pre.<number>"
+                exit 1
+              }
+              (( 10#$BUILD_NUMBER >= 1 && 10#$BUILD_NUMBER <= 998 )) || {
+                echo "::error::preview build number must be 1..998 (999 is the stable slot)"
+                exit 1
+              }
+            else
+              CHANNEL=stable
+              PRERELEASE=false
+              BASE_VERSION="$VERSION_NAME"
+              BUILD_NUMBER=999
+            fi
           else
-            VERSION_NAME=$(sed -n 's/^VERSION_NAME=//p' nb4a.properties | tr -d '\r[:space:]')
-            TAG="v$VERSION_NAME"
+            case "$DISPATCH_CHANNEL" in
+              preview)
+                LAST=$(git describe --tags --abbrev=0 --match 'v[0-9]*' --exclude '*-*' 2>/dev/null || true)
+                if [ -n "$LAST" ]; then COUNT=$(git rev-list --count "$LAST..HEAD"); else COUNT=$(git rev-list --count HEAD); fi
+                if [ "$COUNT" -eq 0 ]; then
+                  echo "::notice::HEAD is the stable tag $LAST: no preview"
+                  echo "skip=true" >> "$GITHUB_OUTPUT"
+                  exit 0
+                fi
+                BUILD_NUMBER=$(( COUNT > 998 ? 998 : COUNT ))
+                VERSION_NAME="${DECLARED}-pre.${BUILD_NUMBER}"
+                TAG="v${VERSION_NAME}"
+                CHANNEL=preview
+                PRERELEASE=true
+                BASE_VERSION="$DECLARED"
+                ;;
+              stable)
+                VERSION_NAME="$DECLARED"
+                TAG="v${VERSION_NAME}"
+                CHANNEL=stable
+                PRERELEASE=false
+                BASE_VERSION="$DECLARED"
+                BUILD_NUMBER=999
+                ;;
+              *)
+                echo "::error::unknown dispatch channel $DISPATCH_CHANNEL"
+                exit 1
+                ;;
+            esac
           fi
-          test -n "$VERSION_NAME"
+
+          if [ "$BASE_VERSION" != "$DECLARED" ]; then
+            echo "::error::base version $BASE_VERSION does not match nb4a.properties VERSION_NAME=$DECLARED"
+            exit 1
+          fi
+
           if [ "$PUBLISH" = "true" ] && [ "${GITHUB_REF_TYPE:-}" != "tag" ]; then
             # 0 = the tag exists, 2 = no matching tag, anything else is a
-            # transport failure. A failure must not be read as "tag is free":
-            # publishing over a possibly existing tag would clobber a live
-            # release, so it retries and then refuses to continue.
+            # transport failure. Never treat a failed lookup as "tag is free".
             ls_rc=0
             for _ in 1 2 3; do
               if git ls-remote --exit-code --tags origin "refs/tags/$TAG" > /dev/null; then
@@ -60,57 +127,29 @@ jobs:
               sleep 5
             done
             if [ "$ls_rc" -eq 0 ]; then
-              echo "::error::$TAG already exists: raise VERSION_NAME in nb4a.properties for a new release"
+              echo "::error::$TAG already exists: raise VERSION_NAME or wait for a new commit"
               exit 1
             elif [ "$ls_rc" -ne 2 ]; then
               echo "::error::could not verify whether $TAG exists (git ls-remote exit $ls_rc); retry the dispatch"
               exit 1
             fi
           fi
-          # A versionName containing "-pre." is a preview build: it must use the
-          # preview channel (release_assets.py refuses a -pre. name on stable)
-          # and must be marked as a GitHub prerelease so the in-app updater,
-          # which follows releases/latest, never offers it to existing users.
-          if [[ "$VERSION_NAME" == *-pre.* ]]; then
-            CHANNEL=preview
-            PRERELEASE=true
-            BASE_VERSION="${VERSION_NAME%%-pre.*}"
-            BUILD_NUMBER="${VERSION_NAME##*-pre.}"
-            [[ "$BUILD_NUMBER" =~ ^[0-9]+$ ]] || {
-              echo "::error::preview tag must end in -pre.<number>"
-              exit 1
-            }
-            # 999 is the stable slot: a preview taking it would build the same
-            # versionCode as the stable release of the same version (see
-            # Helpers.kt), and two different builds would claim one code.
-            (( 10#$BUILD_NUMBER >= 1 && 10#$BUILD_NUMBER <= 998 )) || {
-              echo "::error::preview build number must be 1..998 (999 is the stable slot)"
-              exit 1
-            }
-          else
-            CHANNEL=stable
-            PRERELEASE=false
-            BASE_VERSION="$VERSION_NAME"
-            BUILD_NUMBER=999
-          fi
-          DECLARED=$(sed -n 's/^VERSION_NAME=//p' nb4a.properties | tr -d '\r[:space:]')
-          if [ "$BASE_VERSION" != "$DECLARED" ]; then
-            echo "::error::tag base version $BASE_VERSION does not match nb4a.properties VERSION_NAME=$DECLARED"
-            exit 1
-          fi
+
           echo "version=$VERSION_NAME" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
           echo "channel=$CHANNEL" >> "$GITHUB_OUTPUT"
           echo "prerelease=$PRERELEASE" >> "$GITHUB_OUTPUT"
           echo "build_number=$BUILD_NUMBER" >> "$GITHUB_OUTPUT"
           echo "notes_version=$BASE_VERSION" >> "$GITHUB_OUTPUT"
-      # Stable notes use the exact version section; preview tags use the base X.Y.Z section.
+          echo "skip=$SKIP" >> "$GITHUB_OUTPUT"
+      # Stable notes use the exact version section; previews use the base X.Y.Z section.
       - name: Changelog
-        if: ${{ env.PUBLISH == 'true' }}
+        if: ${{ steps.version.outputs.skip != 'true' && env.PUBLISH == 'true' }}
         env:
           NOTES_VERSION: ${{ steps.version.outputs.notes_version }}
         run: bash buildScript/release_notes.sh "$NOTES_VERSION" > /dev/null
       - name: Build
+        if: steps.version.outputs.skip != 'true'
         uses: ./.github/actions/android-build
         with:
           tasks: app:assembleOssRelease
@@ -118,9 +157,10 @@ jobs:
           build-number: ${{ steps.version.outputs.build_number }}
           sign: 'true'
       - name: Release assets
+        if: steps.version.outputs.skip != 'true'
         run: python3 buildScript/release_assets.py app/build/outputs/apk/oss/release dist ${{ steps.version.outputs.channel }}
       - name: Upload artifact
-        if: ${{ env.PUBLISH != 'true' }}
+        if: ${{ steps.version.outputs.skip != 'true' && env.PUBLISH != 'true' }}
         uses: actions/upload-artifact@v7
         with:
           name: Flrone-${{ steps.version.outputs.tag }}
@@ -129,7 +169,7 @@ jobs:
           retention-days: 14
       - name: Publish release
         id: publish
-        if: ${{ env.PUBLISH == 'true' }}
+        if: ${{ steps.version.outputs.skip != 'true' && env.PUBLISH == 'true' }}
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
