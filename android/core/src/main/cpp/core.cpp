@@ -226,26 +226,26 @@ static void cb_func_invoke(void *obj) {
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_io_throne_bbox_core_Core_startTun(JNIEnv *env, jobject, const jint fd, jobject tun) {
+Java_io_flrone_core_Core_startTun(JNIEnv *env, jobject, const jint fd, jobject tun) {
     const auto token = new_global(tun);
     throne_start_tun(fd, token);
 }
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_io_throne_bbox_core_Core_stopTun(JNIEnv *) {
+Java_io_flrone_core_Core_stopTun(JNIEnv *) {
     throne_stop_tun();
 }
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_io_throne_bbox_core_Core_suspend(JNIEnv *, jobject, jint suspended) {
+Java_io_flrone_core_Core_suspend(JNIEnv *, jobject, jint suspended) {
     throne_suspend(suspended);
 }
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_io_throne_bbox_core_Core_setPlatform(JNIEnv *env, jobject, jobject platform) {
+Java_io_flrone_core_Core_setPlatform(JNIEnv *env, jobject, jobject platform) {
     if (g_platform != nullptr) {
         del_global(g_platform);
     }
@@ -254,7 +254,7 @@ Java_io_throne_bbox_core_Core_setPlatform(JNIEnv *env, jobject, jobject platform
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_io_throne_bbox_core_Core_updateDefaultInterface(JNIEnv *env, jobject,
+Java_io_flrone_core_Core_updateDefaultInterface(JNIEnv *env, jobject,
                                                      const jlong listener,
                                                      jstring name, const jint index,
                                                      const jboolean is_expensive,
@@ -266,7 +266,7 @@ Java_io_throne_bbox_core_Core_updateDefaultInterface(JNIEnv *env, jobject,
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_io_throne_bbox_core_Core_updateNetworkPath(JNIEnv *env, jobject,
+Java_io_flrone_core_Core_updateNetworkPath(JNIEnv *env, jobject,
                                                 const jlong listener, jstring path) {
     scoped_string p = get_string(path);
     throne_InterfaceUpdateListener_updateNetworkPath(listener, p);
@@ -277,14 +277,14 @@ Java_io_throne_bbox_core_Core_updateNetworkPath(JNIEnv *env, jobject,
 // released handle panics inside Go's guardExport and only sets last_error.
 extern "C"
 JNIEXPORT void JNICALL
-Java_io_throne_bbox_core_Core_closeInstance(JNIEnv *, jobject, const jlong handle) {
+Java_io_flrone_core_Core_closeInstance(JNIEnv *, jobject, const jlong handle) {
     if (handle == 0) return;
     throne_Instance_close(handle);
 }
 
 extern "C"
 JNIEXPORT jstring JNICALL
-Java_io_throne_bbox_core_Core_tunSpecJson(JNIEnv *env, jobject, const jlong handle) {
+Java_io_flrone_core_Core_tunSpecJson(JNIEnv *env, jobject, const jlong handle) {
     const auto json = throne_TunOptions_toJSON(handle);
     const char *text = json != nullptr ? json : "";
     if (text[0] == '\0') {
@@ -304,14 +304,14 @@ Java_io_throne_bbox_core_Core_tunSpecJson(JNIEnv *env, jobject, const jlong hand
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_io_throne_bbox_core_Core_exchangeSuccess(JNIEnv *env, jobject, const jlong handle, jstring result) {
+Java_io_flrone_core_Core_exchangeSuccess(JNIEnv *env, jobject, const jlong handle, jstring result) {
     scoped_string r = get_string(result);
     throne_ExchangeContext_success(handle, r);
 }
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_io_throne_bbox_core_Core_exchangeRawSuccess(JNIEnv *env, jobject, const jlong handle, jbyteArray result) {
+Java_io_flrone_core_Core_exchangeRawSuccess(JNIEnv *env, jobject, const jlong handle, jbyteArray result) {
     const jsize len = result != nullptr ? env->GetArrayLength(result) : 0;
     jbyte *bytes = len > 0 ? env->GetByteArrayElements(result, nullptr) : nullptr;
     throne_ExchangeContext_rawSuccess(handle, reinterpret_cast<uint8_t *>(bytes), len);
@@ -320,19 +320,19 @@ Java_io_throne_bbox_core_Core_exchangeRawSuccess(JNIEnv *env, jobject, const jlo
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_io_throne_bbox_core_Core_exchangeErrorCode(JNIEnv *, jobject, const jlong handle, const jint code) {
+Java_io_flrone_core_Core_exchangeErrorCode(JNIEnv *, jobject, const jlong handle, const jint code) {
     throne_ExchangeContext_errorCode(handle, code);
 }
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_io_throne_bbox_core_Core_exchangeErrnoCode(JNIEnv *, jobject, const jlong handle, const jint code) {
+Java_io_flrone_core_Core_exchangeErrnoCode(JNIEnv *, jobject, const jlong handle, const jint code) {
     throne_ExchangeContext_errnoCode(handle, code);
 }
 
 extern "C"
 JNIEXPORT void JNICALL
-Java_io_throne_bbox_core_Core_exchangeOnCancel(JNIEnv *env, jobject, const jlong handle, jobject callback) {
+Java_io_flrone_core_Core_exchangeOnCancel(JNIEnv *env, jobject, const jlong handle, jobject callback) {
     throne_ExchangeContext_onCancel(handle, callback != nullptr ? new_global(callback) : nullptr);
 }
 
@@ -348,12 +348,12 @@ JNI_OnLoad(JavaVM *vm, void *) {
 
     initialize_jni(vm, env);
 
-    const auto c_tun = find_class("io/throne/bbox/core/TunInterface");
+    const auto c_tun = find_class("io/flrone/core/TunInterface");
     m_tun_protect = find_method(c_tun, "protect", "(I)V");
     m_tun_resolver = find_method(c_tun, "resolverProcess",
                                  "(ILjava/lang/String;Ljava/lang/String;I)Ljava/lang/String;");
 
-    const auto c_platform = find_class("io/throne/bbox/core/CorePlatform");
+    const auto c_platform = find_class("io/flrone/core/CorePlatform");
     m_platform[P_OPEN_TUN] = find_method(c_platform, "openTun", "(J)I");
     m_platform[P_USE_AUTO_DETECT] = find_method(c_platform, "usePlatformAutoDetectInterfaceControl", "()Z");
     m_platform[P_USE_PROC_FS] = find_method(c_platform, "useProcFS", "()Z");

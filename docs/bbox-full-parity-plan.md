@@ -17,11 +17,11 @@
 
 - **仓库**：`https://github.com/yuedaochangmendian/throne-bbox-ui`（fork 自 throneproj/ThroneForAndroid v2.0.4，单分支 `main`，无 PR 流程，直接推送）
 - **架构**：ThroneForAndroid（Kotlin，sing-box 内核，包名 `io.nekohasekai.sagernet`）+ 新 Flutter UI（B-box / FlClash 0.9.2 风格，vendored 自 `giturass/B-box`）经 Kotlin 桥层通信：
-  - `app/src/main/java/io/throne/bbox/bridge/`（14 文件，状态/动作层）+ `flutter/ThroneBoxBridge.kt`（通道宿主）+ `flutter/BboxFlutterActivity.kt`（启动器，FlutterFragmentActivity）
+  - `app/src/main/java/io/flrone/bridge/`（14 文件，状态/动作层）+ `flutter/ThroneBoxBridge.kt`（通道宿主）+ `flutter/BboxFlutterActivity.kt`（启动器，FlutterFragmentActivity）
   - `bboxmodel/`：共享 Kotlin 数据类模块
   - `flutter/`：Flutter 模块（`pubspec` name=`b_box_ui`，`module.androidPackage: io.ericlee.bbox_ui`），以预编译 AAR（`io.ericlee.bbox_ui:flutter_release:1.0`）被宿主消费
   - 通道：`io.ericlee.bfa/box`（MethodChannel）+ `io.ericlee.bfa/events`（EventChannel，diff 推送）
-  - 能力开关单一来源：`app/src/main/java/io/throne/bbox/bridge/Capabilities.kt`（false 项 = B-box 独有、Throne 无对应物：terminal/capture/remote/reports/stun/quality/endpoints/taildrop/perAppManaged/rootQuery/dnsObject；**迁移范围 = 让 Throne 既有功能全绿，不实现 B-box 独有项**）
+  - 能力开关单一来源：`app/src/main/java/io/flrone/bridge/Capabilities.kt`（false 项 = B-box 独有、Throne 无对应物：terminal/capture/remote/reports/stun/quality/endpoints/taildrop/perAppManaged/rootQuery/dnsObject；**迁移范围 = 让 Throne 既有功能全绿，不实现 B-box 独有项**）
 - **规格与治理**：`openspec/`（spec-driven）。当前规范 `openspec/specs/`（app-widgets, auto-selector, backup-restore, connectivity-testing, diagnostics-logging, i18n, outbound-protocols, profile-management, proxy-connection, repository-governance, routing-rules, settings-storage）；历史 `openspec/history/`；变更流程 `openspec/changes/`
 
 
@@ -53,7 +53,7 @@
 | 项 | 内容 | 位置 | 归属批次 |
 |---|---|---|---|
 | 1 | 分应用剪贴板导入无包名校验（URL 被存成假应用；旧 UI 有 `PackageNameInput.rejectInvalid` 语义） | `flutter/lib/pages/access.dart:112-116` | 0.5 |
-| 2 | B-box 日志导出绕过 `LogRedactor`（旧路径对 core.log 脱敏 `moe/matsuri/nb4a/utils/LogExport.kt:49`，新导出无脱敏，core.log 含凭据） | `flutter/lib/pages/logs.dart`、`io/throne/bbox/bridge/BboxLogs.kt`、`ThroneBoxBridge` saveDocument | 0.5 |
+| 2 | B-box 日志导出绕过 `LogRedactor`（旧路径对 core.log 脱敏 `moe/matsuri/nb4a/utils/LogExport.kt:49`，新导出无脱敏，core.log 含凭据） | `flutter/lib/pages/logs.dart`、`io/flrone/bridge/BboxLogs.kt`、`ThroneBoxBridge` saveDocument | 0.5 |
 | 3 | `apps.list`/`apps.icon` 在主线程做包管理扫描 + PNG 压缩 | `ThroneBoxBridge.kt:502-508`、`bridge/BboxApps.kt:51-87` | 0.5 |
 | 4 | `pickDocument`/`pickSaveTarget` 单槽 handler，并发选择挂死首个 Dart future；无 `invokeOnCancellation` | `BboxFlutterActivity.kt:32-72` | 0.5 |
 | 5 | QR 多帧：`decoded:0` 仍带 partial text，Dart 回退解析每帧误报错 | `flutter/lib/pages/profiles.dart:413-419` | 0.5 |
@@ -77,7 +77,7 @@
 
 ### 批次 A — 审计建档
 - **前置**：0.5。
-- **任务**：① 按 §7 参考数据逐份过 12 份主规范，产出差距矩阵；② 写 `tools/diagnostics/settings_audit.py`（uv run）：`SettingsRegistry.kt` 全键 vs `io/throne/bbox/bridge/SettingsSchema.kt` vs `flutter/lib/pages/throne.dart` 消费，三列差集；③ 静态扫 Flutter AAR 链对 coroutines/stdlib 的 API 引用（验证遗留项 9，产出收窄/解除 force 的结论）；④ 差距矩阵 + i18n spec delta（覆盖要求改 zh/en）立为 openspec 提案 `openspec/changes/bbox-full-parity/`（proposal + tasks + spec deltas）。
+- **任务**：① 按 §7 参考数据逐份过 12 份主规范，产出差距矩阵；② 写 `tools/diagnostics/settings_audit.py`（uv run）：`SettingsRegistry.kt` 全键 vs `io/flrone/bridge/SettingsSchema.kt` vs `flutter/lib/pages/throne.dart` 消费，三列差集；③ 静态扫 Flutter AAR 链对 coroutines/stdlib 的 API 引用（验证遗留项 9，产出收窄/解除 force 的结论）；④ 差距矩阵 + i18n spec delta（覆盖要求改 zh/en）立为 openspec 提案 `openspec/changes/bbox-full-parity/`（proposal + tasks + spec deltas）。
 - **验收**：提案入库；settings 审计输出 0/差集清单。
 
 ### 批次 B — 设置收口

@@ -58,9 +58,9 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FLUTTER_LIB = REPO_ROOT / "flutter" / "lib"
-BRIDGE = REPO_ROOT / "app" / "src" / "main" / "java" / "io" / "throne" / "bbox" / "flutter" / "ThroneBoxBridge.kt"
-BRIDGE_DIR = REPO_ROOT / "app" / "src" / "main" / "java" / "io" / "throne" / "bbox"
-CAPABILITIES = REPO_ROOT / "app" / "src" / "main" / "java" / "io" / "throne" / "bbox" / "bridge" / "Capabilities.kt"
+BRIDGE = REPO_ROOT / "app" / "src" / "main" / "java" / "io" / "flrone" / "flutter" / "ThroneBoxBridge.kt"
+BRIDGE_DIR = REPO_ROOT / "app" / "src" / "main" / "java" / "io" / "flrone"
+CAPABILITIES = REPO_ROOT / "app" / "src" / "main" / "java" / "io" / "flrone" / "bridge" / "Capabilities.kt"
 DART_DISPATCH = FLUTTER_LIB / "box.dart"
 
 # Bridge dispatches only: the receiver is a box-ish identifier (`box`, `_box!`,
@@ -297,7 +297,7 @@ def ffi_id_contract_failures() -> list[str]:
     if re.search(r"\bIsolate\.run\b", service):
         problems.append("kernel_service.dart still opens a fresh isolate per FFI call")
 
-    kernel = (REPO_ROOT / "app/src/main/java/io/throne/bbox/bridge/BboxKernel.kt").read_text(encoding="utf-8")
+    kernel = (REPO_ROOT / "app/src/main/java/io/flrone/bridge/BboxKernel.kt").read_text(encoding="utf-8")
     if not re.search(r"fun buildStartOptions\(\)", kernel):
         problems.append("BboxKernel.buildStartOptions must resolve the profile itself (no id parameter)")
     if "DataStore.selectedProxy" not in kernel:

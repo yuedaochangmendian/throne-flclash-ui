@@ -28,7 +28,7 @@ B-box's screens talk to Android through two channels and nothing else:
 
 `BoxController` (`flutter/lib/box.dart`) is the only consumer, so implementing those two channels is what makes the
 whole interface work — dashboard, proxies, profiles, tools and settings included. That is what
-`app/src/main/java/io/throne/bbox/flutter/ThroneBoxBridge.kt` does.
+`app/src/main/java/io/flrone/flutter/ThroneBoxBridge.kt` does.
 
 ## Layout
 
@@ -37,7 +37,7 @@ flutter/                     B-box's Flutter module (assets, shaders, 189 Dart f
   pubspec.yaml               module: androidPackage io.flrone.ui
   build/host/outputs/repo/   the local Maven repo `flutter build aar` writes
 
-app/src/main/java/io/throne/bbox/
+app/src/main/java/io/flrone/
   bridge/                    the state and action layer (see docs/bbox-bridge.md)
   flutter/ThroneBoxBridge.kt the channel host: state out, actions in
   flutter/BboxFlutterActivity.kt  FlutterFragmentActivity + engine registration

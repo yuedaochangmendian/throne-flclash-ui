@@ -4,7 +4,7 @@
 
 The ported interface (`:bboxui`) renders one immutable snapshot and sends every gesture through one object. Throne's
 backend does not work that way: its state lives in four places and the old fragments read each of them directly. This
-document describes the layer in `app/src/main/java/io/throne/bbox/bridge` that reconciles the two, replacing the
+document describes the layer in `app/src/main/java/io/flrone/bridge` that reconciles the two, replacing the
 fragment-owned service connections of the old UI.
 
 ## Why a bridge at all

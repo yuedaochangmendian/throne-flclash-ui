@@ -192,7 +192,7 @@ class FfiHardeningTests(unittest.TestCase):
         carried the previous mode, Dart applied it and the chips snapped back: the
         switch looked dead even though the store already held the new value.
         """
-        kernel = (ROOT / "app" / "src" / "main" / "java" / "io" / "throne" / "bbox" /
+        kernel = (ROOT / "app" / "src" / "main" / "java" / "io" / "flrone" /
                   "bridge" / "BboxKernel.kt").read_text(encoding="utf-8")
         start = kernel.index("fun setMode(mode: String)")
         body = kernel[start:kernel.index("\n    }", start)]
@@ -206,7 +206,7 @@ class FfiHardeningTests(unittest.TestCase):
         Even with the refresh above, a push can race the catalog reload. Reading the
         store makes every emission self-consistent, so the highlight cannot revert.
         """
-        bridge = (ROOT / "app" / "src" / "main" / "java" / "io" / "throne" / "bbox" /
+        bridge = (ROOT / "app" / "src" / "main" / "java" / "io" / "flrone" /
                   "flutter" / "ThroneBoxBridge.kt").read_text(encoding="utf-8")
         start = bridge.index("private fun dashboardWire(")
         body = bridge[start:bridge.index("private fun profilesWire", start)]
