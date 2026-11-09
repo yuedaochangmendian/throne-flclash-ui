@@ -960,6 +960,11 @@ def emit_go(surface: dict, idx: GoIndex, classes: dict[str, Cls]) -> str:
             body = go_expr(idx, sig, classes)
             if sig.symbol == "throne_Mobile_startIPTest":
                 body = [line.replace("StartIPTest(", "startIPTestLive(") for line in body]
+            if sig.symbol == "throne_Mobile_startURLTest":
+                body = [line.replace(
+                    "StartURLTest(handleGet(int64(current)).(*Instance)",
+                    "startURLTestLive(int64(current)",
+                ) for line in body]
             L.extend("\t" + line for line in body)
             if sig.symbol == "throne_Instance_close":
                 L.append("\tthrone_handle_release(handle)")
@@ -1487,6 +1492,62 @@ func startIPTestLive(platform PlatformInterface, request *TestRequest, handler I
 \t\t}})
 \t}}()
 \treturn nil
+}}
+
+// startURLTestLive is the one URL-test entry point. When TestCurrent is set it resolves the live instance in this
+// process even if the caller could not carry its handle across a service boundary, then measures the actual exit.
+// Probe tests stay available for offline nodes, but they run one request like FlClash instead of a warm-up plus a
+// second timed request; a slow or muxed node therefore cannot be failed by the probe's extra round trip.
+func startURLTestLive(currentHandle int64, platform PlatformInterface, request *TestRequest, handler URLTestHandler) error {{
+	if request == nil || handler == nil {{
+		return errors.New("nil request or handler")
+	}}
+	var current *Instance
+	if request.TestCurrent {{
+		if currentHandle != 0 {{
+			if value, ok := handleGet(currentHandle).(*Instance); ok {{
+				current = value
+			}}
+		}}
+		if current == nil || !current.running() {{
+			lastInstance.mu.Lock()
+			latest := lastInstance.inst
+			lastInstance.mu.Unlock()
+			if latest != nil && latest.running() {{
+				current = latest
+			}}
+		}}
+	}}
+	env, err := prepareTestEnv(current, request.TestCurrent, platform, request)
+	if err != nil {{
+		return err
+	}}
+	testCtx := probe.TestContext()
+	if request.TestCurrent {{
+		testCtx = probe.LiveInstance(testCtx)
+	}}
+	timeout := time.Duration(request.TimeoutMs) * time.Millisecond
+	go func() {{
+		defer handler.OnDone()
+		defer env.close()
+		failed := make(map[string]bool, len(env.tags))
+		newTestReporter(env.tags, probe.URLReporter.Results,
+			func(result *probe.URLTestResult) string {{ return result.Tag }},
+			func(result *probe.URLTestResult) {{
+				failed[result.Tag] = result.Error != nil
+				handler.OnResult(result.Tag, int32(result.Duration.Milliseconds()), errorString(result.Error))
+			}},
+		).run(func() []*probe.URLTestResult {{
+			return probe.BatchURLTest(testCtx, env.box, env.tags, request.URL, int(request.MaxConcurrency), false, timeout)
+		}})
+		for _, tag := range request.vpnEndpointTags {{
+			if failed[tag] {{
+				connected, state, err := vpnEndpointVerdict(env.box, tag)
+				handler.OnVPNStatus(tag, connected, state, err)
+			}}
+		}}
+	}}()
+	return nil
 }}
 
 // --- tun options for VpnService.Builder ------------------------------------

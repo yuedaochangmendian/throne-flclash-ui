@@ -6,13 +6,15 @@ import kotlinx.parcelize.Parcelize
 /**
  * One test session request. Empty/zero/negative option fields are filled from the settings in :bg
  * (`test_url`, `url_test_timeout_ms`, `test_concurrent`, `speed_test_mode`, `speed_test_timeout_ms`, `simple_dl_url`).
- * With [testCurrent] the running instance is measured and [profileIds] is ignored.
+ * With [testCurrent] the running instance is measured and [profileIds] keys the result row.
+ * [persistCurrentResult] stores that live result on the profile (the proxy page's card test).
  */
 @Parcelize
 data class TestSpec(
     val kind: Int,
     val profileIds: LongArray = LongArray(0),
     val testCurrent: Boolean = false,
+    val persistCurrentResult: Boolean = false,
     val scopeLabel: String = "",
     val url: String = "",
     val timeoutMs: Int = 0,
@@ -24,7 +26,8 @@ data class TestSpec(
 
     override fun equals(other: Any?): Boolean = this === other ||
         other is TestSpec && kind == other.kind && profileIds.contentEquals(other.profileIds) &&
-        testCurrent == other.testCurrent && scopeLabel == other.scopeLabel && url == other.url &&
+        testCurrent == other.testCurrent && persistCurrentResult == other.persistCurrentResult &&
+        scopeLabel == other.scopeLabel && url == other.url &&
         timeoutMs == other.timeoutMs && concurrency == other.concurrency && speedMode == other.speedMode &&
         speedTimeoutMs == other.speedTimeoutMs && simpleDlUrl == other.simpleDlUrl
 

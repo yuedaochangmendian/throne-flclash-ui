@@ -1008,7 +1008,7 @@ func throne_Mobile_startSpeedTest(current C.int64_t, request C.int64_t, handler 
 //export throne_Mobile_startURLTest
 func throne_Mobile_startURLTest(current C.int64_t, request C.int64_t, handler C.int64_t)  {
 	defer guardExport("throne_Mobile_startURLTest")
-	if err := StartURLTest(handleGet(int64(current)).(*Instance), bridgePlatform, handleGet(int64(request)).(*TestRequest), portURLTest{port: int64(handler)}); err != nil { setErr(err) }
+	if err := startURLTestLive(int64(current), bridgePlatform, handleGet(int64(request)).(*TestRequest), portURLTest{port: int64(handler)}); err != nil { setErr(err) }
 }
 
 //export throne_Mobile_stopDiagnostics

@@ -40,6 +40,35 @@ object BboxCommands : BboxActions {
     /** A URL test's timeout plus its bind, stop and catalog-refresh allowance. */
     private const val TEST_NODE_TIMEOUT_MS = 45_000L
 
+    /** FlClash's defaults, also used as the floor for a proxy-page test. */
+    private const val FLCLASH_TEST_URL = "https://www.gstatic.com/generate_204"
+    private const val LEGACY_THRONE_TEST_URL = "https://cp.cloudflare.com"
+    private const val FLCLASH_TEST_TIMEOUT_MS = 8_000
+
+    /**
+     * The proxy page tests the actual running exit whenever it targets that profile. A probe box remains only
+     * for offline/other-node tests, because a probe-only verdict is not allowed to replace a live usable node.
+     */
+    private fun urlTestSpec(ids: List<Long>, scopeLabel: String): TestSpec {
+        val live = DataStore.serviceState.connected && ids.size == 1 && ids[0] == ProfileManager.runningProfileId()
+        val configuredUrl = DataStore.testUrl.trim()
+        val usesLegacyDefault = configuredUrl.trimEnd('/') == LEGACY_THRONE_TEST_URL
+        val url = if (configuredUrl.isEmpty() || usesLegacyDefault) {
+            FLCLASH_TEST_URL
+        } else {
+            configuredUrl
+        }
+        return TestSpec(
+            kind = TestSpec.KIND_URL,
+            profileIds = ids.toLongArray(),
+            testCurrent = live,
+            persistCurrentResult = live,
+            scopeLabel = scopeLabel,
+            url = url,
+            timeoutMs = maxOf(DataStore.urlTestTimeoutMs, FLCLASH_TEST_TIMEOUT_MS),
+        )
+    }
+
     /**
      * A test writes its results from the service process ([TestSessionClient]), whose profile updates the catalog's
      * in-process listeners never hear — the cards would keep their old latency until the next cold start. The session
@@ -139,22 +168,14 @@ object BboxCommands : BboxActions {
         val target = withContext(Dispatchers.IO) {
             if (profileIds.isNotEmpty()) {
                 val ids = profileIds.distinct()
-                return@withContext TestSpec(
-                    kind = TestSpec.KIND_URL,
-                    profileIds = ids.toLongArray(),
-                    scopeLabel = tag,
-                ) to 0L
+                return@withContext urlTestSpec(ids, tag) to 0L
             }
             val groups = GroupRepo.all()
             val group = groups.firstOrNull { it.displayName() == tag }
             if (group != null) {
                 val ids = ProfileManager.memberIds(group.id)
                 return@withContext if (ids.isEmpty()) null else {
-                    TestSpec(
-                        kind = TestSpec.KIND_URL,
-                        profileIds = ids.toLongArray(),
-                        scopeLabel = group.displayName(),
-                    ) to group.id
+                    urlTestSpec(ids, group.displayName()) to group.id
                 }
             }
             val owner = groups.firstOrNull { candidate ->
@@ -162,11 +183,7 @@ object BboxCommands : BboxActions {
             } ?: return@withContext null
             val profile = ProfileManager.members(owner.id).firstOrNull { it.displayName() == tag }
                 ?: return@withContext null
-            TestSpec(
-                kind = TestSpec.KIND_URL,
-                profileIds = longArrayOf(profile.id),
-                scopeLabel = profile.displayName(),
-            ) to profile.groupId
+            urlTestSpec(listOf(profile.id), profile.displayName()) to profile.groupId
         } ?: return false
         val before = TestSessionClient.state.value
         if (!TestSessionClient.start(target.first, target.second)) return false
