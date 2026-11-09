@@ -313,10 +313,11 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Last speed test'), findsOneWidget);
-    final chart = tester.widget<LineChart>(find.byKey(const ValueKey('speed-curve')));
-    expect(chart.secondaryValues, isNotNull);
-    expect(chart.secondaryValues!.any((value) => value > 0), isTrue);
-    expect(chart.secondaryColor, isNot(chart.color));
+    expect(find.byKey(const ValueKey('speed-curve')), findsOneWidget);
+    final download = tester.widget<LineChart>(find.byKey(const ValueKey('speed-download-curve')));
+    final upload = tester.widget<LineChart>(find.byKey(const ValueKey('speed-upload-curve')));
+    expect(upload.values.any((value) => value > 0), isTrue);
+    expect(upload.color, isNot(download.color));
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     await events.close();

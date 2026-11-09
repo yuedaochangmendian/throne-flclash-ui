@@ -154,13 +154,23 @@ class _TestPanelPageState extends State<TestPanelPage> {
           ]),
           if (speed['server']?.toString().isNotEmpty == true)
             Text('${speed['server']} (${speed['serverCountry']})', style: context.listCaptionStyle),
-          SizedBox(height: 72, child: LineChart(
-            key: const ValueKey('speed-curve'),
-            values: [for (final value in download) value / peak],
-            secondaryValues: [for (final value in upload) value / peak],
-            revision: samples.length, capacity: 600, minScale: 0.1, baselineRatio: 1,
-            color: downloadColor, secondaryColor: uploadColor,
-          )),
+          // The vendored chart is single-series; two copies share the same
+          // normalized peak and overlay, keeping line_chart.dart identical to
+          // its Prism baseline.
+          SizedBox(height: 72, child: Stack(key: const ValueKey('speed-curve'), children: [
+            Positioned.fill(child: LineChart(
+              key: const ValueKey('speed-download-curve'),
+              values: [for (final value in download) value / peak],
+              revision: samples.length, capacity: 600, minScale: 1, baselineRatio: 1,
+              color: downloadColor,
+            )),
+            Positioned.fill(child: LineChart(
+              key: const ValueKey('speed-upload-curve'),
+              values: [for (final value in upload) value / peak],
+              revision: samples.length, capacity: 600, minScale: 1, baselineRatio: 1,
+              color: uploadColor,
+            )),
+          ])),
         ],
       )),
     ]);
