@@ -4,7 +4,7 @@
 
 #### 3.3.2
 
-Development notes for the next release. This section will be finalized once the 3.3.1 post-release device matrix and the 3.3.2 scope are closed.
+The 3.3.2 stable maintenance release. Physical arm64/TV regression is optional and tracked separately in Issue #17.
 
 * **The 3.3.2 maintenance pass hardens imports, scanning and kernel recovery.** A subscription corpus now covers standard, MIME-wrapped and URL-safe Base64 plus JSON bodies; the import scanner is split out for reuse; QR scanning runs in a host ZXing activity and removes the mobile_scanner/ML Kit payload; profile wire encoding and the kernel heartbeat policy are independently testable; protocol, group and auto-selector pages gain render regressions; coverage gates now measure owned code rather than generated FFI/vendored UI; and the roadmap reflects the current release line
 * **GitHub delivery now skips redundant work.** ThroneCore restores its AAR cache before cloning the pinned core; docs-only changes take a lightweight CI path; automatic previews skip commits with no app or build-input changes since the latest release tag; CI artifacts upload only on `main` or failure; and the governance audit runs weekly instead of daily

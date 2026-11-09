@@ -28,7 +28,7 @@
 - [ ] 改动涉及桥接方法／事件时，已同步 Dart 与 Kotlin 两端，并核对 `docs/bbox-bridge.md` 与 `Capabilities.kt`
 - [ ] 改动涉及规范时，已同步 `openspec/specs/` 或提交 `openspec/changes/` 变更提案
 
-真机 / 设备清单（涉及 UI、VPN、覆盖升级、备份、Android TV 等运行时行为时，按 `docs/device-checklist.md` 走查）：
+真机 / 设备清单（可选的发布后回归；涉及 UI、VPN、覆盖升级、备份、Android TV 等运行时行为时，按 `docs/device-checklist.md` 走查）：
 
 - [ ] arm64 真机：新装首启 / 覆盖升级 / 连接与切换节点
 - [ ] Android TV（或模拟器）：D-pad 导航与焦点
