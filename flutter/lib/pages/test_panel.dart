@@ -133,9 +133,8 @@ class _TestPanelPageState extends State<TestPanelPage> {
     final running = session['running'] == true;
     final downloadColor = context.colorScheme.primary;
     final uploadColor = context.colorScheme.tertiary;
-    String bps(value) => value > 1e6 ? '${(value / 1e6).toStringAsFixed(1)} Mbps' : '${(value / 1e3).toStringAsFixed(0)} kbps';
     Widget legend(String label, double value, Color color) => Text(
-      '● ${context.tr(label)}: ${bps(value)}',
+      '● ${context.tr(label)}: ${speedRateText(value)}',
       style: context.listCaptionStyle.copyWith(color: color),
     );
     return generateSection(title: context.tr(running ? 'Testing now' : 'Last speed test'), items: [

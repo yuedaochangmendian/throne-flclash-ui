@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert' as convert;
 import 'dart:math' as math;
 
 import '../widgets.dart';
@@ -14,11 +13,21 @@ import '../components/speed_gauge.dart';
 /// `start` returns at once and this page polls `query` while the test runs, so
 /// the numbers are the core's own samples rather than a UI reconstruction.
 class SpeedTestPage extends StatefulWidget {
-  const SpeedTestPage({super.key, this.outbound});
+  const SpeedTestPage({
+    super.key,
+    this.outbound,
+    this.download = true,
+    this.upload = true,
+  });
 
   /// The outbound the run measures through; null keeps the stored choice (and
   /// the box's default outbound when none was stored).
   final String? outbound;
+
+  /// Which directions the run measures. The node card's submenu narrows one;
+  /// the screen's own start button asks for both.
+  final bool download;
+  final bool upload;
 
   @override
   State<SpeedTestPage> createState() => _SpeedTestPageState();
@@ -105,6 +114,9 @@ class _SpeedTestPageState extends State<SpeedTestPage>
     'duration': _duration,
     'streams': _streams,
     'outbound': _outbound,
+    // Only sent when narrowed: the kernel treats an absent flag as "run it".
+    if (!widget.download) 'testDownload': false,
+    if (!widget.upload) 'testUpload': false,
     if (_server case (final host, final name, final cc, final sponsor)) ...{
       'serverHost': host,
       'serverName': name,
@@ -333,6 +345,19 @@ class _SpeedTestPageState extends State<SpeedTestPage>
 
   bool get _connecting => _starting || (_running && !_hasValue);
 
+  /// The gauge's caption: what the run is doing, in one word.
+  String get _readoutLabel {
+    if (_connecting) return context.tr('Connecting');
+    final phase = _phase;
+    return switch (phase) {
+      null => context.tr('Ready'),
+      'done' => context.tr('Complete'),
+      'upload' => context.tr('Upload'),
+      'download' => context.tr('Download'),
+      _ => context.tr('Ready'),
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
@@ -441,15 +466,7 @@ class _SpeedTestPageState extends State<SpeedTestPage>
                       ),
                       const SizedBox(height: 4),
                       _GaugeReadout(
-                        label: _connecting
-                            ? context.tr('Connecting')
-                            : !_hasValue
-                            ? context.tr('Ready')
-                            : _hasValue && _phase == 'done'
-                            ? context.tr('Complete')
-                            : context.tr(
-                                isUpload ? 'Upload' : 'Download',
-                              ),
+                        label: _readoutLabel,
                         value: _hasValue
                             ? speedValueText(_gaugeValue)
                             : '—',
@@ -760,28 +777,43 @@ class _ResultTiles extends StatelessWidget {
         final columns = constraints.maxWidth >= 480 ? 3 : 2;
         return Column(
           children: [
-            for (var i = 0; i < tiles.length; i += columns) ...[
-              if (i > 0) const SizedBox(height: 10),
-              Row(
-                spacing: 10,
-                children: [
-                  for (var j = 0; j < columns; j++)
-                    Expanded(
-                      child: i + j < tiles.length
-                          ? _ResultTile(
-                              title: tiles[i + j].$1,
-                              value: tiles[i + j].$2,
-                              color: tiles[i + j].$3,
-                            )
-                          : const SizedBox.shrink(),
-                    ),
-                ],
-              ),
+            for (var start = 0; start < tiles.length; start += columns) ...[
+              if (start > 0) const SizedBox(height: 10),
+              _TileRow(tiles: tiles, start: start, columns: columns),
             ],
           ],
         );
       },
     );
+  }
+}
+
+/// One row of the result grid: [columns] slots starting at [start], with the
+/// trailing slots padded to nothing when the tiles run out.
+class _TileRow extends StatelessWidget {
+  const _TileRow({
+    required this.tiles,
+    required this.start,
+    required this.columns,
+  });
+
+  final List<(String, String, Color)> tiles;
+  final int start;
+  final int columns;
+
+  @override
+  Widget build(BuildContext context) => Row(
+    spacing: 10,
+    children: [
+      for (var slot = 0; slot < columns; slot++)
+        Expanded(child: _slot(start + slot)),
+    ],
+  );
+
+  Widget _slot(int index) {
+    if (index >= tiles.length) return const SizedBox.shrink();
+    final (title, value, color) = tiles[index];
+    return _ResultTile(title: title, value: value, color: color);
   }
 }
 
@@ -820,22 +852,3 @@ class _ResultTile extends StatelessWidget {
     ),
   );
 }
-
-/// `params` for a run, exposed for the tests that assert the wire shape.
-Map<String, dynamic> speedTestParamsForTesting({
-  required String provider,
-  required String protocol,
-  required int duration,
-  required int streams,
-  required String outbound,
-}) => {
-  'provider': provider,
-  'protocol': protocol,
-  'duration': duration,
-  'streams': streams,
-  'outbound': outbound,
-};
-
-/// Encodes a run's parameters the way the bridge takes them, for tests.
-String encodeSpeedTestParams(Map<String, dynamic> params) =>
-    convert.jsonEncode(params);

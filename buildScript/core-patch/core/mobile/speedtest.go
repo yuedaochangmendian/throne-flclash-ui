@@ -104,19 +104,40 @@ func getSpeedUploadPayload() []byte {
 	return speedUploadPayload
 }
 
-// SpeedTestParams is what HandleStartSpeedTest decodes.
+// SpeedTestParams is what the gobind start decodes.
 type SpeedTestParams struct {
-	Provider     string  `json:"provider"`
-	Lang         string  `json:"lang"`
-	Outbound     string  `json:"outbound"`
-	Duration     int     `json:"duration"`
-	Protocol     string  `json:"protocol"`
-	Streams      int     `json:"streams"`
-	UseSystemDns bool    `json:"useSystemDns"`
-	ServerHost   string  `json:"serverHost"`
-	ServerName   string  `json:"serverName"`
-	ServerCc     string  `json:"serverCc"`
+	Provider string `json:"provider"`
+	Lang     string `json:"lang"`
+	Outbound string `json:"outbound"`
+	Duration int    `json:"duration"`
+	Protocol string `json:"protocol"`
+	Streams  int    `json:"streams"`
+	// Directions. `null` (absent) means "both", which is what the speed screen
+	// and the batch panel ask for; the node card's submenu narrows to one, as
+	// Bettbox's TestDownload/TestUpload flags do.
+	TestDownload  *bool  `json:"testDownload"`
+	TestUpload    *bool  `json:"testUpload"`
+	UseSystemDns  bool   `json:"useSystemDns"`
+	ServerHost    string `json:"serverHost"`
+	ServerName    string `json:"serverName"`
+	ServerCc      string `json:"serverCc"`
 	ServerSponsor string `json:"serverSponsor"`
+}
+
+// downloadEnabled / uploadEnabled fold the nullable pair. With neither flag
+// given both directions run; giving only one narrows the test to it.
+func (p SpeedTestParams) downloadEnabled() bool {
+	if p.TestDownload != nil {
+		return *p.TestDownload
+	}
+	return p.TestUpload == nil || !*p.TestUpload
+}
+
+func (p SpeedTestParams) uploadEnabled() bool {
+	if p.TestUpload != nil {
+		return *p.TestUpload
+	}
+	return p.TestDownload == nil || !*p.TestDownload
 }
 
 // SpeedTestState is the snapshot pushed to the UI.
@@ -212,60 +233,6 @@ func beginSpeedTest() (context.Context, func()) {
 		speedTestLock.Unlock()
 		cancel()
 	}
-}
-
-// HandleStartSpeedTest runs one test to completion and answers the final state.
-// `push` receives the 200 ms snapshots; a nil push only drops them.
-func HandleStartSpeedTest(instance *Instance, paramsString string, push func(SpeedTestState)) string {
-	params := SpeedTestParams{}
-	_ = json.Unmarshal([]byte(paramsString), &params)
-	ctx, finish := beginSpeedTest()
-	defer finish()
-
-	tester := newSpeedTester(instance, params)
-	tester.run(ctx, push)
-	data, _ := json.Marshal(tester.snapshot())
-	return string(data)
-}
-
-// HandleCancelSpeedTest stops the running test, if any.
-func HandleCancelSpeedTest() bool {
-	speedTestLock.Lock()
-	defer speedTestLock.Unlock()
-	if speedTestCancel != nil {
-		speedTestCancel()
-		speedTestCancel = nil
-	}
-	return true
-}
-
-// HandleSpeedTestServers lists speedtest.net servers with their latency, nearest first.
-func HandleSpeedTestServers(instance *Instance, outbound, search string) string {
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	tester := newSpeedTester(instance, SpeedTestParams{Provider: "speedtest", Outbound: outbound})
-	defer tester.release()
-	servers, err := tester.fetchSpeedtestNetServers(ctx, search)
-	if err != nil {
-		return "[]"
-	}
-	tester.measureSpeedtestNetServers(ctx, servers)
-	sort.SliceStable(servers, func(a, b int) bool {
-		switch {
-		case servers[a].Latency == servers[b].Latency:
-			return false
-		case servers[a].Latency <= 0:
-			return false
-		case servers[b].Latency <= 0:
-			return true
-		case servers[a].Latency < servers[b].Latency:
-			return true
-		default:
-			return false
-		}
-	})
-	data, _ := json.Marshal(servers)
-	return string(data)
 }
 
 func newSpeedTester(instance *Instance, params SpeedTestParams) *speedTester {
@@ -367,8 +334,8 @@ func (t *speedTester) tlsConfig() *tls.Config {
 
 func (t *speedTester) newClient() *http.Client {
 	transport := &http.Transport{
-		DialContext:         t.dial,
-		TLSClientConfig:     t.tlsConfig(),
+		DialContext:     t.dial,
+		TLSClientConfig: t.tlsConfig(),
 		// h1 only: TLSNextProto left empty keeps Go from upgrading to h2,
 		// because the h2 case builds its own client.
 		MaxIdleConnsPerHost: speedTestMaxStreams * 2,
@@ -579,34 +546,46 @@ func (t *speedTester) execute(ctx context.Context) error {
 	})
 
 	t.setPhase(speedTestPhaseDownload)
-	download, downloadLoaded := t.measureLoad(ctx, target, t.downloadWorker(target.downloadURL), false)
-	if ctx.Err() != nil {
-		return ctx.Err()
+	var downloadLoaded, uploadLoaded []float64
+	if t.params.downloadEnabled() {
+		download, loaded := t.measureLoad(ctx, target, t.downloadWorker(target.downloadURL), false)
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		if download <= 0 {
+			return errSpeedTestBlocked
+		}
+		downloadLoaded = loaded
+		t.update(func(state *SpeedTestState) {
+			state.Download = download
+			state.DownloadLatency = median(loaded)
+		})
 	}
-	if download <= 0 {
-		return errSpeedTestBlocked
-	}
-	t.update(func(state *SpeedTestState) {
-		state.Download = download
-		state.DownloadLatency = median(downloadLoaded)
-	})
 
 	t.setPhase(speedTestPhaseUpload)
-	upload, uploadLoaded := t.measureLoad(ctx, target, t.uploadWorker(target.uploadURL), true)
-	if ctx.Err() != nil {
-		return ctx.Err()
-	}
-	loaded := append(append([]float64{}, downloadLoaded...), uploadLoaded...)
-	t.update(func(state *SpeedTestState) {
-		state.Upload = upload
-		if upload <= 0 {
-			state.Upload = -1
+	if t.params.uploadEnabled() {
+		upload, loaded := t.measureLoad(ctx, target, t.uploadWorker(target.uploadURL), true)
+		if ctx.Err() != nil {
+			return ctx.Err()
 		}
-		state.UploadLatency = median(uploadLoaded)
-		if value := median(loaded); value > 0 {
+		uploadLoaded = loaded
+		all := append(append([]float64{}, downloadLoaded...), uploadLoaded...)
+		t.update(func(state *SpeedTestState) {
+			state.Upload = upload
+			if upload <= 0 {
+				state.Upload = -1
+			}
+			state.UploadLatency = median(uploadLoaded)
+			if value := median(all); value > 0 {
+				state.Rpm = int(60000 / value)
+			}
+		})
+	} else if value := median(downloadLoaded); value > 0 {
+		// A download-only run still has loaded round trips worth reporting.
+		t.update(func(state *SpeedTestState) {
 			state.Rpm = int(60000 / value)
-		}
-	})
+		})
+	}
 	return nil
 }
 
@@ -986,6 +965,10 @@ func (t *speedTester) uploadWorker(url string) func(context.Context, *http.Clien
 	}
 }
 
+// measureLoad runs one direction: [streams] workers pull as much as they can
+// for the configured duration while a second sampler times the endpoint under
+// that load, and a third records the throughput curve. It returns the stable
+// rate and the loaded round trips.
 func (t *speedTester) measureLoad(ctx context.Context, target *speedTestTarget, worker func(context.Context, *http.Client, *atomic.Int64) error, upload bool) (float64, []float64) {
 	_, _, _ = t.latencyOnce(ctx, t.probe, target.latencyURL)
 	duration := time.Duration(t.params.Duration) * time.Second
@@ -994,28 +977,48 @@ func (t *speedTester) measureLoad(ctx context.Context, target *speedTestTarget, 
 
 	counter := &atomic.Int64{}
 	var wg sync.WaitGroup
+	t.startWorkers(loadCtx, &wg, worker, counter)
+	loaded := t.sampleLoadedLatency(loadCtx, target)
+	samples := t.sampleThroughput(loadCtx, counter, duration, upload)
+	cancel()
+	wg.Wait()
+	return stableSpeed(samples), loaded
+}
+
+// startWorkers keeps [streams] goroutines pulling until the context ends. A
+// worker that fails backs off; past three times the stream count the whole
+// direction gives up rather than spinning on a dead endpoint.
+func (t *speedTester) startWorkers(loadCtx context.Context, wg *sync.WaitGroup, worker func(context.Context, *http.Client, *atomic.Int64) error, counter *atomic.Int64) {
 	var failures atomic.Int32
+	limit := int32(t.params.Streams * 3)
 	for i := 0; i < t.params.Streams; i++ {
 		client := t.load[i%len(t.load)]
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
 			for loadCtx.Err() == nil {
-				if err := worker(loadCtx, client, counter); err != nil && loadCtx.Err() == nil {
-					if failures.Add(1) > int32(t.params.Streams*3) {
-						return
-					}
-					time.Sleep(200 * time.Millisecond)
+				err := worker(loadCtx, client, counter)
+				if err == nil || loadCtx.Err() != nil {
+					continue
 				}
+				if failures.Add(1) > limit {
+					return
+				}
+				time.Sleep(200 * time.Millisecond)
 			}
 		}()
 	}
+}
 
-	var loadedMu sync.Mutex
-	loaded := make([]float64, 0, int(duration/speedTestLoadedInterval)+4)
-	wg.Add(1)
+// sampleLoadedLatency times the endpoint under load every 400 ms until the
+// context ends. It joins only its own sampler: the load workers belong to the
+// caller's group and end with the same context.
+func (t *speedTester) sampleLoadedLatency(loadCtx context.Context, target *speedTestTarget) []float64 {
+	var mu sync.Mutex
+	loaded := make([]float64, 0, int(time.Duration(t.params.Duration)*time.Second/speedTestLoadedInterval)+4)
+	done := make(chan struct{})
 	go func() {
-		defer wg.Done()
+		defer close(done)
 		ticker := time.NewTicker(speedTestLoadedInterval)
 		defer ticker.Stop()
 		for {
@@ -1023,50 +1026,56 @@ func (t *speedTester) measureLoad(ctx context.Context, target *speedTestTarget, 
 			case <-loadCtx.Done():
 				return
 			case <-ticker.C:
-				if rtt, _, err := t.latencyOnce(loadCtx, t.probe, target.latencyURL); err == nil {
-					loadedMu.Lock()
-					loaded = append(loaded, rtt)
-					loadedMu.Unlock()
+				rtt, _, err := t.latencyOnce(loadCtx, t.probe, target.latencyURL)
+				if err != nil {
+					continue
 				}
+				mu.Lock()
+				loaded = append(loaded, rtt)
+				mu.Unlock()
 			}
 		}
 	}()
+	<-done
+	mu.Lock()
+	defer mu.Unlock()
+	return loaded
+}
 
+// sampleThroughput records the transferred bytes every 100 ms, pushing the
+// windowed rate to the UI as it goes and growing the chart's own series.
+func (t *speedTester) sampleThroughput(loadCtx context.Context, counter *atomic.Int64, duration time.Duration, upload bool) []speedSample {
 	start := time.Now()
 	samples := make([]speedSample, 0, int(duration/speedTestSampleInterval)+4)
 	samples = append(samples, speedSample{at: 0, bytes: 0})
 	ticker := time.NewTicker(speedTestSampleInterval)
-sampling:
+	defer ticker.Stop()
 	for {
 		select {
 		case <-loadCtx.Done():
-			break sampling
+			samples = append(samples, speedSample{at: time.Since(start), bytes: counter.Load()})
+			return samples
 		case <-ticker.C:
-			sample := speedSample{at: time.Since(start), bytes: counter.Load()}
-			samples = append(samples, sample)
-			speed := windowSpeed(samples, time.Second)
-			progress := float64(sample.at) / float64(duration)
-			t.update(func(state *SpeedTestState) {
-				state.Speed = speed
-				state.Progress = progress
-				// One point per sample; the chart draws them as they land, the
-				// way Bettbox's own series fills in during a run.
-				if upload {
-					t.uploadCurve = append(t.uploadCurve, speed)
-				} else {
-					t.downloadCurve = append(t.downloadCurve, speed)
-				}
-			})
+			samples = append(samples, speedSample{at: time.Since(start), bytes: counter.Load()})
+			t.reportWindow(samples, duration, upload)
 		}
 	}
-	ticker.Stop()
-	samples = append(samples, speedSample{at: time.Since(start), bytes: counter.Load()})
-	cancel()
-	wg.Wait()
+}
 
-	loadedMu.Lock()
-	defer loadedMu.Unlock()
-	return stableSpeed(samples), loaded
+// reportWindow pushes the latest one-second window as the live speed and a
+// point of the chart's series for this direction.
+func (t *speedTester) reportWindow(samples []speedSample, duration time.Duration, upload bool) {
+	speed := windowSpeed(samples, time.Second)
+	progress := float64(samples[len(samples)-1].at) / float64(duration)
+	t.update(func(state *SpeedTestState) {
+		state.Speed = speed
+		state.Progress = progress
+		if upload {
+			t.uploadCurve = append(t.uploadCurve, speed)
+		} else {
+			t.downloadCurve = append(t.downloadCurve, speed)
+		}
+	})
 }
 
 type speedCounter struct {
@@ -1277,12 +1286,43 @@ func QueryBettboxSpeedTest() string {
 // CancelBettboxSpeedTest stops the running test; the snapshot then reports the
 // cancelled error, as a stopped desktop test does.
 func CancelBettboxSpeedTest() bool {
-	return HandleCancelSpeedTest()
+	speedTestLock.Lock()
+	defer speedTestLock.Unlock()
+	if speedTestCancel != nil {
+		speedTestCancel()
+		speedTestCancel = nil
+	}
+	return true
 }
 
-// BettboxSpeedTestServers lists speedtest.net servers, nearest first, as JSON.
+// BettboxSpeedTestServers lists speedtest.net servers with their latency,
+// nearest first, as JSON.
 func BettboxSpeedTestServers(instance *Instance, outbound string, search string) string {
-	return HandleSpeedTestServers(instance, outbound, search)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+	defer cancel()
+	tester := newSpeedTester(instance, SpeedTestParams{Provider: "speedtest", Outbound: outbound})
+	defer tester.release()
+	servers, err := tester.fetchSpeedtestNetServers(ctx, search)
+	if err != nil {
+		return "[]"
+	}
+	tester.measureSpeedtestNetServers(ctx, servers)
+	sort.SliceStable(servers, func(a, b int) bool {
+		switch {
+		case servers[a].Latency == servers[b].Latency:
+			return false
+		case servers[a].Latency <= 0:
+			return false
+		case servers[b].Latency <= 0:
+			return true
+		case servers[a].Latency < servers[b].Latency:
+			return true
+		default:
+			return false
+		}
+	})
+	data, _ := json.Marshal(servers)
+	return string(data)
 }
 
 // BettboxSpeedTestOutbounds lists the running box's outbound tags, the picker
