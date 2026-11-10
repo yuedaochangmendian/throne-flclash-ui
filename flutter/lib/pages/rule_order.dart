@@ -72,10 +72,11 @@ class _RuleOrderSectionState extends State<RuleOrderSection> {
               onReorderItem: _reorder,
               itemBuilder: (_, index) => _item(index),
             ),
-          ListItem(
-            leading: const GlyphIcon(AppGlyphs.add),
+          DecorationListItem(
+            contentPadding: const EdgeInsets.only(left: 16),
             title: Text(context.tr('Add rule')),
-            onTap: () => widget.onEdit(-1),
+            trailing: const GlyphIcon(AppGlyphs.add),
+            onPressed: () => widget.onEdit(-1),
           ),
         ],
       ),

@@ -100,9 +100,7 @@ class _DashboardPageState extends State<DashboardPage> {
             else SliverPadding(padding: padding, sliver: SliverToBoxAdapter(child: Column(spacing: gap, children: [
               if (box.remote) ListItem(title: Text(box.dashboard['remote'].toString()), subtitle: Text(context.tr('Remote control')),
                 trailing: TextButton(onPressed: () => box.remoteDisconnect(), child: Text(context.tr('Disconnect')))),
-              if (box.applyRequired != null) ListItem(title: Text(context.tr('Restart required')), trailing: TextButton(
-                onPressed: () async { if (await box.serviceReload(restart: true)) box.clearApplyRequired(); },
-                child: Text(context.tr('Apply')))),
+              if (box.running && box.applyRequired != null) const _RestartHint(),
               for (final card in shown) RepaintBoundary(key: _keyOf(card), child: cards[card]),
               for (final note in rows(box.dashboard['deprecated'])) ListItem(title: Text(note['message'].toString()),
                 onTap: note['url'] == null ? null : () => box.openUrl(note['url'])),
@@ -110,6 +108,48 @@ class _DashboardPageState extends State<DashboardPage> {
           ],
         );
       }),
+    );
+  }
+}
+
+/// Shows the "restart required" hint for three seconds when a config change is
+/// applied while the service is running, then collapses away. The underlying
+/// [BoxController.applyRequired] flag is left set so the configuration page
+/// keeps an explicit Apply entry even after the hint disappears.
+class _RestartHint extends StatefulWidget {
+  const _RestartHint();
+  @override State<_RestartHint> createState() => _RestartHintState();
+}
+
+class _RestartHintState extends State<_RestartHint> {
+  bool _visible = true;
+
+  @override
+  void initState() {
+    super.initState();
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _visible = false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final box = context.box;
+    return AnimatedSize(
+      duration: midDuration,
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: _visible
+          ? ListItem(
+              title: Text(context.tr('Restart required')),
+              trailing: TextButton(
+                onPressed: () async {
+                  if (await box.serviceReload(restart: true)) box.clearApplyRequired();
+                },
+                child: Text(context.tr('Apply')),
+              ),
+            )
+          : const SizedBox(width: double.infinity, height: 0),
     );
   }
 }

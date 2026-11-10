@@ -25,7 +25,6 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
   bool _isRaw = false;
   bool _saving = false;
   String? _error;
-  String _endpointIds = '';
   List<Json> _rules = const [];
 
   @override
@@ -58,7 +57,6 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
         _url.text = data['remoteUrl']?.toString() ?? '';
         _autoUpdate = data['autoUpdate'] == true;
         _isRaw = data['isRaw'] == true;
-        _endpointIds = (data['endpointIds'] as List? ?? const []).join(', ');
         _current = (list['currentId'] as num?)?.toInt() == widget.id;
       });
       await _loadRules();
@@ -102,47 +100,6 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
     await _loadRules();
   }
 
-  Future<void> _batchAdd() async {
-    if (widget.id == 0) {
-      context.box.report(StateError(context.tr('Save the profile first')));
-      return;
-    }
-    final text = await showDialog<String>(
-      context: context,
-      builder: (context) => const _BatchAddDialog(),
-    );
-    if (text == null || text.trim().isEmpty || !mounted) return;
-    final box = context.box;
-    try {
-      await box.routeBatchAddRules(widget.id, text);
-      if (mounted) await _loadRules();
-    } catch (error) {
-      if (mounted) box.report(error);
-    }
-  }
-
-  /// The Default chain's own rules — one hijack-dns rule that routes DNS. Replaces the list outright.
-  Future<void> _resetRules() async {
-    if (widget.id == 0) {
-      context.box.report(StateError(context.tr('Save the profile first')));
-      return;
-    }
-    final ok = await confirm(
-      context,
-      'Restore default rules?',
-      message: 'The rules become the Default profile\'s own: one hijack-dns rule that routes DNS.',
-      action: 'Restore',
-    );
-    if (!ok || !mounted) return;
-    final box = context.box;
-    try {
-      await box.routeResetRules(widget.id);
-      if (mounted) await _loadRules();
-    } catch (error) {
-      if (mounted) box.report(error);
-    }
-  }
-
   Future<void> _save() async {
     setState(() {
       _saving = true;
@@ -156,11 +113,6 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
         'isRemote': _isRemote,
         'remoteUrl': _url.text,
         'autoUpdate': _autoUpdate,
-        'endpointIds': _endpointIds
-            .split(',')
-            .map((e) => int.tryParse(e.trim()))
-            .whereType<int>()
-            .toList(),
       });
       if (mounted) context.safeNestedPop();
     } catch (error) {
@@ -306,24 +258,6 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
             'A remote profile downloads its rules from the URL.',
           ),
         ),
-        generateSection(
-          title: context.tr('Endpoints'),
-          items: [
-            FormRow(
-              title: context.tr('Endpoint ids'),
-              trailing: FormRowTextField(
-                initialValue: _endpointIds,
-                hintText: '1, 2, 3',
-                keyboardType: TextInputType.number,
-                autocorrect: false,
-                onChanged: (value) => _endpointIds = value,
-              ),
-            ),
-          ],
-          footer: context.tr(
-            'Profile ids whose endpoints this route can prefer; used by preferred-by rules.',
-          ),
-        ),
         if (_isRaw)
           generateSection(
             title: context.tr('Rules'),
@@ -344,48 +278,6 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
             rules: _rules,
             onChanged: (rules) => setState(() => _rules = rules),
             onEdit: _editRule,
-          ),
-        if (!_isRaw)
-          generateSection(
-            title: context.tr('Rule actions'),
-            items: [
-              ListItem(
-                leading: const GlyphIcon(AppGlyphs.importFile),
-                title: Text(context.tr('Batch add simple rules')),
-                onTap: _batchAdd,
-              ),
-              ListItem(
-                leading: const GlyphIcon(AppGlyphs.code),
-                title: Text(context.tr('Import rules from JSON')),
-                subtitle: Text(
-                  context.tr(
-                    'Paste a sing-box fragment carrying route or DNS rules; both are recognised automatically and checked against the schema first.',
-                  ),
-                ),
-                onTap: () async {
-                  final box = context.box;
-                  final request = await showDialog<RuleImportRequest>(
-                    context: context,
-                    builder: (_) => RuleImportPage(profileId: widget.id),
-                  );
-                  if (request == null || !mounted) return;
-                  try {
-                    await applyRuleImport(box, request, profileId: widget.id);
-                    if (mounted) await _loadRules();
-                  } catch (error) {
-                    box.report(error);
-                  }
-                },
-              ),
-              ListItem(
-                leading: const GlyphIcon(AppGlyphs.reset),
-                title: Text(context.tr('Restore default rules')),
-                onTap: _resetRules,
-              ),
-            ],
-            footer: context.tr(
-              'Rules run top to bottom; the first match wins.',
-            ),
           ),
         if (widget.id > 0)
           generateSection(
@@ -416,57 +308,4 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
     'warp-bypass' => 'WARP bypass',
     _ => 'Direct',
   };
-}
-
-/// The batch-add dialog: one simple rule per line, `prefix:value` with an optional `-> target`.
-/// The controller lives here so the closing animation is safe (the same rule as the other editors).
-class _BatchAddDialog extends StatefulWidget {
-  const _BatchAddDialog();
-  @override
-  State<_BatchAddDialog> createState() => _BatchAddDialogState();
-}
-
-class _BatchAddDialogState extends State<_BatchAddDialog> {
-  late final TextEditingController _text = TextEditingController();
-
-  @override
-  void dispose() {
-    _text.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) => material.AlertDialog(
-    title: Text(
-      context.tr('Batch add simple rules'),
-      style: AppTextStyle.title3.of(context, emphasized: true),
-    ),
-    content: SizedBox(
-      width: 360,
-      child: TextField(
-        controller: _text,
-        minLines: 5,
-        maxLines: 10,
-        autocorrect: false,
-        keyboardType: TextInputType.multiline,
-        decoration: InputDecoration(
-          labelText: context.tr('Rules'),
-          helperText: context.tr(
-            'One rule per line: suffix:example.com -> proxy. Outbounds are proxy, direct, block and warp-bypass.',
-          ),
-          border: const OutlineInputBorder(),
-        ),
-      ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.pop(context),
-        child: Text(context.tr('Cancel')),
-      ),
-      TextButton(
-        onPressed: () => Navigator.pop(context, _text.text),
-        child: Text(context.tr('Add')),
-      ),
-    ],
-  );
 }

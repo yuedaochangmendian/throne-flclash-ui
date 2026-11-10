@@ -601,7 +601,7 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
                         ),
                         const SizedBox(height: 16),
                         Row(
-                          spacing: 24,
+                          spacing: 16,
                           children: [
                             Expanded(
                               flex: 2,
@@ -615,7 +615,6 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
                                 ),
                               ),
                             ),
-                            const SizedBox(width: 8),
                             Expanded(
                               child: _StatusCell(
                                 label: 'City',
