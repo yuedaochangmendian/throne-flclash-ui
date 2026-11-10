@@ -101,7 +101,7 @@ class _ProxyListViewState extends State<ProxyListView> {
     final extent = ProxyCardMetrics.of(context, context.box.preferences).rowExtent;
     final offset = _offsetOf(name) + (index ~/ _columns) * extent;
     _controller.animateTo(offset.clamp(_controller.position.minScrollExtent, _controller.position.maxScrollExtent),
-      duration: context.motionDuration(const Duration(milliseconds: 300)), curve: Curves.easeOutCubic);
+      duration: context.motionDuration(commonDuration), curve: proxyMotionCurve);
   }
 
   @override Widget build(BuildContext context) => LayoutBuilder(builder: (context, constraints) {

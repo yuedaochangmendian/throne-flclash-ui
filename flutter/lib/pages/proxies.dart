@@ -54,8 +54,8 @@ class _ProxiesPageState extends State<ProxiesPage> {
         scroll.position.minScrollExtent,
         scroll.position.maxScrollExtent,
       ),
-      duration: context.motionDuration(const Duration(milliseconds: 300)),
-      curve: Curves.easeOutCubic,
+      duration: context.motionDuration(commonDuration),
+      curve: proxyMotionCurve,
     );
   }
 

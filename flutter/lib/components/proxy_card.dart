@@ -72,31 +72,38 @@ class ProxyNodeCard extends StatelessWidget {
   ) {
     final h = metrics.delayHeight;
     final label = context.tr('Test latency');
+    // Both branches keep the same width so a phase change never reflows the
+    // row, and FadeBox keys stay stable so the selection badge keeps its own
+    // implicit animation instead of being rebuilt in the same frame.
+    const width = 56.0;
     if (phase != ProxyTestPhase.idle || !tested) {
       return SizedBox(
-        key: ValueKey('glyph:$phase'),
+        key: const ValueKey('glyph'),
         height: h,
-        width: math.max(h, 20),
+        width: width,
         child: Semantics(
           button: true,
           label: label,
           child: GestureDetector(
             behavior: HitTestBehavior.opaque,
             onTap: phase == ProxyTestPhase.idle ? onTest : null,
-            child: switch (phase) {
-              ProxyTestPhase.running => ActivityIndicator(
-                key: const ValueKey('proxy-test-running'),
-                size: h,
-              ),
-              ProxyTestPhase.queued => GlyphIcon(
-                AppGlyphs.clock,
-                size: h,
-                color: context.colorScheme.onSurfaceVariant.withValues(
-                  alpha: .38,
+            child: Align(
+              alignment: Alignment.centerRight,
+              child: switch (phase) {
+                ProxyTestPhase.running => ActivityIndicator(
+                  key: const ValueKey('proxy-test-running'),
+                  size: h,
                 ),
-              ),
-              ProxyTestPhase.idle => GlyphIcon(AppGlyphs.bolt, size: h),
-            },
+                ProxyTestPhase.queued => GlyphIcon(
+                  AppGlyphs.clock,
+                  size: h,
+                  color: context.colorScheme.onSurfaceVariant.withValues(
+                    alpha: .38,
+                  ),
+                ),
+                ProxyTestPhase.idle => GlyphIcon(AppGlyphs.bolt, size: h),
+              },
+            ),
           ),
         ),
       );
@@ -108,8 +115,9 @@ class ProxyNodeCard extends StatelessWidget {
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: onTest,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(minWidth: 48, minHeight: h),
+        child: SizedBox(
+          width: width,
+          height: h,
           child: Align(
             alignment: Alignment.centerRight,
             widthFactor: 1,
@@ -384,7 +392,7 @@ class ProxyNodeCard extends StatelessWidget {
                   if (selected)
                     const Padding(
                       padding: EdgeInsetsDirectional.only(start: 4),
-                      child: SelectionBadge(),
+                      child: RepaintBoundary(child: SelectionBadge()),
                     ),
                 ],
               ),

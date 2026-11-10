@@ -30,3 +30,7 @@ const bannerBarClearance = 59.0;
 
 const midDuration = Duration(milliseconds: 200);
 const commonDuration = Duration(milliseconds: 300);
+
+/// Shared easing for proxy tab-strip and list motion, so the indicator, tab
+/// label and scroll-to-selected moves all start and finish together.
+const proxyMotionCurve = Curves.easeOutCubic;
