@@ -283,6 +283,23 @@ class SpeedPhaseSteps extends StatelessWidget {
 
   static const _phases = ['latency', 'download', 'upload'];
 
+  /// Which dot [phase] lights, -1 for "nothing started". The two callers speak
+  /// different vocabularies: the kernel's own tester sends `done`, while the
+  /// batch session relays `complete` / `cancelled` / `error` from the Android
+  /// runner. Both map onto the last dot here, so one widget serves both.
+  int _stepOf(String? phase) {
+    switch (phase) {
+      case null:
+        return -1;
+      case 'done' || 'complete' || 'cancelled' || 'error':
+        return _phases.length;
+      case 'discovery' || 'connecting' || '':
+        return 0;
+      default:
+        return _phases.indexOf(phase);
+    }
+  }
+
   String _label(BuildContext context, String phase) => switch (phase) {
     'latency' => context.tr('Delay'),
     'download' => context.tr('Download'),
@@ -292,12 +309,7 @@ class SpeedPhaseSteps extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
-    final stage = phase;
-    final current = stage == null
-        ? -1
-        : stage == 'done'
-        ? _phases.length
-        : _phases.indexOf(stage);
+    final current = _stepOf(phase);
     return FittedBox(
       fit: BoxFit.scaleDown,
       child: Row(

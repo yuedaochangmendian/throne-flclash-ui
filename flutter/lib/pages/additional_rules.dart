@@ -31,6 +31,12 @@ class AdditionalRulesPage extends StatefulWidget {
 class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
   List<_RuleRef> _rules = const [];
   Map<int, List<Json>> _byProfile = const {};
+
+  /// Names for the owner picker (a rule added while every profile is listed
+  /// has to name its owner), and the read-only set: a built-in profile refuses
+  /// writes, so its rows must not be draggable or addable here.
+  Map<int, String> _names = const {};
+  Set<int> _readOnly = const {};
   bool _loading = true;
   String _query = '';
   String? _error;
@@ -46,8 +52,10 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
       _loading = true;
       _error = null;
     });
+    // Read before the first await: no BuildContext crosses an async gap below.
+    final box = context.box;
+    final untitled = context.tr('Untitled');
     try {
-      final box = context.box;
       final profiles = widget.profileId > 0
           ? [
               {
@@ -57,10 +65,15 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
             ]
           : rows(json(await box.routeProfiles.list())['profiles']);
       final byProfile = <int, List<Json>>{};
+      final names = <int, String>{};
+      final readOnly = <int>{};
       final refs = <_RuleRef>[];
       for (final profile in profiles) {
         final id = (profile['id'] as num?)?.toInt() ?? 0;
         if (id <= 0) continue;
+        final name = profile['name']?.toString().trim() ?? '';
+        names[id] = name.isEmpty ? untitled : name;
+        if (profile['isRaw'] == true) readOnly.add(id);
         final data = json(await box.routeRules(id));
         final rules = rows(data['rules']);
         byProfile[id] = rules;
@@ -71,6 +84,8 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
       if (!mounted) return;
       setState(() {
         _byProfile = byProfile;
+        _names = names;
+        _readOnly = readOnly;
         _rules = refs;
         _loading = false;
       });
@@ -82,6 +97,8 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
       });
     }
   }
+
+  String _profileName(int id) => _names[id] ?? '#$id';
 
   List<_RuleRef> get _filtered {
     final query = _query.trim().toLowerCase();
@@ -110,7 +127,7 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
   Future<void> _add() async {
     if (widget.profileId <= 0) {
       // With every profile listed the new rule needs an owner; ask which.
-      final ids = _byProfile.keys.toList();
+      final ids = _byProfile.keys.where((id) => !_readOnly.contains(id)).toList();
       if (ids.isEmpty) {
         context.box.report(StateError(context.tr('No route profiles yet')));
         return;
@@ -123,7 +140,7 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
             for (final id in ids)
               SimpleDialogOption(
                 onPressed: () => Navigator.pop(context, id),
-                child: Text(context.tr('Default')),
+                child: Text(_profileName(id)),
               ),
           ],
         ),
@@ -168,8 +185,10 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
     }
   }
 
-  /// Persists a drag: the rules of one profile are reordered among themselves,
-  /// because the order that matters is each profile's own.
+  /// Persists a drag. `onReorderItem` hands over an insertion index that
+  /// already accounts for the removed row, so it is used as-is. The list spans
+  /// profiles, so a drag only reorders within the dragged row's own profile —
+  /// that is the order the profile stores and the router evaluates.
   Future<void> _reorder(int oldIndex, int newIndex) async {
     // A filtered view has no stable order to drag within: the row the finger
     // holds is not the row at that index in the stored list.
@@ -181,11 +200,15 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
         if (ref.profileId == moved.profileId) ref,
     ];
     final from = siblings.indexWhere((ref) => ref.index == moved.index);
-    final to = newIndex > oldIndex ? newIndex - 1 : newIndex;
-    if (from < 0 || to < 0 || to >= siblings.length) return;
+    // The global insertion index becomes an index inside this profile by
+    // counting how many of its rows the drop landed after.
+    final to = siblings.indexWhere((ref) => _rules.indexOf(ref) >= newIndex);
+    if (from < 0) return;
     final ordered = List<Json>.of(_byProfile[moved.profileId] ?? const []);
+    if (from >= ordered.length) return;
     final rule = ordered.removeAt(from);
-    ordered.insert(to.clamp(0, ordered.length), rule);
+    final target = (to < 0 ? siblings.length : to).clamp(0, ordered.length);
+    ordered.insert(target, rule);
     setState(() {
       _byProfile = {..._byProfile, moved.profileId: ordered};
       _rules = _rebuild();
@@ -279,6 +302,21 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
                 onReorderItem: _reorder,
                 itemBuilder: (context, index) {
                   final ref = filtered[index];
+                  // A built-in profile's rules are view-only: the save endpoint
+                  // refuses them, so offering drag, edit and delete here would
+                  // only produce an error after the fact.
+                  final readOnly = _readOnly.contains(ref.profileId);
+                  final row = DecorationListItem(
+                    contentPadding: const EdgeInsets.only(left: 16),
+                    title: Text(ruleName(ref.rule, ref.index)),
+                    subtitle: ruleRowSubtitle(context, ref.rule),
+                    leading: const GlyphIcon(AppGlyphs.rules),
+                    trailing: readOnly ? null : SortHandle(index: index),
+                    onPressed: readOnly ? null : () => _edit(ref),
+                  );
+                  if (readOnly) {
+                    return KeyedSubtree(key: ObjectKey(ref.rule), child: row);
+                  }
                   return ReorderableDelayedDragStartListener(
                     key: ObjectKey(ref.rule),
                     index: index,
@@ -295,14 +333,7 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
                           onPressed: () => _delete(ref),
                         ),
                       ],
-                      child: DecorationListItem(
-                        contentPadding: const EdgeInsets.only(left: 16),
-                        title: Text(ruleName(ref.rule, ref.index)),
-                        subtitle: ruleRowSubtitle(context, ref.rule),
-                        leading: const GlyphIcon(AppGlyphs.rules),
-                        trailing: const SortHandle(index: 0),
-                        onPressed: () => _edit(ref),
-                      ),
+                      child: row,
                     ),
                   );
                 },

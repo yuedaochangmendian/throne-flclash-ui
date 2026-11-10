@@ -235,7 +235,7 @@ func beginSpeedTest() (context.Context, func()) {
 	}
 }
 
-func newSpeedTester(instance *Instance, params SpeedTestParams) *speedTester {
+func newSpeedTester(instance *Instance, params SpeedTestParams) (*speedTester, error) {
 	switch params.Provider {
 	case "cloudflare", "speedtest":
 	default:
@@ -270,7 +270,11 @@ func newSpeedTester(instance *Instance, params SpeedTestParams) *speedTester {
 	}
 	if instance != nil {
 		t.ctx = instance.handle.Context()
-		t.outbound = resolveTestOutbound(instance, params.Outbound)
+		resolved, err := resolveTestOutbound(instance, params.Outbound)
+		if err != nil {
+			return nil, err
+		}
+		t.outbound = resolved
 		t.state.Outbound = outboundLabel(instance, params.Outbound)
 	}
 	switch params.Provider {
@@ -285,25 +289,34 @@ func newSpeedTester(instance *Instance, params SpeedTestParams) *speedTester {
 	t.probe = t.newClient()
 	t.latency = t.client
 	t.load = []*http.Client{t.client}
-	return t
+	return t, nil
 }
 
 // resolveTestOutbound picks the outbound the test dials through: the one the
-// caller named, else the box's default. A nil answer means "dial directly".
-func resolveTestOutbound(instance *Instance, tag string) adapter.Outbound {
+// caller named, else the box's default. `DIRECT` (and an empty tag on a box
+// with no outbounds) answers nil, which means "dial the platform's own path".
+//
+// A tag that names nothing is an error, not a direct connection: silently
+// measuring the host's own link while the UI still labels the run with the
+// vanished node is worse than refusing.
+func resolveTestOutbound(instance *Instance, tag string) (adapter.Outbound, error) {
 	if instance == nil || instance.outbounds == nil {
-		return nil
-	}
-	if tag != "" && !strings.EqualFold(tag, "DIRECT") {
-		if outbound, ok := instance.outbounds.Outbound(tag); ok {
-			return outbound
+		if tag != "" && !strings.EqualFold(tag, "DIRECT") {
+			return nil, errSpeedTestProxyNotFound
 		}
-		return nil
+		return nil, nil
 	}
 	if tag == "" {
-		return instance.outbounds.Default()
+		return instance.outbounds.Default(), nil
 	}
-	return nil
+	if strings.EqualFold(tag, "DIRECT") {
+		return nil, nil
+	}
+	outbound, ok := instance.outbounds.Outbound(tag)
+	if !ok {
+		return nil, errSpeedTestProxyNotFound
+	}
+	return outbound, nil
 }
 
 func outboundLabel(instance *Instance, tag string) string {
@@ -458,10 +471,17 @@ func (t *speedTester) run(ctx context.Context, push func(SpeedTestState)) {
 	if err := t.execute(ctx); err != nil {
 		errorCode = t.classify(ctx, err)
 	}
+	// The exit lookup runs here, before the deferred release closes the probe
+	// client it dials through. Asking afterwards silently fell back to the
+	// host's connection.
+	exit := t.ExitInfo(ctx)
 	t.update(func(state *SpeedTestState) {
 		state.Speed = 0
 		state.Progress = 1
 		state.Error = errorCode
+		if exit != "" {
+			state.ExitInfo = json.RawMessage(exit)
+		}
 		if errorCode == "" {
 			state.Phase = speedTestPhaseDone
 		}
@@ -1246,22 +1266,20 @@ func StartBettboxSpeedTest(instance *Instance, params string) bool {
 		ctx, finish := beginSpeedTest()
 		defer finish()
 
-		tester := newSpeedTester(instance, p)
-		// The exit lookup rides on the probe client, which is only valid while
-		// the tester is alive, so it happens inside run's own lifetime.
+		tester, err := newSpeedTester(instance, p)
+		if err != nil {
+			publishFailure(err)
+			return
+		}
 		tester.run(ctx, func(state SpeedTestState) {
 			bettboxSpeedTestMu.Lock()
 			bettboxSpeedTestState = state
 			bettboxSpeedTestMu.Unlock()
 		})
 		final := tester.snapshot()
-		exit := tester.ExitInfo(context.Background())
 
 		bettboxSpeedTestMu.Lock()
 		bettboxSpeedTestState = final
-		if exit != "" {
-			bettboxSpeedTestState.ExitInfo = json.RawMessage(exit)
-		}
 		bettboxSpeedTestRunning = false
 		if bettboxSpeedTestDone != nil {
 			close(bettboxSpeedTestDone)
@@ -1270,6 +1288,24 @@ func StartBettboxSpeedTest(instance *Instance, params string) bool {
 		bettboxSpeedTestMu.Unlock()
 	}()
 	return true
+}
+
+// publishFailure ends the current run with [err] as its verdict, so a test
+// that never started still reports why instead of hanging at "connecting".
+func publishFailure(err error) {
+	bettboxSpeedTestMu.Lock()
+	defer bettboxSpeedTestMu.Unlock()
+	bettboxSpeedTestState.Phase = speedTestPhaseDone
+	bettboxSpeedTestState.Progress = 1
+	bettboxSpeedTestState.Error = speedTestErrorUnavailable
+	if errors.Is(err, errSpeedTestProxyNotFound) {
+		bettboxSpeedTestState.Error = err.Error()
+	}
+	bettboxSpeedTestRunning = false
+	if bettboxSpeedTestDone != nil {
+		close(bettboxSpeedTestDone)
+		bettboxSpeedTestDone = nil
+	}
 }
 
 // QueryBettboxSpeedTest returns the current snapshot as JSON, `{state, running}`.
@@ -1300,7 +1336,10 @@ func CancelBettboxSpeedTest() bool {
 func BettboxSpeedTestServers(instance *Instance, outbound string, search string) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
-	tester := newSpeedTester(instance, SpeedTestParams{Provider: "speedtest", Outbound: outbound})
+	tester, err := newSpeedTester(instance, SpeedTestParams{Provider: "speedtest", Outbound: outbound})
+	if err != nil {
+		return "[]"
+	}
 	defer tester.release()
 	servers, err := tester.fetchSpeedtestNetServers(ctx, search)
 	if err != nil {

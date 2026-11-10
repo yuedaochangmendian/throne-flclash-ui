@@ -97,8 +97,13 @@ class _ProxiesPageState extends State<ProxiesPage> {
     // waits its turn instead of sharing the core with the first.
     if (testingGroup && _testLabels.isNotEmpty) return;
     final box = context.box;
+    // The wait follows the configured per-node timeout (Testing settings →
+    // Test timeout), plus slack for the batch's own overhead. A group of 200
+    // nodes at the 8 s floor needs far more than the old flat 60 s, and a
+    // single node needs far less.
+    final perNode = (box.settings['urlTestTimeoutMs'] as num?)?.toInt() ?? 0;
     final timeout = Duration(
-      seconds: (box.preferences['delayTestTimeoutSeconds'] as num?)?.toInt() ?? 60,
+      milliseconds: (perNode > 0 ? perNode : 8000) * ids.length + 15000,
     );
     setState(() {
       _sessionRequestedAt = DateTime.now().millisecondsSinceEpoch;

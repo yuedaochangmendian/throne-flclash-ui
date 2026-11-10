@@ -345,6 +345,18 @@ class _SpeedTestPageState extends State<SpeedTestPage>
 
   bool get _connecting => _starting || (_running && !_hasValue);
 
+  /// The stored value's label. A preference written by another build (or a
+  /// restored backup) may name a provider this one does not run; the kernel
+  /// coerces it to the default, so the row shows the raw value rather than
+  /// throwing inside build.
+  String get _providerLabel => _providers
+      .firstWhere((p) => p.$1 == _provider, orElse: () => (_provider, _provider))
+      .$2;
+
+  String get _protocolLabel => _protocols
+      .firstWhere((p) => p.$1 == _protocol, orElse: () => (_protocol, _protocol))
+      .$2;
+
   /// The gauge's caption: what the run is doing, in one word.
   String get _readoutLabel {
     if (_connecting) return context.tr('Connecting');
@@ -477,7 +489,7 @@ class _SpeedTestPageState extends State<SpeedTestPage>
                   ),
                 ),
                 const SizedBox(height: 8),
-                SpeedPhaseSteps(phase: _running ? _phase : _phase),
+                SpeedPhaseSteps(phase: _phase),
                 const SizedBox(height: 14),
                 Center(
                   child: TonalButton(
@@ -532,7 +544,8 @@ class _SpeedTestPageState extends State<SpeedTestPage>
                   download: _curve('downloadCurve'),
                   upload: _curve('uploadCurve'),
                   height: 120,
-                  revision: _state.length,
+                  revision: _curve('downloadCurve').length +
+                      _curve('uploadCurve').length,
                 ),
               ],
             ),
@@ -547,7 +560,7 @@ class _SpeedTestPageState extends State<SpeedTestPage>
               ListItem(
                 title: Text(context.tr('Provider')),
                 trailing: Text(
-                  _providers.firstWhere((p) => p.$1 == _provider).$2,
+                  _providerLabel,
                   style: context.listValueStyle,
                 ),
                 onTap: _running ? null : _pickProvider,
@@ -555,7 +568,7 @@ class _SpeedTestPageState extends State<SpeedTestPage>
               ListItem(
                 title: Text(context.tr('Protocol')),
                 trailing: Text(
-                  _protocols.firstWhere((p) => p.$1 == _protocol).$2,
+                  _protocolLabel,
                   style: context.listValueStyle,
                 ),
                 onTap: _running ? null : _pickProtocol,
