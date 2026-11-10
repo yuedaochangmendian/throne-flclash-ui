@@ -18,7 +18,9 @@ import io.nekohasekai.sagernet.database.backup.DesktopSchema.ROUTE_RULES
 import io.nekohasekai.sagernet.database.backup.DesktopSchema.SETTINGS
 import io.nekohasekai.sagernet.ktx.app
 import io.nekohasekai.sagernet.outbound.json.JsonArray
+import io.nekohasekai.sagernet.outbound.json.JsonArray
 import io.nekohasekai.sagernet.outbound.json.JsonInput
+import io.nekohasekai.sagernet.outbound.json.JsonObject
 import io.nekohasekai.sagernet.outbound.json.JsonValues
 import java.io.File
 import java.io.OutputStream
@@ -39,7 +41,7 @@ object BackupExport {
     }
 
     /** Writes the backup to [out]: the database entry and nothing else. */
-    fun write(selection: Selection, out: OutputStream) {
+    fun write(selection: Selection, out: OutputStream, extraMeta: Map<String, Any?> = emptyMap()) {
         if (!selection.any()) error(app.getString(R.string.backup_select_part))
         BackupTemp.cleanStale()
         val temp = BackupTemp.newFile(BackupTemp.EXPORT)
@@ -50,10 +52,22 @@ object BackupExport {
             val meta = ThrBackup.androidMeta(
                 parts, BuildConfig.VERSION_NAME, DataStore.deviceId, DataStore.effectiveDeviceName()
             )
+            if (extraMeta.isNotEmpty()) {
+                val extra = JsonObject()
+                extraMeta.forEach { (key, value) -> extra[key] = toJsonValue(value) }
+                meta["flrone_ui"] = extra
+            }
             ThrBackup.write(out, meta, files)
         } finally {
             BackupTemp.delete(temp)
         }
+    }
+
+    private fun toJsonValue(value: Any?): Any? = when (value) {
+        null -> null
+        is Map<*, *> -> JsonObject().apply { value.forEach { (key, item) -> this[key.toString()] = toJsonValue(item) } }
+        is Iterable<*> -> JsonArray().apply { value.forEach { add(toJsonValue(it)) } }
+        else -> value
     }
 
     private class Snapshot {

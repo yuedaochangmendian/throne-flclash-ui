@@ -420,7 +420,8 @@ class ThroneBoxBridge(
                 "groups.select" -> result.respond {
                     val group = call.argument<String>("group") ?: error("Missing group")
                     val tag = call.argument<String>("tag") ?: error("Missing tag")
-                    BboxCommands.selectProxyAwait(group, tag)
+                    val nodeId = call.argument<Int>("nodeId")?.toLong()
+                    BboxCommands.selectProxyAwait(group, tag, nodeId)
                     null
                 }
                 "groups.test" -> {
@@ -540,6 +541,12 @@ class ThroneBoxBridge(
                 }
                 "profiles.nodeConfig" -> result.respond {
                     BboxProfiles.nodeConfig(call.argument<Int>("id")?.toLong() ?: -1L)
+                }
+                "profiles.nodeCreate" -> result.respond {
+                    @Suppress("UNCHECKED_CAST")
+                    val values = call.argument<Map<String, Any?>>("value")
+                        ?: call.arguments as? Map<String, Any?>
+                    BboxProfiles.commitNode(values.orEmpty())
                 }
                 "profiles.createNode" -> result.respond {
                     BboxProfiles.createNode(
@@ -868,7 +875,16 @@ class ThroneBoxBridge(
                 )
 
                 // --- backup, restore and WebDAV, all of which Throne already does natively
-                "backup.create" -> result.respond { BboxBackup.create(call.argument<String>("scope") ?: "all") }
+                "backup.create" -> result.respond {
+                    BboxBackup.create(
+                        call.argument<String>("scope") ?: "all",
+                        mapOf(
+                            "preferences" to readPreferences(),
+                            "settings" to readJsonMap(SETTINGS_KEY),
+                            "quality" to readJsonMap(QUALITY_KEY),
+                        ),
+                    )
+                }
                 "backup.read" -> result.respond { BboxBackup.read() }
                 "backup.open" -> result.respond { openBackupDocument() }
                 "backup.restore" -> {
@@ -878,6 +894,15 @@ class ThroneBoxBridge(
                     val strategy = call.argument<String>("strategy") ?: "Compatible"
                     result.respond {
                         val warnings = BboxBackup.restore(payload, scope, strategy)
+                        if (warnings.isEmpty() && scope == "all" && strategy == "Override") {
+                            (payload?.get("ui") as? Map<*, *>)?.let { ui ->
+                                (ui["preferences"] as? Map<*, *>)?.let { writePreferences(it.mapKeys { (key, _) -> key.toString() }) }
+                                (ui["settings"] as? Map<*, *>)?.let { writeJsonMap(SETTINGS_KEY, it.mapKeys { (key, _) -> key.toString() }) }
+                                (ui["quality"] as? Map<*, *>)?.let { writeJsonMap(QUALITY_KEY, it.mapKeys { (key, _) -> key.toString() }) }
+                                emit("preferences", readPreferences())
+                                emit("settings", settingsWire())
+                            }
+                        }
                         if (warnings.isNotEmpty()) emit("error", warnings.joinToString("\n"))
                         null
                     }
@@ -888,7 +913,13 @@ class ThroneBoxBridge(
                     result.success(BboxBackup.setWebdav(call.argument<Map<String, Any?>>("value")))
                 }
                 "webdav.check" -> result.respond { BboxBackup.checkWebdav() }
-                "webdav.upload" -> result.respond { BboxBackup.uploadWebdav("all") }
+                "webdav.upload" -> result.respond {
+                    BboxBackup.uploadWebdav("all", mapOf(
+                        "preferences" to readPreferences(),
+                        "settings" to readJsonMap(SETTINGS_KEY),
+                        "quality" to readJsonMap(QUALITY_KEY),
+                    ))
+                }
                 "webdav.read" -> result.respond { BboxBackup.readWebdav() }
 
                 // --- documents and the share sheet
@@ -1278,6 +1309,7 @@ class ThroneBoxBridge(
         val cachedAt = BboxEgress.cachedAt(direct)
         var failure: String? = null
         val info = BboxEgress.probe(force = force, direct = direct) { failure = it }
+        if (force) BboxEgress.touch(direct)
         val checkedAt = BboxEgress.cachedAt(direct)
         if (force && failure != null && checkedAt == cachedAt) error(failure!!)
         if (info.isEmpty) error(failure ?: "Unreachable")

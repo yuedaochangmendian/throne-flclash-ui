@@ -8,12 +8,13 @@ import '../components/status_panel.dart';
 import '../components/memory_panel.dart';
 import '../components/intranet_panel.dart';
 import '../components/profile_panel.dart';
+import '../components/service_status_panel.dart';
 import '../components/proxy_groups_panel.dart';
 import '../components/system_proxy_panel.dart';
 
 export '../components/dashboard_editor.dart' show DashboardEditor;
 
-const dashboardCards = ['Status', 'Network speed', 'Outbound mode', 'Current profile', 'Proxy groups', 'Memory', 'Intranet IP', 'Network takeover'];
+const dashboardCards = ['Status', 'Network speed', 'Outbound mode', 'Current profile', 'Proxy groups', 'Memory', 'Intranet IP', 'Network takeover', 'Service status'];
 const defaultDashboardCards = ['Status', 'Network speed', 'Outbound mode', 'Current profile', 'Proxy groups'];
 const defaultHiddenCards = ['Memory', 'Intranet IP'];
 
@@ -38,8 +39,11 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Map<String, Widget> _cards() {
     final box = context.box;
+    final hidden = box.preferences['hiddenCards'] as List? ?? defaultHiddenCards;
+    final showServiceStatus = box.capabilities.known && box.capabilities.of('serviceStatus') && !hidden.contains('Service status');
     return <String, Widget>{
       'Status': const StatusPanel(),
+      if (showServiceStatus) 'Service status': const ServiceStatusPanel(),
       if (box.capabilities.of('lanProxy')) 'Intranet IP': const IntranetPanel(),
       'Network speed': const _SpeedPanel(),
       if ((box.dashboard['modes'] as List? ?? []).isNotEmpty) 'Outbound mode': const _ModePanel(),
@@ -113,7 +117,7 @@ class _DashboardPageState extends State<DashboardPage> {
 // The phone layout of FlClash's current dashboard/widgets/traffic.dart.
 class _SpeedPanel extends StatelessWidget {
   const _SpeedPanel();
-  @override Widget build(BuildContext context) => BoxPanel(child: Column(children: [
+  @override Widget build(BuildContext context) => BoxPanel(onTap: () => openForm(context, const SpeedTestPage()), child: Column(children: [
     const PanelTitle('Network speed', AppGlyphs.speed),
     const SizedBox(height: 12),
     Row(spacing: 10, children: [for (final upload in [true, false]) Expanded(child: _SpeedTile(upload: upload))]),

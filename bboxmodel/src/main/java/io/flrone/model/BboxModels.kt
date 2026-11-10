@@ -47,6 +47,8 @@ data class ProxyGroup(
     val tag: String,
     val type: String = "",
     val selected: String = "",
+    /** Stable id of the selected row; names are not unique. */
+    val selectedId: Long = 0L,
     val selectable: Boolean = true,
     val nodes: List<ProxyNode> = emptyList(),
 )

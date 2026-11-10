@@ -98,6 +98,16 @@ class _AutoSelectorPageState extends State<AutoSelectorPage> with WidgetsBinding
     }
   }
 
+  Future<void> _draftSave() async {
+    setState(() => _saving = true);
+    try {
+      await context.box.profileAutoSelectorCreate(context.box.selectedProfileId);
+      if (mounted) context.safeNestedPop();
+    } catch (error) {
+      if (mounted) setState(() { _saving = false; _error = BoxController.describe(error); });
+    }
+  }
+
   Future<void> _save() async {
     setState(() { _saving = true; _error = null; });
     final box = context.box;
@@ -117,6 +127,14 @@ class _AutoSelectorPageState extends State<AutoSelectorPage> with WidgetsBinding
 
   @override
   Widget build(BuildContext context) {
+    if (widget.id == 0) {
+      return FormPage(title: 'Auto selector', saving: _saving, onSave: _draftSave, error: _error,
+        children: [generateSection(title: context.tr('Name'), items: [
+          FormRow(title: context.tr('Name'), trailing: FormRowTextField(
+            initialValue: _info['name']?.toString() ?? '', hintText: context.tr('Optional'),
+            onChanged: (value) => _set('name', value))),
+        ], footer: context.tr('The selector is created only when you save.'))]);
+    }
     if (_loading) {
       return FormPage(title: 'Auto selector', onSave: () {}, saving: true, children: const []);
     }

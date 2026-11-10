@@ -12,8 +12,9 @@ import '../components/form.dart';
 /// Synthetic keys (`__state`, `__must`) carry menu state the JSON has no room for; they are stripped
 /// before the document is saved.
 class ProtocolFormPage extends StatefulWidget {
-  const ProtocolFormPage({super.key, required this.id});
+  const ProtocolFormPage({super.key, required this.id, this.draft});
   final int id;
+  final Json? draft;
   @override State<ProtocolFormPage> createState() => _ProtocolFormPageState();
 }
 
@@ -22,20 +23,34 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
   String? _error;
   bool _loading = true, _saving = false, _attempted = false;
   late final TextEditingController _name = TextEditingController();
+  final _controllers = <String, TextEditingController>{};
 
   @override void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  @override void dispose() { _name.dispose(); super.dispose(); }
+  TextEditingController _controller(String path, {required String text}) {
+    final controller = _controllers.putIfAbsent(path, () => TextEditingController(text: text));
+    return controller;
+  }
+
+  @override void dispose() {
+    _name.dispose();
+    for (final controller in _controllers.values) { controller.dispose(); }
+    super.dispose();
+  }
+
+  bool get _draft => widget.draft != null;
 
   Future<void> _load() async {
     setState(() { _error = null; _loading = true; });
     try {
-      final data = json(await context.box.profileNodeConfig(widget.id));
+      final data = _draft ? json(widget.draft!) : json(await context.box.profileNodeConfig(widget.id));
       if (!mounted) return;
       _name.text = data['name']?.toString() ?? '';
+      for (final controller in _controllers.values) { controller.dispose(); }
+      _controllers.clear();
       final decoded = convert.jsonDecode(data['json']?.toString() ?? '{}');
       setState(() { _root = json(decoded); _loading = false; });
     } catch (error) {
@@ -83,6 +98,11 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
   List<String> _lines(String path) => (_get(path) as List? ?? const []).map((e) => '$e').toList();
 
   // ------------------------------------------------------------------------------------------------ blocks
+
+  List<_Field> _chainBlock() => [
+    _Field('name', 'Name', 'name'),
+    _Field('list', 'Proxy chain', 'chain'),
+  ];
 
   List<_Field> _tlsBlock({required bool mustTls}) => [
     // The must-TLS screens hide the switch; the save keeps the block on regardless.
@@ -178,13 +198,14 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
 
   // ------------------------------------------------------------------------------------------------ schemas
 
-  bool get _supported => const [
+  bool get _supported => _type == 'chain' || const [
     'shadowsocks', 'vmess', 'vless', 'xrayvless', 'trojan', 'tuic', 'hysteria', 'wireguard',
     'direct', 'socks', 'http', 'anytls', 'shadowtls', 'snell', 'naive', 'juicity',
     'mieru', 'masque', 'ssh', 'trusttunnel', 'openconnect', 'openvpn',
   ].contains(_type);
 
   List<_Section> _schemas() => switch (_type) {
+    'chain' => [_Section(null, _chainBlock())],
     'shadowsocks' => [
       ..._basic(),
       _Section(null, [
@@ -518,7 +539,7 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
   ({String path, String message})? get _issue {
     for (final section in _schemas()) {
       for (final field in section.fields) {
-        if (field.kind == 'name') continue;
+        if (field.kind == 'name' || field.kind == 'chain') continue;
         final visible = _visible(field);
         if (!visible) continue;
         if (field.required) {
@@ -562,6 +583,7 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
     final root = _root;
     if (root == null) return;
     final box = context.box;
+    final draft = widget.draft;
     setState(() => _saving = true);
     try {
       // The must-TLS protocols keep the block on; the synthetic keys never reach storage.
@@ -573,7 +595,15 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
         }
       }
       strip(root);
-      await box.profileNodeUpdate(widget.id, _name.text.trim(), convert.jsonEncode(root));
+      if (draft != null) {
+        await box.profileNodeCreate({
+          'groupId': draft['groupId'],
+          'name': _name.text.trim(),
+          'content': convert.jsonEncode(root),
+        });
+      } else {
+        await box.profileNodeUpdate(widget.id, _name.text.trim(), convert.jsonEncode(root));
+      }
       if (mounted) context.safeNestedPop();
     } catch (error) {
       if (mounted) setState(() { _saving = false; _attempted = true; _error = BoxController.describe(error); });
@@ -645,17 +675,32 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
               _changed(value);
             }));
       case 'list':
-        final controller = TextEditingController(text: _lines(field.path).join(','));
+        final controller = _controller(field.path, text: _lines(field.path).join(','));
         return FormRow(title: context.tr(field.label), invalid: invalid,
           trailing: FormRowTextField(controller: controller,
             onChanged: (value) {
               _set(field.path, value.split(',').map((item) => item.trim()).where((item) => item.isNotEmpty).toList());
               _changed(value);
             }));
+      case 'chain':
+        return ListItem(title: Text(context.tr(field.label)), subtitle: Text(context.tr('Choose proxy hops from the current group')),
+          onTap: () async {
+            final picked = await showDialog<List<int>>(context: context, builder: (context) => SimpleDialog(
+              title: Text(context.tr('Proxy chain')),
+              children: [
+                for (final node in rows(context.box.groups.expand((group) => rows(group['items']))))
+                  if (node['isSelector'] != true && node['id'] != widget.id)
+                    SimpleDialogOption(onPressed: () => Navigator.pop(context, [(node['id'] as num).toInt()]),
+                      child: Text(node['tag'].toString())),
+              ],
+            ));
+            if (picked == null || !mounted) return;
+            setState(() { _set(field.path, picked); _changed(''); });
+          });
       case 'headers':
         final map = _get(field.path);
         final text = map is Json ? map.entries.map((e) => '${e.key}: ${e.value}').join('\n') : '';
-        final controller = TextEditingController(text: text);
+        final controller = _controller(field.path, text: text);
         return FormRow(title: context.tr(field.label), invalid: invalid,
           trailing: FormRowTextField(controller: controller,
             onChanged: (value) {
@@ -670,7 +715,7 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
             }));
       default:
         final isPassword = field.kind == 'password';
-        final controller = TextEditingController(text: _text(field.path));
+        final controller = _controller(field.path, text: _text(field.path));
         return FormRow(title: context.tr(field.label), invalid: invalid,
           trailing: FormRowTextField(controller: controller, hintText: field.hint,
             obscureText: isPassword, autocorrect: false, enableSuggestions: !isPassword,
@@ -716,7 +761,7 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
     final issue = _attempted ? _issue : null;
     final schemas = _schemas();
     return FormPage(
-      title: 'Edit settings', saving: _saving, onSave: _save,
+      title: _draft ? 'New node' : 'Edit settings', saving: _saving, onSave: _save,
       error: _error ?? issue?.message,
       children: [
         for (final section in schemas) ...[

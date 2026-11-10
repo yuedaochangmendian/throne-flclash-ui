@@ -3,7 +3,21 @@ import 'package:flutter/widgets.dart';
 import 'ui/l10n.dart';
 
 const _zh = <String, String>{
-  "Unset": "未设置",
+  'Service status': '服务状态',
+  'Target group': '目标分组',
+  'Chain Proxy': '链式代理',
+  'Proxy chain': '代理链',
+  'Choose proxy hops from the current group': '从当前分组选择代理节点',
+  'Rule actions': '规则操作',
+  'Speed test server': '测速服务器',
+  'Start speed test': '开始测速',
+  'Ready': '准备就绪',
+  'Complete': '完成',
+  'History': '历史记录',
+  'Jitter': '抖动',
+  'Delay': '延迟',
+  'Outbound node': '出站节点',
+  'The selector is created only when you save.': '保存后才会创建自动选择器。',
   "IP source": "检测来源",
   "Match": "匹配",
   "Capture HTTPS with eBPF": "使用 eBPF 抓取 HTTPS",

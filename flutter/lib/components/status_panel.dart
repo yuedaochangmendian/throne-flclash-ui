@@ -126,7 +126,7 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
       // A direct answer is this device's own address: the quality sources would grade the phone's uplink
       // rather than an exit, so the card keeps the address, region and carrier and skips the check.
       final direct = result['direct'] == true;
-      if (readIp && force) result['checkedAt'] = DateTime.now().millisecondsSinceEpoch;
+      result['checkedAt'] = DateTime.now().millisecondsSinceEpoch;
       setState(() { _egress = result.isEmpty ? null : result; _checking = false; _qualityChecking = ip != null && !direct; });
       _detailsRevision.value++;
       if (ip == null || direct) return;
@@ -207,19 +207,10 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
     // stand in only while nothing is known yet.
     final qualityReady = info?['type'] != null || info?['quality'] != null;
     final loading = (ipLoading && ip == null) || (_qualityChecking && !qualityReady);
-    // Bettbox-style placement: a location (country · city) and a carrier (ASN · ISP/organization)
-    // sit beside the IP, using the richer fields the ipwho.is source supplies when available.
-    // A two-letter code is already drawn as the badge's regional-indicator emoji, so it is not
-    // repeated as text here; only a full country name (or a non-ISO label) joins the city.
-    final rawCountry = info?['country'] as String?;
-    final location = [
-      (info?['countryName'] as String?) ?? (rawCountry?.length == 2 ? null : rawCountry),
-      info?['city'] as String?,
-    ].whereType<String>().where((item) => item.isNotEmpty).join(' · ');
-    final carrier = [
-      info?['asn'] as String?,
-      (info?['isp'] as String?) ?? (info?['organization'] as String?),
-    ].whereType<String>().where((item) => item.isNotEmpty).join(' ');
+    final organization = (info?['isp'] as String?) ?? (info?['organization'] as String?) ?? '';
+    final city = organization.isNotEmpty
+      ? organization
+      : (info?['city'] as String?) ?? (info?['countryName'] as String?) ?? info?['country'] as String? ?? '';
     return Semantics(container: true, label: context.tr('Status'), child: BoxPanel(padding: EdgeInsets.zero, clipBehavior: Clip.none, child: Stack(children: [
       Positioned.fill(child: ClipPath(
         clipper: ShapeBorderClipper(shape: AppShape.all(34), textDirection: Directionality.of(context)),
@@ -273,13 +264,10 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
           ]),
           const SizedBox(height: 16),
           Row(spacing: 24, children: [
-            Expanded(child: _StatusCell(label: 'Run time', child: _RuntimeValue(startedAt: box.running ? (box.dashboard['startedAt'] as num?)?.toInt() : null))),
-            Expanded(child: _StatusCell(label: 'Location', child: location.isNotEmpty
-              ? Text(location, maxLines: 1, overflow: TextOverflow.ellipsis, style: _statusCellStyle(context))
-              : loading ? SkeletonText(width: 72, style: _statusCellStyle(context))
-              : Text('—', maxLines: 1, style: _statusCellStyle(context)))),
-            Expanded(child: _StatusCell(label: 'Operator', child: carrier.isNotEmpty
-              ? Text(carrier, maxLines: 1, overflow: TextOverflow.ellipsis, style: _statusCellStyle(context))
+            Expanded(flex: 2, child: _StatusCell(label: 'Run time', child: _RuntimeValue(startedAt: box.running ? (box.dashboard['startedAt'] as num?)?.toInt() : null))),
+            const SizedBox(width: 8),
+            Expanded(child: _StatusCell(label: 'City', child: city.isNotEmpty
+              ? Text(city, maxLines: 1, overflow: TextOverflow.ellipsis, style: _statusCellStyle(context))
               : loading ? SkeletonText(width: 72, style: _statusCellStyle(context))
               : Text('—', maxLines: 1, style: _statusCellStyle(context)))),
           ]),

@@ -11,7 +11,8 @@ class ProxiesPage extends StatefulWidget {
 }
 class _ProxiesPageState extends State<ProxiesPage> {
   String _query = '';
-  final _testing = <String>{};
+  final _testing = <int>{};
+  final _testLabels = <String>{};
   // FlClash runs a batch as a queue: groups waiting their turn show a clock,
   // the one under test a spinner, and finished groups their delays.
   final _queued = <String>{};
@@ -56,19 +57,21 @@ class _ProxiesPageState extends State<ProxiesPage> {
   // profile, and a selection is a stored preference the next start reads, so neither waits for the VPN.
   // FlClash gives the group button the filtered/visible rows and the node button exactly one row.
   Future<void> _test(String tag, {List<int>? profileIds}) async {
-    if (_testing.contains(tag) || _queued.contains(tag)) return;
+    final groupTest = profileIds == null;
+    if ((groupTest && _testLabels.contains(tag)) || (!groupTest && profileIds.any(_testing.contains)) || _queued.contains(tag)) return;
     if (profileIds != null && profileIds.isEmpty) return;
     final box = context.box;
     setState(() {
       _sessionRequestedAt = DateTime.now().millisecondsSinceEpoch;
-      _testing.add(tag);
+      _testing.addAll(profileIds ?? _allIds(tag));
+      if (groupTest) _testLabels.add(tag);
     });
     try {
       await box.groupTest(tag, profileIds: profileIds).timeout(const Duration(seconds: 60));
     } catch (error) {
       if (mounted) box.report(error);
     } finally {
-      if (mounted) setState(() => _testing.remove(tag));
+      if (mounted) setState(() { _testing.removeAll(profileIds ?? _allIds(tag)); if (groupTest) _testLabels.remove(tag); });
     }
   }
 
@@ -91,8 +94,11 @@ class _ProxiesPageState extends State<ProxiesPage> {
 
   Future<void> _select(Json group, Json node) async {
     final box = context.box;
-    if (group['selectable'] != true || node['tag'] == group['selected']) return;
-    if (await box.groupSelect(group['tag'], node['tag'])) {
+    if (group['selectable'] != true) return;
+    final selectedId = (group['selectedId'] as num?)?.toInt();
+    final nodeId = (node['id'] as num?)?.toInt();
+    if (selectedId != null && nodeId != null ? selectedId == nodeId : node['tag'] == group['selected']) return;
+    if (await box.groupSelect(group['tag'], node['tag'], nodeId: nodeId)) {
       if (box.preferences['closeConnectionsOnSelect'] == true) await box.connectionsCloseAll();
     }
   }
@@ -114,8 +120,8 @@ class _ProxiesPageState extends State<ProxiesPage> {
     final groupTag = group['tag'].toString(), nodeTag = node['tag'].toString();
     final id = (node['id'] as num?)?.toInt();
     final startedAt = (_session['startedAt'] as num?)?.toInt() ?? 0;
-    final individualTest = _testing.contains(nodeTag);
-    final groupTest = _testing.contains(groupTag) || _queued.contains(groupTag);
+    final individualTest = id != null && _testing.contains(id);
+    final groupTest = _testLabels.contains(groupTag) || _queued.contains(groupTag);
     // A node tap owns its own spinner. Do not let a stale/global session row
     // keep that node spinning after groups.test returns; rows are only used
     // while a group action is driving the shared session.
@@ -151,7 +157,10 @@ class _ProxiesPageState extends State<ProxiesPage> {
     return LayoutBuilder(builder: (context, constraints) {
       final columns = proxyColumns(constraints.maxWidth - 32, context.box.preferences);
       final metrics = ProxyCardMetrics.of(context, context.box.preferences);
-      final selected = nodes.indexWhere((node) => node['tag'] == group['selected']);
+      final selectedId = (group['selectedId'] as num?)?.toInt();
+      final selected = nodes.indexWhere((node) => selectedId != null
+        ? (node['id'] as num?)?.toInt() == selectedId
+        : node['tag'] == group['selected']);
       if (selected < 0) {
         _selectedOffsets.remove(group['tag']);
       } else {
@@ -202,7 +211,7 @@ class _ProxiesPageState extends State<ProxiesPage> {
       title: context.tr('Proxies'),
       searchState: AppBarSearchState(onSearch: (query) => setState(() => _query = query)),
       primaryAction: list ? null : IconButtonData(glyph: AppGlyphs.bolt, tooltip: context.tr('Test latency'),
-        isLoading: _testing.contains(_currentGroup),
+        isLoading: _currentGroup != null && _testLabels.contains(_currentGroup!),
         onPressed: _currentGroup != null ? () => _testGroup(_currentGroup!) : null),
       iconActions: [
         if (!list) IconButtonData(glyph: AppGlyphs.locate, tooltip: context.tr('Scroll to selected'), onPressed: groups.isEmpty ? null : _locate),
@@ -240,7 +249,7 @@ class _ProxiesPageState extends State<ProxiesPage> {
         key: ValueKey(box.remote ? 'remote:${box.dashboard['remote']}' : 'local:${box.selectedProfileId}'),
         profileKey: box.remote ? 'remote:${box.dashboard['remote']}' : 'local:${box.selectedProfileId}',
         groups: [for (final group in groups) ProxyListGroup(group, _nodes(group))],
-        testing: Set.of(_testing), queued: Set.of(_queued), cardBuilder: _card, onTest: _testGroup,
+        testing: _testLabels, queued: Set.of(_queued), cardBuilder: _card, onTest: _testGroup,
       ) : DefaultTabController(
         key: ValueKey(groups.map((group) => '${group['tag'].toString().length}:${group['tag']}').join()),
         initialIndex: groups.indexWhere((group) => group['tag'] == _currentGroup).clamp(0, groups.length - 1),

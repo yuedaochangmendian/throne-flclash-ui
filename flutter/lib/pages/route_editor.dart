@@ -235,6 +235,15 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
             onChanged: (value) => _endpointIds = value,
           )),
         ], footer: context.tr('Profile ids whose endpoints this route can prefer; used by preferred-by rules.')),
+        if (!_isRaw && widget.id > 0 && _rules.isNotEmpty) ListItem(
+          leading: const GlyphIcon(AppGlyphs.sort),
+          title: Text(context.tr('Reorder rules')),
+          subtitle: Text(context.tr('Drag a rule to change the order; the first match wins')),
+          onTap: () async {
+            final changed = await openPage<bool>(context, RuleOrderPage(profileId: widget.id, rules: _rules));
+            if (changed == true && mounted) await _loadRules();
+          },
+        ),
         generateSection(title: context.tr('Rules'), items: [
           for (final (index, rule) in _rules.indexed)
             ListItem(
@@ -256,18 +265,20 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
               if (changed == true && mounted) await _loadRules();
             },
           ),
-          if (!_isRaw) ListItem(
+        ], footer: _isRaw
+            ? context.tr('This profile is built in and cannot be changed here.')
+            : context.tr('Rules run top to bottom; the first match wins.')),
+        if (!_isRaw) generateSection(title: context.tr('Rule actions'), items: [
+          ListItem(
             leading: const GlyphIcon(AppGlyphs.importFile),
             title: Text(context.tr('Batch add simple rules')),
             onTap: _batchAdd,
           ),
-          if (!_isRaw) ListItem(
+          ListItem(
             leading: const GlyphIcon(AppGlyphs.code),
             title: Text(context.tr('Import rules from JSON')),
             subtitle: Text(context.tr('Paste a sing-box fragment carrying route or DNS rules; both are recognised automatically and checked against the schema first.')),
             onTap: () async {
-              // The JSON importer uses the same multiline dialog as the
-              // per-line rule fields, rather than a separate full-page sheet.
               final box = context.box;
               final request = await showDialog<RuleImportRequest>(context: context,
                 builder: (_) => RuleImportPage(profileId: widget.id));
@@ -280,15 +291,12 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
               }
             },
           ),
-          if (!_isRaw) ListItem(
+          ListItem(
             leading: const GlyphIcon(AppGlyphs.reset),
             title: Text(context.tr('Restore default rules')),
             onTap: _resetRules,
           ),
-        ], footer: _isRaw
-            ? context.tr('This profile is built in and cannot be changed here.')
-            : context.tr('Rules run top to bottom; the first match wins.')),
-        if (widget.id > 0) generateSection(items: [
+        ], footer: context.tr('Rules run top to bottom; the first match wins.')),        if (widget.id > 0) generateSection(items: [
           ListItem.toggle(
             title: Text(context.tr('Use this profile')),
             value: _current,

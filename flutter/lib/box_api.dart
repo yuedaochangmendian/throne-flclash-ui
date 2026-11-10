@@ -71,6 +71,7 @@ extension ProfilesApi on BoxController {
   }
   Future<dynamic> profileImportFile() => call('profiles.importFile');
   Future<dynamic> profileCreateNode(dynamic groupId, dynamic type) => call('profiles.createNode', {'groupId': groupId, 'type': type});
+  Future<dynamic> profileNodeCreate(Json value) => call('profiles.nodeCreate', value);
   Future<dynamic> profileSave(Json value) => call('profiles.save', value);
   Future<bool> profileReorder(List<dynamic> ids) => act('profiles.reorder', {'ids': ids});
   Future<bool> profileScanClose(dynamic session) => act('profiles.scan.close', {'session': session});
@@ -141,13 +142,14 @@ extension GroupsApi on BoxController {
     if (profileIds != null) arguments['profileIds'] = profileIds;
     return act('groups.test', arguments);
   }
-  Future<bool> groupSelect(dynamic group, dynamic tag) async {
+  Future<bool> groupSelect(dynamic group, dynamic tag, {int? nodeId}) async {
+    final arguments = <String, dynamic>{'group': group, 'tag': tag, 'nodeId': ?nodeId};
     if (kernel.ffiMode) {
-      final done = await act('groups.select', {'group': group, 'tag': tag});
+      final done = await act('groups.select', arguments);
       if (done) await kernel.onSelectionChanged();
       return done;
     }
-    return act('groups.select', {'group': group, 'tag': tag});
+    return act('groups.select', arguments);
   }
   Future<dynamic> groupTestSessionStart(Json args) => call('groups.testSession.start', args);
   Future<bool> groupTestSessionStartChecked(Json args) => act('groups.testSession.start', args);

@@ -93,7 +93,10 @@ class _ProxyListViewState extends State<ProxyListView> {
   void _locate(String name) {
     if (!_controller.hasClients) return;
     final group = widget.groups.firstWhere((group) => group.name == name);
-    final index = group.nodes.indexWhere((node) => node['tag'] == group.group['selected']);
+    final selectedId = (group.group['selectedId'] as num?)?.toInt();
+    final index = selectedId == null
+        ? group.nodes.indexWhere((node) => node['tag'] == group.group['selected'])
+        : group.nodes.indexWhere((node) => (node['id'] as num?)?.toInt() == selectedId);
     if (index < 0) return;
     final extent = ProxyCardMetrics.of(context, context.box.preferences).rowExtent;
     final offset = _offsetOf(name) + (index ~/ _columns) * extent;

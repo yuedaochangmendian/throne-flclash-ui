@@ -30,7 +30,7 @@ class MemorySummary extends StatelessWidget {
     final total = bytes(remote ? (snapshot['total'] as num? ?? 0) : rss).split(' ');
     final parts = <(String, num, Color)>[
       if (!remote) ('App', app, color.primary),
-      ('Core', core, Color.alphaBlend(color.primary.withValues(alpha: .45), SurfaceLevel.card.colorOf(color))),
+      ('Core', core, Color.alphaBlend(color.tertiary.withValues(alpha: .62), SurfaceLevel.card.colorOf(color))),
       if (!remote && other > 0) ('Other', other, color.onSurfaceVariant.withValues(alpha: .35)),
     ];
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

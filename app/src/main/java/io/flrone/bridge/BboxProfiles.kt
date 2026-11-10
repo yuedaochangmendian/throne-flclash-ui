@@ -116,7 +116,12 @@ object BboxProfiles {
         // the configuration list then shows one "默认" tab the hand-imported nodes accumulate in, matching
         // Throne's Default group of an empty table. The form's name renames the node itself.
         if (id <= 0L && !group.isSubscription && import.size == 1) {
-            val target = defaultGroup()
+            val groups = GroupRepo.rawGroups()
+            val target = when {
+                groups.size == 1 -> groups.single()
+                else -> GroupRepo.get((values["groupId"] as? Number)?.toLong() ?: 0L)
+                    ?: defaultGroup()
+            }
             val outbound = import.single()
             val renamed = name?.trim().orEmpty()
             if (renamed.isNotEmpty() && renamed != outbound.displayName()) outbound.name = renamed
@@ -466,11 +471,32 @@ object BboxProfiles {
     suspend fun createNode(groupId: Long?, type: String): Map<String, Any?> = withContext(Dispatchers.IO) {
         val outbound = OutboundFactory.newByType(type)
         if (outbound.invalid) error("Unknown proxy type: $type")
-        val gid = groupId?.takeIf { it > 0L } ?: GroupRepo.all().firstOrNull()?.id ?: error("No proxy group")
         if (outbound.name.isBlank()) outbound.name = outbound.displayType().ifBlank { type }
+        val gid = groupId?.takeIf { it > 0L } ?: GroupRepo.all().firstOrNull()?.id
+        mapOf(
+            "id" to 0L,
+            "groupId" to gid,
+            "name" to outbound.name,
+            "type" to outbound.displayType(),
+            "json" to io.nekohasekai.sagernet.ui.json.ProfileJson.text(outbound),
+        )
+    }
+
+    /** The new-node form's save: parse, validate and add exactly one row. */
+    suspend fun commitNode(values: Map<String, Any?>): Map<String, Any?> = withContext(Dispatchers.IO) {
+        val content = values["content"] as? String ?: error("Missing node content")
+        val name = (values["name"] as? String)?.trim().orEmpty()
+        val outbound = parseOutbounds(content).singleOrNull() ?: error("The content must describe exactly one node")
+        if (name.isNotEmpty()) outbound.name = name
+        val issues = ArrayList<io.nekohasekai.sagernet.validation.Issue>()
+        outbound.validate(issues, SettingsMapper.buildContext())
+        issues.filter { it.severity == io.nekohasekai.sagernet.validation.Severity.Error }
+            .firstOrNull()?.let { error(listOf(it.field, it.message).filter(String::isNotBlank).joinToString(": ")) }
+        val gid = (values["groupId"] as? Number)?.toLong()?.takeIf { it > 0L }
+            ?: GroupRepo.all().firstOrNull()?.id ?: defaultGroup().id
         val entity = ProfileManager.addProfile(outbound, gid)
         BboxBridge.scheduleRefresh(immediate = true)
-        mapOf("id" to entity.id, "name" to entity.displayName(), "type" to entity.displayType())
+        nodeInfo(entity.id)
     }
 
     /** The typed form's seed: the node's canonical sing-box JSON (ProfileJson), which the form reads and writes. */
@@ -546,7 +572,7 @@ object BboxProfiles {
 
     /** Creates a fresh auto-selector node in [groupId], or the first group when it is omitted. */
     suspend fun createAutoSelector(groupId: Long?): Map<String, Any?> = withContext(Dispatchers.IO) {
-        val gid = groupId?.takeIf { it > 0L } ?: GroupRepo.all().firstOrNull()?.id ?: error("No proxy group")
+        val gid = groupId?.takeIf { it > 0L } ?: GroupRepo.all().firstOrNull()?.id ?: defaultGroup().id
         val entity = ProfileManager.addProfile(AutoSelector(), gid)
         // A new selector starts on the group it was made from and carries a name: with an empty list it
         // tracked nothing (so it could never pick a node) and rendered as "no group" on the proxies screen.
@@ -811,7 +837,7 @@ object BboxProfiles {
 
     /** The Default group single-node imports accumulate in, created when it does not exist yet. */
     private suspend fun defaultGroup(): ProxyGroup =
-        GroupRepo.all().firstOrNull { !it.isSubscription && it.name == SagerDatabase.defaultGroupName() }
+        GroupRepo.rawGroups().firstOrNull { !it.isSubscription && it.name == SagerDatabase.defaultGroupName() }
             ?: GroupRepo.add(ProxyGroup().apply { name = SagerDatabase.defaultGroupName() })
 
     /** Throne's own clipboard/file/QR parser, with the same global settings the native importer reads. */

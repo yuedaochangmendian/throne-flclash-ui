@@ -147,7 +147,6 @@ abstract class SagerDatabase : RoomDatabase() {
                 db.execSQL("ALTER TABLE `route_profiles` ADD COLUMN `prevent_modifications` INTEGER NOT NULL DEFAULT 0")
                 db.execSQL("ALTER TABLE `route_profiles` ADD COLUMN `endpoint_profile_ids` TEXT NOT NULL DEFAULT '[]'")
                 db.execSQL("ALTER TABLE `route_profiles` ADD COLUMN `inner_hop_endpoint_ids` TEXT NOT NULL DEFAULT '[]'")
-                insertDefaultGroup(db)
             }
         }
 
@@ -176,7 +175,6 @@ abstract class SagerDatabase : RoomDatabase() {
         /** Configs.cpp:35-39: a new database starts with an ordinary group named "Default". */
         private val callback = object : RoomDatabase.Callback() {
             override fun onCreate(db: SupportSQLiteDatabase) {
-                insertDefaultGroup(db)
             }
         }
 

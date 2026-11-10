@@ -114,10 +114,12 @@ object BboxCommands : BboxActions {
     }
 
     /** Awaitable variant: completes after the selection is persisted. */
-    suspend fun selectProxyAwait(group: String, tag: String) {
+    suspend fun selectProxyAwait(group: String, tag: String, nodeId: Long? = null) {
         val profile = withContext(Dispatchers.IO) {
             val target = GroupRepo.all().firstOrNull { it.displayName() == group } ?: return@withContext null
-            ProfileManager.members(target.id).firstOrNull { it.displayName() == tag }
+            val members = ProfileManager.members(target.id)
+            nodeId?.takeIf { it > 0L }?.let { id -> members.firstOrNull { it.id == id } }
+                ?: members.firstOrNull { it.displayName() == tag }
         } ?: return
         selectSuspend(profile.id)
     }

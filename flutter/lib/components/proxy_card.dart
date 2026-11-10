@@ -4,7 +4,6 @@ import 'package:flutter/services.dart';
 import '../widgets.dart';
 import '../pages/protocol_form.dart';
 import '../pages/node_json_page.dart';
-import '../pages/test_panel.dart';
 
 // Metrics and card presentation from FlClash proxies/common.dart and card.dart.
 
@@ -94,21 +93,23 @@ class ProxyNodeCard extends StatelessWidget {
         showAppBanner(context, context.tr('A test is already running'));
         return;
       }
-      await openPage(context, TestPanelPage(speedOnly: true,
-        profileIds: [(node['id'] as num?)?.toInt() ?? 0], initialSpeedMode: speedMode));
+      await openPage(context, SpeedTestPage(profileIds: [(node['id'] as num?)?.toInt() ?? 0]));
     } catch (error) { box.report(error); }
   }
 
   @override Widget build(BuildContext context) {
     final metrics = ProxyCardMetrics.of(context, context.box.preferences);
-    final selected = group['selected'] == node['tag'];
+    final selectedId = (group['selectedId'] as num?)?.toInt();
+    final selected = selectedId != null
+        ? selectedId == (node['id'] as num?)?.toInt()
+        : group['selected'] == node['tag'];
     final delay = (node['delay'] as num?)?.toInt() ?? 0;
     final tested = (node['testedAt'] as num? ?? 0) > 0;
     final delayText = delay > 0 ? '$delay ms' : tested ? context.tr('Unreachable') : '—';
     final delayColor = !tested ? context.colorScheme.onSurfaceVariant : delay <= 0
         ? context.colorScheme.error : delay < 300 ? context.colorScheme.success : context.colorScheme.warning;
     return ContextMenuRegion(
-      key: ValueKey((group['tag'], node['tag'])),
+      key: ValueKey((group['tag'], node['id'], node['tag'])),
       menuItems: [
         if (group['selectable'] == true)
           PopupMenuItem(glyph: AppGlyphs.checkCircle, label: context.tr('Select'), checked: selected,
@@ -181,7 +182,7 @@ class ProxyNodeCard extends StatelessWidget {
         ]))),
       ],
       child: Card(
-        radius: AppCorner.lg, enterActionsOnRight: true, isSelected: selected,
+        radius: AppCorner.lg, enterActionsOnRight: true, isSelected: selected, claimsChildPresses: false,
         // Both actions outlive the service: a selection is stored for the next start and a test runs
         // over its own instance of the profile, so a stopped VPN must not turn the card inert.
         onPressed: group['selectable'] == true ? onSelect : null,
