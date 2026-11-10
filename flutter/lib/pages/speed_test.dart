@@ -345,6 +345,10 @@ class _SpeedTestPageState extends State<SpeedTestPage>
 
   bool get _connecting => _starting || (_running && !_hasValue);
 
+  /// A run needs the core up: the tester dials through the instance's own
+  /// outbound, so with the VPN stopped there is nothing to measure through.
+  bool get _serviceRunning => context.box.running;
+
   /// The stored value's label. A preference written by another build (or a
   /// restored backup) may name a provider this one does not run; the kernel
   /// coerces it to the default, so the row shows the raw value rather than
@@ -506,9 +510,21 @@ class _SpeedTestPageState extends State<SpeedTestPage>
                         ? null
                         : _running
                         ? _cancel
-                        : _start,
+                        : _serviceRunning
+                        ? _start
+                        : null,
                   ),
                 ),
+                if (!_serviceRunning && !_running) ...[
+                  const SizedBox(height: 12),
+                  Text(
+                    context.tr(
+                      'Start the VPN first: the test measures through the running core.',
+                    ),
+                    textAlign: TextAlign.center,
+                    style: context.listCaptionStyle,
+                  ),
+                ],
                 if (errorText != null) ...[
                   const SizedBox(height: 12),
                   Text(

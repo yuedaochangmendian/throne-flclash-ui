@@ -1128,6 +1128,7 @@ const _zh = <String, String>{
   "Rules added here run before the profile's own.": '这里添加的规则会先于该配置自身的规则执行。',
   "Every profile's rules in one list": '所有配置的规则汇总在一个列表',
   'Delete this rule?': '删除这条规则？',
+  'Start the VPN first: the test measures through the running core.': '请先启动 VPN：测速通过运行中的内核进行。',
 };
 
 extension BoxLocalization on BuildContext {
