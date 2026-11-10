@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show listEquals, setEquals;
 import '../widgets.dart';
 import 'group_monogram.dart';
 import 'proxy_card.dart';
+import 'proxy_motion.dart';
 
 // Slivers, pinned headers and folding motion adapted from FlClash v0.9.2
 // views/proxies/list.dart. Nodes and actions come from the sing-box session.

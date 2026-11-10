@@ -3,6 +3,7 @@ import '../components/data_subscription.dart';
 import '../components/group_tabs.dart';
 import '../components/proxy_card.dart';
 import '../components/proxy_list.dart';
+import '../components/proxy_motion.dart';
 import 'test_panel.dart';
 
 class ProxiesPage extends StatefulWidget {

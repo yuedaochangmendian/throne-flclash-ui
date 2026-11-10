@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:collection/collection.dart';
 import '../widgets.dart';
+import 'proxy_motion.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
 
 const _stripInset = 16.0;
