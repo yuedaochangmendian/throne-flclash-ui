@@ -33,3 +33,14 @@ Routing rules SHALL be able to reference external rule sets, and the app SHALL r
 #### Scenario: Missing rule set
 - **WHEN** a rule references a rule set that cannot be resolved at connection start
 - **THEN** the app surfaces a routing configuration error
+
+### Requirement: Rule editing surface
+Rules SHALL be editable on a screen of their own, separate from the profile's settings form, with search, drag ordering and JSON fragment import.
+
+#### Scenario: Reorder persists
+- **WHEN** the user drags a rule to a new position within its profile
+- **THEN** the stored order matches the visible order and the router evaluates it that way
+
+#### Scenario: Built-in profile
+- **WHEN** the user opens the rules of a built-in profile
+- **THEN** its rules are shown read-only, with no drag handle, edit or delete action
