@@ -1,9 +1,13 @@
 import '../widgets.dart';
 import '../common/routed_ip_probe.dart';
+import 'dashboard_chip.dart';
+import 'status_panel.dart' show EgressDetails;
 
-/// FlClash's service-status grid, adapted to Throne's routed HTTP probe. Four
-/// lightweight endpoints stand in for its Core service checks; no second
-/// service-check API or Riverpod provider is needed.
+/// Bettbox-style exit-IP detection card built on Throne's routed egress probe.
+/// It shows the current outbound address, its region and IP quality, with a
+/// refresh menu. The data comes from the same `RoutedIpProbe.egress()` and
+/// `box.ipQualities` that the always-visible Status panel uses, so no second
+/// data source or capability is needed.
 class ServiceStatusPanel extends StatefulWidget {
   const ServiceStatusPanel({super.key});
   @override
@@ -11,13 +15,8 @@ class ServiceStatusPanel extends StatefulWidget {
 }
 
 class _ServiceStatusPanelState extends State<ServiceStatusPanel> {
-  static const _services = <(String, String, String)>[
-    ('Google', 'https://www.google.com/generate_204', 'Google'),
-    ('Cloudflare', 'https://www.cloudflare.com/cdn-cgi/trace', 'Cloudflare'),
-    ('Apple', 'https://www.apple.com/library/test/success.html', 'Apple'),
-    ('GitHub', 'https://api.github.com/', 'GitHub'),
-  ];
-  final _states = <String, _ServiceState?>{};
+  Json? _egress;
+  String? _error;
   bool _checking = false;
   int _generation = 0;
   RoutedIpProbe? _probe;
@@ -37,32 +36,46 @@ class _ServiceStatusPanelState extends State<ServiceStatusPanel> {
     super.dispose();
   }
 
-  Future<void> _check() async {
+  Future<void> _check({bool force = false}) async {
     if (_checking || context.box.remote) return;
     final generation = ++_generation;
-    setState(() => _checking = true);
+    setState(() {
+      _checking = true;
+      _error = null;
+    });
     final probe = RoutedIpProbe(context.box);
+    _probe?.cancel();
     _probe = probe;
     try {
-      for (final (name, url, _) in _services) {
-        if (!mounted || generation != _generation) break;
-        final started = DateTime.now().millisecondsSinceEpoch;
-        try {
-          final response = await probe.get(url, const Duration(seconds: 5));
-          final ok = response.status >= 200 && response.status < 300;
-          if (mounted && generation == _generation) {
-            setState(
-              () => _states[name] = _ServiceState(
-                ok,
-                DateTime.now().millisecondsSinceEpoch - started,
-              ),
-            );
-          }
-        } catch (_) {
-          if (mounted && generation == _generation) {
-            setState(() => _states[name] = null);
-          }
+      final result = await probe.egress(force: force);
+      if (!mounted || generation != _generation) return;
+      setState(() => _egress = result.isEmpty ? null : result);
+      final ip = result['ip'] as String?;
+      final direct = result['direct'] == true;
+      if (ip == null || direct) return;
+      try {
+        final record = await context.box.ipQualities.lookup(
+          probe,
+          ip,
+          refresh: force,
+          onAnswer: (quality) {
+            if (!mounted || generation != _generation) return;
+            setState(() => result.addAll(quality.toDashboard(DateTime.now())));
+          },
+        );
+        if (!mounted || generation != _generation) return;
+        setState(() => result.addAll(record.quality.toDashboard(record.checkedAt)));
+      } catch (error) {
+        if (mounted && generation == _generation) {
+          setState(() => result['qualityError'] = BoxController.describe(error));
         }
+      }
+    } catch (error) {
+      if (mounted && generation == _generation) {
+        setState(() {
+          _egress = null;
+          _error = BoxController.describe(error);
+        });
       }
     } finally {
       if (identical(_probe, probe)) _probe = null;
@@ -74,91 +87,123 @@ class _ServiceStatusPanelState extends State<ServiceStatusPanel> {
   }
 
   @override
-  Widget build(BuildContext context) => BoxPanel(
-    onTap: _checking ? null : _check,
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        PanelTitle(
-          'Service status',
-          AppGlyphs.verified,
-          trailing: _checking
-              ? const ActivityIndicator(size: 16)
-              : const GlyphIcon(AppGlyphs.refresh, size: 16),
-        ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final (name, _, _) in _services)
-              _ServiceTile(
-                name: name,
-                state: _states[name],
-                checking: _checking,
-              ),
-          ],
-        ),
-      ],
-    ),
-  );
-}
-
-class _ServiceState {
-  const _ServiceState(this.available, this.delay);
-  final bool available;
-  final int delay;
-}
-
-class _ServiceTile extends StatelessWidget {
-  const _ServiceTile({
-    required this.name,
-    required this.state,
-    required this.checking,
-  });
-  final String name;
-  final _ServiceState? state;
-  final bool checking;
-  @override
   Widget build(BuildContext context) {
-    final color = state == null
-        ? context.colorScheme.onSurfaceVariant
-        : state!.available
-        ? context.colorScheme.success
-        : context.colorScheme.error;
-    final label = state == null
-        ? context.tr(checking ? 'Loading' : 'Check failed')
-        : state!.available
-        ? '${state!.delay} ms'
-        : context.tr('Unreachable');
-    return Container(
-      width: 128,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: ShapeDecoration(
-        color: SurfaceLevel.block.colorOf(context.colorScheme),
-        shape: AppShape.all(18),
-      ),
+    final info = _egress;
+    final quality = info?['quality'] as String?;
+    final tone = switch (quality) {
+      'Good' => DashboardChipTone.ok,
+      'Risky' => DashboardChipTone.warn,
+      _ => DashboardChipTone.idle,
+    };
+    return BoxPanel(
+      onTap: info == null ? (_checking ? null : () => _check(force: true)) : null,
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: context.listCaptionStyle,
+          PanelTitle(
+            'Exit detection',
+            AppGlyphs.verified,
+            trailing: _checking
+                ? const ActivityIndicator(size: 16)
+                : GestureDetector(
+                    onTap: () => _check(force: true),
+                    child: const GlyphIcon(AppGlyphs.refresh, size: 16),
+                  ),
           ),
-          const SizedBox(height: 2),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppTextStyle.footnote
-                .of(context, emphasized: true)
-                .copyWith(color: color),
-          ),
+          const SizedBox(height: 12),
+          if (info == null)
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: Text(
+                context.tr(
+                  _checking
+                      ? 'Loading'
+                      : _error != null
+                      ? 'Check failed'
+                      : 'Unreachable',
+                ),
+                style: context.listCaptionStyle,
+              ),
+            )
+          else
+            _EgressBody(info: info, qualityTone: tone),
         ],
       ),
     );
   }
+}
+
+class _EgressBody extends StatelessWidget {
+  const _EgressBody({required this.info, required this.qualityTone});
+  final Json info;
+  final DashboardChipTone qualityTone;
+
+  @override
+  Widget build(BuildContext context) {
+    final ip = info['ip']?.toString() ?? '';
+    final country = info['country']?.toString() ?? '';
+    final flag = _countryFlag(country);
+    final location = [
+      info['city'] as String?,
+      info['countryName'] as String?,
+      info['country'] as String?,
+    ].whereType<String>().where((item) => item.isNotEmpty).join(' · ');
+    final type = info['type'] as String?;
+    final quality = info['quality'] as String?;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: () => openForm(context, EgressDetails(info: info)),
+          child: Row(
+            children: [
+              if (flag.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsetsDirectional.only(end: 8),
+                  child: Text(flag, style: AppTextStyle.title2.of(context)),
+                ),
+              Expanded(
+                child: Text(
+                  ip,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTextStyle.title3
+                      .of(context, emphasized: true)
+                      .toTabular,
+                ),
+              ),
+              const GlyphIcon(AppGlyphs.info, size: 16),
+            ],
+          ),
+        ),
+        if (location.isNotEmpty) ...[
+          const SizedBox(height: 4),
+          Text(location, maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: context.listCaptionStyle),
+        ],
+        const SizedBox(height: 10),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            if (type != null)
+              DashboardChip(label: context.tr(type)),
+            if (quality != null)
+              DashboardChip(
+                label: '${context.tr('Quality')} ${context.tr(quality)}',
+                tone: qualityTone,
+                dot: true,
+              ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+String _countryFlag(String code) {
+  if (code.length != 2) return code;
+  final first = code.codeUnitAt(0) - 0x41 + 0x1F1E6;
+  final second = code.codeUnitAt(1) - 0x41 + 0x1F1E6;
+  return String.fromCharCodes([first, second]);
 }

@@ -47,7 +47,7 @@ object Capabilities {
         "perApp" to true,          // PROXY_APPS / BYPASS_MODE / INDIVIDUAL
         "backup" to true,          // .thrbackup and WebDAV, see BboxBackup
         "lanProxy" to true,        // mixed inbound "Allow LAN" plus its port
-        "serviceStatus" to true,   // routed endpoint probes, see ServiceStatusPanel
+        "serviceStatus" to true,   // exit-IP detection card, see ServiceStatusPanel
         "tv" to SagerNet.isTv,     // the profiles toolbar's previous / next server over profiles.switchRelative
         "update" to BuildConfig.IN_APP_UPDATER,
         // The VPN service can write its mixed inbound into the system HTTP settings, which Android
