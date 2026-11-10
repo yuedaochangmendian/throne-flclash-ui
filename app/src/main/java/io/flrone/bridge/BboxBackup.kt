@@ -54,7 +54,9 @@ object BboxBackup {
     /** Builds a Throne backup and wraps it in the envelope the UI expects. */
     suspend fun create(scope: String = "all", ui: Map<String, Any?> = emptyMap()): Map<String, Any?> = withContext(Dispatchers.IO) {
         val bytes = ByteArrayOutputStream().use { out ->
-            BackupExport.write(selection(scope), out)
+            // Embed the UI payload in the container meta too, so a raw .thrbackup
+            // (or a shared file) restores preferences just like the JSON envelope.
+            BackupExport.write(selection(scope), out, extraMeta = ui)
             out.toByteArray()
         }
         val groups = GroupRepo.rawGroups().map { group ->
@@ -151,8 +153,9 @@ object BboxBackup {
 
     /**
      * Restores an envelope. [strategy] is B-box's merge-vs-replace choice, which Throne's restore does not have — it
-     * replaces a part's rows keeping ids, so `Compatible` narrows the selection to profiles rather than pretending to
-     * merge. `Override` additionally takes the routes and settings.
+     * replaces a part's rows keeping ids. A full-scope restore always brings back the application settings (per-app
+     * selection, proxy apps, HTTP proxy options and the rest of the settings table), because those were exported but
+     * silently dropped under the old "Compatible" default; `Override` additionally replaces the route tables.
      */
     suspend fun restore(payload: Map<String, Any?>?, scope: String, strategy: String): List<String> =
         withContext(Dispatchers.IO) {
@@ -164,11 +167,12 @@ object BboxBackup {
                     ?: error("Nothing has been read yet: choose a backup to restore from")
             }
             val available = BackupRestore.available(loaded.contents)
-            val everything = strategy == "Override" && scope != "profiles"
+            val allParts = scope != "profiles"
+            val override = strategy == "Override"
             val choice = BackupRestore.Choice(
                 profiles = available.profiles,
-                routes = available.routes && everything,
-                settings = available.settings && everything,
+                routes = available.routes && allParts && override,
+                settings = available.settings && allParts,
             )
             if (!choice.any()) error("This backup holds nothing Throne can restore")
             val warnings = try {

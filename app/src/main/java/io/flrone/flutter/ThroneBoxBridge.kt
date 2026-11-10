@@ -897,7 +897,9 @@ class ThroneBoxBridge(
                     val strategy = call.argument<String>("strategy") ?: "Compatible"
                     result.respond {
                         val warnings = BboxBackup.restore(payload, scope, strategy)
-                        if (warnings.isEmpty() && scope == "all" && strategy == "Override") {
+                        // A full-scope restore brings back the UI documents too. Benign warnings
+                        // (a skipped row, a missing icon) must not discard the whole payload.
+                        if (scope == "all") {
                             (payload?.get("ui") as? Map<*, *>)?.let { ui ->
                                 (ui["preferences"] as? Map<*, *>)?.let { writePreferences(it.mapKeys { (key, _) -> key.toString() }) }
                                 (ui["settings"] as? Map<*, *>)?.let { writeJsonMap(SETTINGS_KEY, it.mapKeys { (key, _) -> key.toString() }) }

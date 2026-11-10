@@ -500,7 +500,7 @@ class _RestoreConfirm extends StatelessWidget {
         if (scope == 'all' && !destructive)
           Text(
             context.tr(
-              'Compatible restores profiles only; choose Override for settings and routes.',
+              'Application settings will be restored. Choose Override to also replace route tables.',
             ),
           ),
       ],

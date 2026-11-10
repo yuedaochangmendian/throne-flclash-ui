@@ -23,6 +23,8 @@ const _zh = <String, String>{
   'The selector is created only when you save.': '保存后才会创建自动选择器。',
   'Compatible restores profiles only; choose Override for settings and routes.':
       '兼容模式仅恢复配置；恢复设置和路由请选择覆盖模式。',
+  'Application settings will be restored. Choose Override to also replace route tables.':
+      '将恢复应用设置；如需同时替换路由表请选择覆盖模式。',
   "IP source": "检测来源",
   "Match": "匹配",
   "Capture HTTPS with eBPF": "使用 eBPF 抓取 HTTPS",
