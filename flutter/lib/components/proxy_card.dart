@@ -143,31 +143,14 @@ class ProxyNodeCard extends StatelessWidget {
         json,
       )).toString();
 
-  /// A speed session over this node alone (download, upload or both); the panel that opens shows
-  /// its live curve and the finished ranking, since a card only carries latency.
+  /// A speed session over this node alone. The kernel's tester measures through
+  /// one outbound of the running box, so the node names it and the screen's own
+  /// start button runs the test.
   Future<void> _speedTest(BuildContext context, int speedMode) async {
-    final box = context.box;
-    try {
-      final started = await box.groupTestSessionStart({
-        'kind': 2,
-        'profileIds': [node['id']],
-        'speedMode': speedMode,
-      });
-      if (!context.mounted) return;
-      if (started == false) {
-        showAppBanner(context, context.tr('A test is already running'));
-        return;
-      }
-      await openPage(
-        context,
-        SpeedTestPage(
-          profileIds: [(node['id'] as num?)?.toInt() ?? 0],
-          initialSpeedMode: speedMode,
-        ),
-      );
-    } catch (error) {
-      box.report(error);
-    }
+    await openPage(
+      context,
+      SpeedTestPage(outbound: node['tag'].toString()),
+    );
   }
 
   @override

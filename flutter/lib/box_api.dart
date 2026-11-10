@@ -214,6 +214,36 @@ extension GroupsApi on BoxController {
   Future<bool> groupTestSessionDismiss() => act('groups.testSession.dismiss');
 }
 
+/// The Bettbox speed test, run by the kernel against the running instance's
+/// outbounds. `start` returns at once; `query` is polled while `running`.
+extension SpeedTestApi on BoxController {
+  Future<bool> speedTestStart(Json params) async {
+    try {
+      return await call('speedTest.start', {
+        'params': convert.jsonEncode(params),
+      }) == true;
+    } catch (error) {
+      report(error);
+      return false;
+    }
+  }
+
+  /// `{state, running}`: the kernel snapshot and whether a test is in flight.
+  Future<Json> speedTestQuery() async => json(await call('speedTest.query'));
+
+  Future<bool> speedTestCancel() => act('speedTest.cancel');
+
+  /// speedtest.net's servers, nearest first.
+  Future<List<Json>> speedTestServers({String outbound = '', String search = ''}) async =>
+      rows(json(await call('speedTest.servers', {'outbound': outbound, 'search': search}))['servers']);
+
+  /// The running box's outbound tags, what the test's outbound picker lists.
+  Future<List<String>> speedTestOutbounds() async =>
+      (json(await call('speedTest.outbounds'))['outbounds'] as List? ?? const [])
+          .map((value) => value.toString())
+          .toList();
+}
+
 extension GroupSettingsApi on BoxController {
   Future<dynamic> groupSettingsGet(dynamic id) =>
       call('groupSettings.get', {'id': id});

@@ -61,11 +61,14 @@ class BboxGroupsWireTest {
     }
 
     @Test
-    fun `the picker list is flat, id and tag only`() {
+    fun `the picker list is flat and carries what a hop may not be`() {
         val wire = BboxGroupsWire.nodes(groups)
 
         assertEquals(listOf(1, 2, 3), wire.map { it["id"] })
-        assertEquals(setOf("id", "tag"), wire.first().keys)
         assertEquals("🇭🇰 香港 01", wire.first()["tag"])
+        // The proxy-chain picker filters on these two, so they have to travel with the rows.
+        assertEquals("shadowsocks", wire.first()["type"])
+        assertFalse(wire[1]["isSelector"] as Boolean)
+        assertTrue(wire[2]["isSelector"] as Boolean)
     }
 }

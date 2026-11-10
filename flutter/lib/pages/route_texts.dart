@@ -254,3 +254,7 @@ Widget ruleRowSubtitle(BuildContext context, Json rule) {
     ]),
   );
 }
+
+/// The count line under a profile's "Additional rules" row, e.g. `3 rules`.
+String ruleCountSummary(BuildContext context, List<Json> rules) =>
+    '${rules.length} ${context.tr('rules')}';

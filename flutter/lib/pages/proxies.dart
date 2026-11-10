@@ -81,27 +81,32 @@ class _ProxiesPageState extends State<ProxiesPage> {
 
   // Testing and selecting both work with the service stopped: a test runs over its own instance of the
   // profile, and a selection is a stored preference the next start reads, so neither waits for the VPN.
-  // FlClash gives the group button the filtered/visible rows and the node button exactly one row.
+  // FlClash gives the group button the filtered/visible rows and the node button exactly one row, and
+  // dedupes the targets: one node measured twice under two aliases is one measurement.
   Future<void> _test(
     String tag, {
     List<int>? profileIds,
     bool groupTest = false,
   }) async {
     final testingGroup = groupTest || profileIds == null;
-    final ids = profileIds ?? _allIds(tag);
+    final ids = (profileIds ?? _allIds(tag)).toSet().toList();
     if (testingGroup && _testLabels.contains(tag)) return;
     if (!testingGroup && profileIds.any(_testing.contains)) return;
     if (ids.isEmpty || _queued.contains(tag)) return;
+    // One group at a time, as FlClash's coordinator does: a second group's run
+    // waits its turn instead of sharing the core with the first.
+    if (testingGroup && _testLabels.isNotEmpty) return;
     final box = context.box;
+    final timeout = Duration(
+      seconds: (box.preferences['delayTestTimeoutSeconds'] as num?)?.toInt() ?? 60,
+    );
     setState(() {
       _sessionRequestedAt = DateTime.now().millisecondsSinceEpoch;
       _testing.addAll(ids);
       if (testingGroup) _testLabels.add(tag);
     });
     try {
-      await box
-          .groupTest(tag, profileIds: profileIds)
-          .timeout(const Duration(seconds: 60));
+      await box.groupTest(tag, profileIds: profileIds).timeout(timeout);
     } catch (error) {
       if (mounted) box.report(error);
     } finally {
@@ -114,9 +119,19 @@ class _ProxiesPageState extends State<ProxiesPage> {
     }
   }
 
+  /// A node the delay test skips: FlClash's `_isNonTestableProxy` — the
+  /// built-in REJECT/PASS rows and anything the core resolves itself. Testing
+  /// one measures nothing and would only paint a timeout on a working config.
+  bool _testable(Json node) {
+    final tag = node['tag'].toString().toUpperCase();
+    if (tag == 'REJECT' || tag == 'REJECT-DROP' || tag == 'PASS') return false;
+    return node['type'].toString().toUpperCase() != 'REMATCH';
+  }
+
   List<int> _nodeIds(Iterable<Json> nodes) => [
     for (final node in nodes)
-      if ((node['id'] as num?)?.toInt() case final int id) id,
+      if (_testable(node))
+        if ((node['id'] as num?)?.toInt() case final int id) id,
   ];
 
   List<int> _visibleIds(String tag) {

@@ -116,6 +116,17 @@ class _RouteProfilesPageState extends State<RouteProfilesPage> {
             title: Text(context.tr('Throne official profiles')),
             onTap: _addPresets,
           ),
+          // The rules of every profile on one screen, as FlClash keeps the rules
+          // a user adds apart from the profile that pulls them.
+          ListItem(
+            leading: const GlyphIcon(AppGlyphs.rules),
+            title: Text(context.tr('Additional rules')),
+            subtitle: Text(context.tr("Every profile's rules in one list")),
+            onTap: () async {
+              await openPage(context, const AdditionalRulesPage(profileId: 0));
+              if (mounted) await _load();
+            },
+          ),
         ], footer: context.tr('The official profiles are remote route profiles of the routeprofiles repository.')),
       ],
     ]);

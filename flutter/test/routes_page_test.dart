@@ -170,10 +170,9 @@ void main() {
       await mount(tester);
       openPage(
         tester.element(find.byType(HomePage)),
-        const RouteEditorPage(id: 1),
+        const AdditionalRulesPage(profileId: 1),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Default'), findsWidgets);
       expect(find.text('Direct LAN'), findsOneWidget);
       expect(find.text('Simple'), findsOneWidget);
       expect(tester.takeException(), isNull);
@@ -203,8 +202,8 @@ void main() {
       Navigator.of(tester.element(find.text('Edit rule').first)).pop();
       await tester.pumpAndSettle();
 
-      // Adding a new rule starts from an empty draft.
-      await tester.tap(find.text('Add rule'));
+      // Adding a new rule starts from an empty draft, from the bar's add button.
+      await tester.tap(find.byTooltip('Add rule'));
       await tester.pumpAndSettle();
       expect(find.text('Add rule'), findsWidgets);
       expect(tester.takeException(), isNull);
@@ -221,7 +220,7 @@ void main() {
     await mount(tester);
     openPage(
       tester.element(find.byType(HomePage)),
-      const RouteEditorPage(id: 1),
+      const AdditionalRulesPage(profileId: 1),
     );
     await tester.pumpAndSettle();
     expect(
@@ -385,7 +384,7 @@ void main() {
     await mount(tester);
     openPage(
       tester.element(find.byType(HomePage)),
-      const RouteEditorPage(id: 1),
+      const AdditionalRulesPage(profileId: 1),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Legacy'));
@@ -408,7 +407,7 @@ void main() {
     await mount(tester);
     openPage(
       tester.element(find.byType(HomePage)),
-      const RouteEditorPage(id: 1),
+      const AdditionalRulesPage(profileId: 1),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Custom one'));
@@ -439,7 +438,7 @@ void main() {
       await mount(tester);
       openPage(
         tester.element(find.byType(HomePage)),
-        const RouteEditorPage(id: 1),
+        const AdditionalRulesPage(profileId: 1),
       );
       await tester.pumpAndSettle();
       await tester.tap(find.text('Ads'));
@@ -482,17 +481,17 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Core profile fields and the rule list survive the simplification.
+    // Core profile fields survive the simplification; the rules themselves live
+    // on their own screen, reached through this row.
     expect(find.text('Name'), findsOneWidget);
     expect(find.text('Default outbound'), findsOneWidget);
     expect(find.text('Remote'), findsWidgets);
-    expect(find.text('Add rule'), findsOneWidget);
+    expect(find.text('Additional rules'), findsOneWidget);
     expect(find.text('Use this profile'), findsOneWidget);
 
-    // Low-frequency "Rule actions" and the endpoint-id field are gone, and the
-    // remote profile section is deliberately kept.
-    expect(find.text('Rule actions'), findsNothing);
-    expect(find.text('Import rules from JSON'), findsNothing);
+    // The JSON fragment import is a way in the rule list does not have; the
+    // batch-add text box and the default-rules reset stay out of the editor.
+    expect(find.text('Import rules from JSON'), findsOneWidget);
     expect(find.text('Batch add simple rules'), findsNothing);
     expect(find.text('Restore default rules'), findsNothing);
     expect(find.text('Endpoint ids'), findsNothing);

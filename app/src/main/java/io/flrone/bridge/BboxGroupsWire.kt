@@ -31,9 +31,16 @@ internal object BboxGroupsWire {
         )
     }
 
-    /** Every node of every group, id and tag only: what the outbound picker shows. */
+    /**
+     * Every node of every group, the outbound picker's list. `isSelector` and `type` ride along
+     * because the proxy-chain picker has to skip the rows a hop may not be — a selector resolves
+     * to a different member over time and the generator refuses chain-in-chain — and it cannot ask
+     * for the full catalogue just to find that out.
+     */
     fun nodes(groups: List<ProxyGroup>): List<Map<String, Any?>> = groups.flatMap { group ->
-        group.nodes.map { node -> mapOf("id" to node.id.toInt(), "tag" to node.tag) }
+        group.nodes.map { node ->
+            mapOf("id" to node.id.toInt(), "tag" to node.tag, "type" to node.type, "isSelector" to node.isSelector)
+        }
     }
 
     private fun node(node: ProxyNode): Map<String, Any?> = mapOf(

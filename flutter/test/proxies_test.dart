@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flrone/main.dart';
 import 'package:flrone/pages/proxies.dart';
@@ -6,6 +7,7 @@ import 'package:flrone/pages/test_panel.dart';
 import 'package:flrone/widgets.dart';
 import 'package:flrone/components/proxy_card.dart';
 import 'package:flrone/components/proxy_list.dart';
+import 'package:flrone/components/speed_gauge.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -690,25 +692,23 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 300));
     expect(find.text('Last speed test'), findsOneWidget);
-    expect(find.byKey(const ValueKey('speed-curve')), findsOneWidget);
-    final download = tester.widget<LineChart>(
-      find.byKey(const ValueKey('speed-download-curve')),
+    // The panel draws the speed screen's own curve widget, so a batch run and a
+    // single run share one chart instead of two lookalikes.
+    final curve = tester.widget<SpeedCurves>(
+      find.byKey(const ValueKey('speed-curve')),
     );
-    final upload = tester.widget<LineChart>(
-      find.byKey(const ValueKey('speed-upload-curve')),
-    );
-    expect(upload.values.any((value) => value > 0), isTrue);
-    expect(upload.color, isNot(download.color));
+    expect(curve.download.any((value) => value > 0), isTrue);
+    expect(curve.upload.any((value) => value > 0), isTrue);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
     await events.close();
   });
 
   testWidgets(
-    'dedicated speed page starts the selected mode and renders actual metrics',
+    'dedicated speed page starts the kernel test and renders its snapshot',
     (tester) async {
       reportFlutterErrors();
-      tester.view.physicalSize = const Size(360, 800);
+      tester.view.physicalSize = const Size(360, 900);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
@@ -717,6 +717,8 @@ void main() {
       final calls = <MethodCall>[];
       final messenger =
           TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+      // One test: started, then a finished snapshot with the kernel's fields.
+      var queried = 0;
       messenger.setMockMethodCallHandler(channel, (call) async {
         calls.add(call);
         if (call.method == 'ready') {
@@ -727,7 +729,37 @@ void main() {
             'preferences': {'locale': 'en'},
           };
         }
-        if (call.method == 'groups.testSession.start') return true;
+        if (call.method == 'speedTest.outbounds') {
+          return {'outbounds': <String>['Node A', 'Node B']};
+        }
+        if (call.method == 'speedTest.start') return true;
+        if (call.method == 'speedTest.query') {
+          queried++;
+          return {
+            'running': false,
+            'state': {
+              'provider': 'apple',
+              'protocol': 'h1',
+              'phase': 'done',
+              'outbound': 'Node A',
+              'server': {
+                'host': 'speed.example',
+                'country': 'US',
+                'city': 'Ashburn',
+              },
+              'latency': 42,
+              'jitter': 5,
+              'download': 8000000,
+              'upload': 3000000,
+              'downloadLatency': 55,
+              'uploadLatency': 61,
+              'rpm': 980,
+              'downloadCurve': [1000, 4000000, 8000000],
+              'uploadCurve': [500000, 3000000],
+              'error': '',
+            },
+          };
+        }
         return null;
       });
       addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
@@ -739,40 +771,23 @@ void main() {
       await tester.pumpAndSettle();
       openPage(
         tester.element(find.byType(HomePage)),
-        const SpeedTestPage(profileIds: [10], initialSpeedMode: 2),
+        const SpeedTestPage(outbound: 'Node A'),
       );
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Start speed test'));
-      await tester.pumpAndSettle();
-      final start = calls.lastWhere(
-        (call) => call.method == 'groups.testSession.start',
-      );
-      expect((start.arguments as Map)['profileIds'], [10]);
-      expect((start.arguments as Map)['speedMode'], 2);
 
-      events.add({
-        'type': 'testSession',
-        'value': {
-          'kind': 2,
-          'running': false,
-          'speed': {
-            'profileId': 10,
-            'name': 'Node A',
-            'server': 'speed.example',
-            'serverCountry': 'US',
-            'dlBps': 8000000,
-            'ulBps': 3000000,
-            'pingMs': 42,
-            'samples': [
-              [0, 3000000, false],
-              [1, 8000000, false],
-              [2, 3000000, true],
-            ],
-          },
-        },
-      });
-      await tester.pumpAndSettle();
-      expect(find.text('speed.example (US)'), findsOneWidget);
+      // The picked outbound is what the card shows and what the start sends.
+      expect(find.text('Node A'), findsWidgets);
+      await tester.tap(find.text('Start'));
+      await tester.pumpAndSettle(const Duration(milliseconds: 400));
+
+      final start = calls.lastWhere((call) => call.method == 'speedTest.start');
+      final params = jsonDecode((start.arguments as Map)['params'] as String);
+      expect(params['outbound'], 'Node A');
+      expect(params['provider'], 'apple');
+      expect(params['protocol'], 'h1');
+      expect(queried, greaterThan(0));
+
+      // The finished snapshot's figures land in the tiles.
       await tester.drag(find.byType(ListView).last, const Offset(0, -420));
       await tester.pumpAndSettle();
       expect(find.text('8.00 Mbps'), findsOneWidget);
@@ -785,10 +800,10 @@ void main() {
   );
 
   testWidgets(
-    'home speed page starts the selected group when no node ids are given',
+    'home speed page runs without a node and reports the stored outbound',
     (tester) async {
       reportFlutterErrors();
-      tester.view.physicalSize = const Size(360, 800);
+      tester.view.physicalSize = const Size(360, 900);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.resetPhysicalSize);
       addTearDown(tester.view.resetDevicePixelRatio);
@@ -807,7 +822,13 @@ void main() {
             'preferences': {'locale': 'en'},
           };
         }
-        if (call.method == 'groups.testSession.start') return true;
+        if (call.method == 'speedTest.outbounds') {
+          return {'outbounds': <String>['Node A']};
+        }
+        if (call.method == 'speedTest.start') return true;
+        if (call.method == 'speedTest.query') {
+          return {'running': false, 'state': const <String, dynamic>{}};
+        }
         return null;
       });
       addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
@@ -819,13 +840,12 @@ void main() {
       await tester.pumpAndSettle();
       openPage(tester.element(find.byType(HomePage)), const SpeedTestPage());
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Start speed test'));
-      await tester.pumpAndSettle();
-      final start = calls.lastWhere(
-        (call) => call.method == 'groups.testSession.start',
-      );
-      expect((start.arguments as Map)['groupId'], 7);
-      expect((start.arguments as Map).containsKey('profileIds'), isFalse);
+      await tester.tap(find.text('Start'));
+      await tester.pumpAndSettle(const Duration(milliseconds: 400));
+      final start = calls.lastWhere((call) => call.method == 'speedTest.start');
+      final params = jsonDecode((start.arguments as Map)['params'] as String);
+      // No node was named, so the kernel measures through the box default.
+      expect(params['outbound'], '');
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       await events.close();

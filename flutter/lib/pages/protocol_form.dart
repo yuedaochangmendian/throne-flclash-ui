@@ -1287,6 +1287,16 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
               for (final value in (_get(field.path) as List? ?? const []))
                 if (value is num) value.toInt(),
             ];
+            // A hop has to be a fixed server: a selector resolves to a different
+            // member over time, and ChainBuilder refuses chain-in-chain, so both
+            // stay out of the list. The profile being edited is out too.
+            final hops = [
+              for (final node in nodes)
+                if (node['isSelector'] != true &&
+                    node['type'] != 'Chain Proxy' &&
+                    (node['id'] as num?)?.toInt() != widget.id)
+                  node,
+            ];
             final picked = await showDialog<List<int>>(
               context: context,
               builder: (dialogContext) => StatefulBuilder(
@@ -1305,21 +1315,17 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
                   ],
                   child: SizedBox(
                     width: double.maxFinite,
+                    // Prism's own checkbox row: Material's CheckboxListTile
+                    // wants a Material ancestor the dialog frame does not
+                    // provide, and threw on every open.
                     child: ListView(
                       shrinkWrap: true,
                       children: [
-                        if (nodes
-                            .where(
-                              (node) =>
-                                  node['isSelector'] != true &&
-                                  (node['id'] as num?)?.toInt() != widget.id,
-                            )
-                            .isEmpty)
-                          ListItem(title: Text(context.tr('No results'))),
-                        for (final node in nodes)
-                          if (node['isSelector'] != true &&
-                              (node['id'] as num?)?.toInt() != widget.id)
-                            CheckboxListTile(
+                        if (hops.isEmpty)
+                          ListItem(title: Text(context.tr('No results')))
+                        else
+                          for (final node in hops)
+                            ListItem.checkbox(
                               value: selected.contains(
                                 (node['id'] as num?)?.toInt(),
                               ),

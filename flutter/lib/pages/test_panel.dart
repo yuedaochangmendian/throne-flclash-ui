@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import '../widgets.dart';
 import '../components/data_subscription.dart';
 import '../components/form.dart';
+import '../components/speed_gauge.dart';
 
 /// The batch test panel over the bridge's `groups.testSession`: one scope (a group, a selection or
 /// the running connection), live progress with the latency histogram, the ranked best results, the
@@ -129,7 +130,6 @@ class _TestPanelPageState extends State<TestPanelPage> {
     }).toList();
     final download = [for (final sample in samples) sample[2] == true ? 0.0 : sample[1] as double];
     final upload = [for (final sample in samples) sample[2] == true ? sample[1] as double : 0.0];
-    final peak = samples.fold<double>(1.0, (peak, sample) => math.max(peak, sample[1] as double));
     final running = session['running'] == true;
     final downloadColor = context.colorScheme.primary;
     final uploadColor = context.colorScheme.tertiary;
@@ -154,23 +154,17 @@ class _TestPanelPageState extends State<TestPanelPage> {
           ]),
           if (speed['server']?.toString().isNotEmpty == true)
             Text('${speed['server']} (${speed['serverCountry']})', style: context.listCaptionStyle),
-          // The vendored chart is single-series; two copies share the same
-          // normalized peak and overlay, keeping line_chart.dart identical to
-          // its Prism baseline.
-          SizedBox(height: 72, child: Stack(key: const ValueKey('speed-curve'), children: [
-            Positioned.fill(child: LineChart(
-              key: const ValueKey('speed-download-curve'),
-              values: [for (final value in download) value / peak],
-              revision: samples.length, capacity: 600, minScale: 1, baselineRatio: 1,
-              color: downloadColor,
-            )),
-            Positioned.fill(child: LineChart(
-              key: const ValueKey('speed-upload-curve'),
-              values: [for (final value in upload) value / peak],
-              revision: samples.length, capacity: 600, minScale: 1, baselineRatio: 1,
-              color: uploadColor,
-            )),
-          ])),
+          // The panel's curve and phase row are the speed screen's own widgets,
+          // so a batch run and a single run move the same way.
+          SpeedPhaseSteps(phase: speed['stage']?.toString()),
+          const SizedBox(height: 6),
+          SpeedCurves(
+            key: const ValueKey('speed-curve'),
+            download: download,
+            upload: upload,
+            height: 72,
+            revision: samples.length,
+          ),
         ],
       )),
     ]);
