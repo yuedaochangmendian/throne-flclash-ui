@@ -472,9 +472,7 @@ void main() {
     },
   );
 
-  testWidgets('the import page previews a fragment and adds its route rules', (
-    tester,
-  ) async {
+  testWidgets('the route editor keeps only the core fields', (tester) async {
     reportFlutterErrors();
     rules = [];
     await mount(tester);
@@ -484,33 +482,21 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Import rules from JSON'));
-    await tester.pumpAndSettle();
-    expect(find.text('Import rules from JSON'), findsWidgets);
-    expect(find.textContaining('Paste a sing-box fragment'), findsWidgets);
-    expect(find.text('Rule kind'), findsNothing);
+    // Core profile fields and the rule list survive the simplification.
+    expect(find.text('Name'), findsOneWidget);
+    expect(find.text('Default outbound'), findsOneWidget);
+    expect(find.text('Remote'), findsWidgets);
+    expect(find.text('Add rule'), findsOneWidget);
+    expect(find.text('Use this profile'), findsOneWidget);
 
-    final editor = find.byKey(const Key('rule-import-field'));
-    await tester.enterText(
-      editor,
-      '{"domain_suffix": ["a.com"], "outbound": "proxy"}',
-    );
-    // The preview parses after the debounce.
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Route rules to add'), findsOneWidget);
-    expect(find.text('DNS rules to add'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-
-    await tester.tap(find.text('Import').last);
-    await tester.pumpAndSettle();
-
-    // The rule reached the profile through routes.saveRules, in the editor's own shape.
-    expect(savedRules, hasLength(1));
-    expect(savedRules.single['domain_suffix'], ['a.com']);
-    expect(savedRules.single['outbound_id'], -1);
-    expect(savedRules.single['type'], 'custom');
+    // Low-frequency "Rule actions" and the endpoint-id field are gone, and the
+    // remote profile section is deliberately kept.
+    expect(find.text('Rule actions'), findsNothing);
+    expect(find.text('Import rules from JSON'), findsNothing);
+    expect(find.text('Batch add simple rules'), findsNothing);
+    expect(find.text('Restore default rules'), findsNothing);
+    expect(find.text('Endpoint ids'), findsNothing);
+    expect(find.text('Remote profile'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 }

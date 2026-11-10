@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import '../widgets.dart';
@@ -123,13 +124,20 @@ class _RestartHint extends StatefulWidget {
 
 class _RestartHintState extends State<_RestartHint> {
   bool _visible = true;
+  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    Future.delayed(const Duration(seconds: 3), () {
+    _timer = Timer(const Duration(seconds: 3), () {
       if (mounted) setState(() => _visible = false);
     });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
   }
 
   @override
