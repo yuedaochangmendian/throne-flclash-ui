@@ -621,7 +621,10 @@ class ThroneBoxBridge(
                     )
                 }
                 "profiles.autoSelectorCreate" -> result.respond {
-                    BboxProfiles.createAutoSelector(call.argument<Int>("groupId")?.toLong())
+                    BboxProfiles.createAutoSelector(
+                        call.argument<Int>("groupId")?.toLong(),
+                        call.argument<String>("name"),
+                    )
                 }
                 "profiles.autoSelectorInfo" -> result.respond {
                     BboxProfiles.autoSelectorInfo(call.argument<Int>("id")?.toLong() ?: -1L)
@@ -1309,10 +1312,11 @@ class ThroneBoxBridge(
         val cachedAt = BboxEgress.cachedAt(direct)
         var failure: String? = null
         val info = BboxEgress.probe(force = force, direct = direct) { failure = it }
-        if (force) BboxEgress.touch(direct)
         val checkedAt = BboxEgress.cachedAt(direct)
         if (force && failure != null && checkedAt == cachedAt) error(failure!!)
         if (info.isEmpty) error(failure ?: "Unreachable")
+        if (force) BboxEgress.touch(direct)
+        val reportedAt = BboxEgress.cachedAt(direct)
         mapOf(
             "ip" to info.ip,
             "country" to info.country,
@@ -1327,7 +1331,7 @@ class ThroneBoxBridge(
             "ipSource" to (info.source?.substringAfter("://")?.substringBefore('/') ?: "ipwho.is"),
             // A fresh probe carries the moment it was measured; a normal cache hit keeps that
             // honest time, while a forced failure above never reaches this wire at all.
-            "checkedAt" to (checkedAt.takeIf { it > 0 } ?: System.currentTimeMillis()),
+            "checkedAt" to (reportedAt.takeIf { it > 0 } ?: System.currentTimeMillis()),
         )
     }
 

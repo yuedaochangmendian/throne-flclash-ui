@@ -2,6 +2,7 @@
 // the profile's rules.
 
 import 'package:material_ui/material_ui.dart' as material;
+
 import '../widgets.dart';
 import '../components/form.dart';
 
@@ -72,7 +73,11 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
     try {
       final data = json(await box.routeRules(widget.id));
       if (!mounted) return;
-      setState(() => _rules = (data['rules'] as List? ?? const []).map((e) => json(e)).toList());
+      setState(
+        () => _rules = (data['rules'] as List? ?? const [])
+            .map((e) => json(e))
+            .toList(),
+      );
     } catch (error) {
       if (mounted) context.box.report(error);
     }
@@ -83,12 +88,15 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
       context.box.report(StateError(context.tr('Save the profile first')));
       return;
     }
-    final saved = await openPage<Json>(context, RuleEditorPage(
-      profileId: widget.id,
-      index: index,
-      rule: index < 0 ? const {} : _rules[index],
-      rules: _rules,
-    ));
+    final saved = await openPage<Json>(
+      context,
+      RuleEditorPage(
+        profileId: widget.id,
+        index: index,
+        rule: index < 0 ? const {} : _rules[index],
+        rules: _rules,
+      ),
+    );
     if (saved == null || !mounted) return;
     setState(() => _rules = rows(saved['rules']));
     await _loadRules();
@@ -99,7 +107,10 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
       context.box.report(StateError(context.tr('Save the profile first')));
       return;
     }
-    final text = await showDialog<String>(context: context, builder: (context) => const _BatchAddDialog());
+    final text = await showDialog<String>(
+      context: context,
+      builder: (context) => const _BatchAddDialog(),
+    );
     if (text == null || text.trim().isEmpty || !mounted) return;
     final box = context.box;
     try {
@@ -116,9 +127,12 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
       context.box.report(StateError(context.tr('Save the profile first')));
       return;
     }
-    final ok = await confirm(context, 'Restore default rules?',
-        message: 'The rules become the Default profile\'s own: one hijack-dns rule that routes DNS.',
-        action: 'Restore');
+    final ok = await confirm(
+      context,
+      'Restore default rules?',
+      message: 'The rules become the Default profile\'s own: one hijack-dns rule that routes DNS.',
+      action: 'Restore',
+    );
     if (!ok || !mounted) return;
     final box = context.box;
     try {
@@ -130,7 +144,10 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
   }
 
   Future<void> _save() async {
-    setState(() { _saving = true; _error = null; });
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
     try {
       await context.box.routeSave({
         'id': widget.id,
@@ -139,27 +156,47 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
         'isRemote': _isRemote,
         'remoteUrl': _url.text,
         'autoUpdate': _autoUpdate,
-        'endpointIds': _endpointIds.split(',').map((e) => int.tryParse(e.trim())).whereType<int>().toList(),
+        'endpointIds': _endpointIds
+            .split(',')
+            .map((e) => int.tryParse(e.trim()))
+            .whereType<int>()
+            .toList(),
       });
       if (mounted) context.safeNestedPop();
     } catch (error) {
-      if (mounted) setState(() { _saving = false; _error = BoxController.describe(error); });
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _error = BoxController.describe(error);
+        });
+      }
     }
   }
 
   Future<void> _delete() async {
-    final confirmed = await showDialog<bool>(context: context, builder: (context) => material.AlertDialog(
-      title: Text(context.tr('Delete route profile?')),
-      content: Text(_name.text),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context, false), child: Text(context.tr('Cancel'))),
-        TextButton(onPressed: () => Navigator.pop(context, true), child: Text(context.tr('Delete'))),
-      ],
-    ));
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => material.AlertDialog(
+        title: Text(context.tr('Delete route profile?')),
+        content: Text(_name.text),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: Text(context.tr('Cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: Text(context.tr('Delete')),
+          ),
+        ],
+      ),
+    );
     if (confirmed != true || !mounted) return;
     try {
       await context.box.routeDelete(widget.id);
-      if (mounted) { context.safeNestedPop(); }
+      if (mounted) {
+        context.safeNestedPop();
+      }
     } catch (error) {
       if (mounted) context.box.report(error);
     }
@@ -174,144 +211,201 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
       error: _error,
       actions: [
         if (widget.id > 0 && !_isRaw)
-          IconButtonData(glyph: AppGlyphs.delete, tooltip: 'Delete', onPressed: _delete),
+          IconButtonData(
+            glyph: AppGlyphs.delete,
+            tooltip: 'Delete',
+            onPressed: _delete,
+          ),
       ],
       children: [
-        if (_isRaw) generateSection(items: [
-          ListItem(
-            leading: const GlyphIcon(AppGlyphs.info),
-            title: Text(context.tr('Read-only')),
-            subtitle: Text(context.tr('This profile is built in and cannot be changed here.')),
+        if (_isRaw)
+          generateSection(
+            items: [
+              ListItem(
+                leading: const GlyphIcon(AppGlyphs.info),
+                title: Text(context.tr('Read-only')),
+                subtitle: Text(
+                  context.tr(
+                    'This profile is built in and cannot be changed here.',
+                  ),
+                ),
+              ),
+            ],
           ),
-        ]),
-        generateSection(items: [
-          FormRow(title: context.tr('Name'), trailing: FormRowTextField(
-            controller: _name, hintText: context.tr('Required'),
-            autocorrect: false,
-          )),
-          ListItem(
-            title: Text(context.tr('Default outbound')),
-            trailing: Text(context.tr(_outboundLabel(_defaultOutbound)), style: context.listValueStyle),
-            onTap: () async {
-              final picked = await showDialog<String>(context: context, builder: (context) => SimpleDialog(
-                title: Text(context.tr('Default outbound')),
-                children: [
-                  for (final value in const ['proxy', 'direct', 'block', 'warp-bypass'])
-                    SimpleDialogOption(
-                      onPressed: () => Navigator.pop(context, value),
-                      child: Text(context.tr(_outboundLabel(value))),
-                    ),
-                ],
-              ));
-              if (picked != null && mounted) setState(() => _defaultOutbound = picked);
-            },
-          ),
-        ]),
-        generateSection(title: context.tr('Remote'), items: [
-          ListItem.toggle(
-            title: Text(context.tr('Remote profile')),
-            value: _isRemote,
-            onChanged: (value) => setState(() {
-              _isRemote = value;
-              if (!value) _autoUpdate = false;
-            }),
-          ),
-          if (_isRemote) FormRow(title: context.tr('URL'), trailing: FormRowTextField(
-            controller: _url, hintText: 'https://', keyboardType: TextInputType.text,
-            autocorrect: false,
-          )),
-          if (_isRemote) ListItem.toggle(
-            title: Text(context.tr('Auto update')),
-            value: _autoUpdate,
-            onChanged: (value) => setState(() => _autoUpdate = value),
-          ),
-        ], footer: context.tr('A remote profile downloads its rules from the URL.')),
-        generateSection(title: context.tr('Endpoints'), items: [
-          FormRow(title: context.tr('Endpoint ids'), trailing: FormRowTextField(
-            initialValue: _endpointIds,
-            hintText: '1, 2, 3',
-            keyboardType: TextInputType.number,
-            autocorrect: false,
-            onChanged: (value) => _endpointIds = value,
-          )),
-        ], footer: context.tr('Profile ids whose endpoints this route can prefer; used by preferred-by rules.')),
-        if (!_isRaw && widget.id > 0 && _rules.isNotEmpty) ListItem(
-          leading: const GlyphIcon(AppGlyphs.sort),
-          title: Text(context.tr('Reorder rules')),
-          subtitle: Text(context.tr('Drag a rule to change the order; the first match wins')),
-          onTap: () async {
-            final changed = await openPage<bool>(context, RuleOrderPage(profileId: widget.id, rules: _rules));
-            if (changed == true && mounted) await _loadRules();
-          },
-        ),
-        generateSection(title: context.tr('Rules'), items: [
-          for (final (index, rule) in _rules.indexed)
-            ListItem(
-              title: Text(ruleName(rule, index)),
-              subtitle: ruleRowSubtitle(context, rule),
-              onTap: _isRaw ? null : () => _editRule(index),
+        generateSection(
+          items: [
+            FormRow(
+              title: context.tr('Name'),
+              trailing: FormRowTextField(
+                controller: _name,
+                hintText: context.tr('Required'),
+                autocorrect: false,
+              ),
             ),
-          if (!_isRaw) ListItem(
-            leading: const GlyphIcon(AppGlyphs.add),
-            title: Text(context.tr('Add rule')),
-            onTap: () => _editRule(-1),
+            ListItem(
+              title: Text(context.tr('Default outbound')),
+              trailing: Text(
+                context.tr(_outboundLabel(_defaultOutbound)),
+                style: context.listValueStyle,
+              ),
+              onTap: () async {
+                final picked = await showDialog<String>(
+                  context: context,
+                  builder: (context) => SimpleDialog(
+                    title: Text(context.tr('Default outbound')),
+                    children: [
+                      for (final value in const [
+                        'proxy',
+                        'direct',
+                        'block',
+                        'warp-bypass',
+                      ])
+                        SimpleDialogOption(
+                          onPressed: () => Navigator.pop(context, value),
+                          child: Text(context.tr(_outboundLabel(value))),
+                        ),
+                    ],
+                  ),
+                );
+                if (picked != null && mounted) {
+                  setState(() => _defaultOutbound = picked);
+                }
+              },
+            ),
+          ],
+        ),
+        generateSection(
+          title: context.tr('Remote'),
+          items: [
+            ListItem.toggle(
+              title: Text(context.tr('Remote profile')),
+              value: _isRemote,
+              onChanged: (value) => setState(() {
+                _isRemote = value;
+                if (!value) _autoUpdate = false;
+              }),
+            ),
+            if (_isRemote)
+              FormRow(
+                title: context.tr('URL'),
+                trailing: FormRowTextField(
+                  controller: _url,
+                  hintText: 'https://',
+                  keyboardType: TextInputType.text,
+                  autocorrect: false,
+                ),
+              ),
+            if (_isRemote)
+              ListItem.toggle(
+                title: Text(context.tr('Auto update')),
+                value: _autoUpdate,
+                onChanged: (value) => setState(() => _autoUpdate = value),
+              ),
+          ],
+          footer: context.tr(
+            'A remote profile downloads its rules from the URL.',
           ),
-          if (!_isRaw && _rules.length >= 2) ListItem(
-            leading: const GlyphIcon(AppGlyphs.sort),
-            title: Text(context.tr('Reorder rules')),
-            subtitle: Text(context.tr('Drag a rule to change the order; the first match wins')),
-            onTap: () async {
-              final changed = await openPage<bool>(context, RuleOrderPage(profileId: widget.id, rules: _rules));
-              if (changed == true && mounted) await _loadRules();
-            },
+        ),
+        generateSection(
+          title: context.tr('Endpoints'),
+          items: [
+            FormRow(
+              title: context.tr('Endpoint ids'),
+              trailing: FormRowTextField(
+                initialValue: _endpointIds,
+                hintText: '1, 2, 3',
+                keyboardType: TextInputType.number,
+                autocorrect: false,
+                onChanged: (value) => _endpointIds = value,
+              ),
+            ),
+          ],
+          footer: context.tr(
+            'Profile ids whose endpoints this route can prefer; used by preferred-by rules.',
           ),
-        ], footer: _isRaw
-            ? context.tr('This profile is built in and cannot be changed here.')
-            : context.tr('Rules run top to bottom; the first match wins.')),
-        if (!_isRaw) generateSection(title: context.tr('Rule actions'), items: [
-          ListItem(
-            leading: const GlyphIcon(AppGlyphs.importFile),
-            title: Text(context.tr('Batch add simple rules')),
-            onTap: _batchAdd,
+        ),
+        if (_isRaw)
+          generateSection(
+            title: context.tr('Rules'),
+            items: [
+              for (final (index, rule) in _rules.indexed)
+                ListItem(
+                  title: Text(ruleName(rule, index)),
+                  subtitle: ruleRowSubtitle(context, rule),
+                ),
+            ],
+            footer: context.tr(
+              'This profile is built in and cannot be changed here.',
+            ),
+          )
+        else
+          RuleOrderSection(
+            profileId: widget.id,
+            rules: _rules,
+            onChanged: (rules) => setState(() => _rules = rules),
+            onEdit: _editRule,
           ),
-          ListItem(
-            leading: const GlyphIcon(AppGlyphs.code),
-            title: Text(context.tr('Import rules from JSON')),
-            subtitle: Text(context.tr('Paste a sing-box fragment carrying route or DNS rules; both are recognised automatically and checked against the schema first.')),
-            onTap: () async {
-              final box = context.box;
-              final request = await showDialog<RuleImportRequest>(context: context,
-                builder: (_) => RuleImportPage(profileId: widget.id));
-              if (request == null || !mounted) return;
-              try {
-                await applyRuleImport(box, request, profileId: widget.id);
-                if (mounted) await _loadRules();
-              } catch (error) {
-                box.report(error);
-              }
-            },
+        if (!_isRaw)
+          generateSection(
+            title: context.tr('Rule actions'),
+            items: [
+              ListItem(
+                leading: const GlyphIcon(AppGlyphs.importFile),
+                title: Text(context.tr('Batch add simple rules')),
+                onTap: _batchAdd,
+              ),
+              ListItem(
+                leading: const GlyphIcon(AppGlyphs.code),
+                title: Text(context.tr('Import rules from JSON')),
+                subtitle: Text(
+                  context.tr(
+                    'Paste a sing-box fragment carrying route or DNS rules; both are recognised automatically and checked against the schema first.',
+                  ),
+                ),
+                onTap: () async {
+                  final box = context.box;
+                  final request = await showDialog<RuleImportRequest>(
+                    context: context,
+                    builder: (_) => RuleImportPage(profileId: widget.id),
+                  );
+                  if (request == null || !mounted) return;
+                  try {
+                    await applyRuleImport(box, request, profileId: widget.id);
+                    if (mounted) await _loadRules();
+                  } catch (error) {
+                    box.report(error);
+                  }
+                },
+              ),
+              ListItem(
+                leading: const GlyphIcon(AppGlyphs.reset),
+                title: Text(context.tr('Restore default rules')),
+                onTap: _resetRules,
+              ),
+            ],
+            footer: context.tr(
+              'Rules run top to bottom; the first match wins.',
+            ),
           ),
-          ListItem(
-            leading: const GlyphIcon(AppGlyphs.reset),
-            title: Text(context.tr('Restore default rules')),
-            onTap: _resetRules,
+        if (widget.id > 0)
+          generateSection(
+            items: [
+              ListItem.toggle(
+                title: Text(context.tr('Use this profile')),
+                value: _current,
+                onChanged: (value) async {
+                  if (!value) return;
+                  final box = context.box;
+                  try {
+                    await box.routeSetCurrent(widget.id);
+                    if (mounted) setState(() => _current = true);
+                  } catch (error) {
+                    if (mounted) box.report(error);
+                  }
+                },
+              ),
+            ],
           ),
-        ], footer: context.tr('Rules run top to bottom; the first match wins.')),        if (widget.id > 0) generateSection(items: [
-          ListItem.toggle(
-            title: Text(context.tr('Use this profile')),
-            value: _current,
-            onChanged: (value) async {
-              if (!value) return;
-              final box = context.box;
-              try {
-                await box.routeSetCurrent(widget.id);
-                if (mounted) setState(() => _current = true);
-              } catch (error) {
-                if (mounted) box.report(error);
-              }
-            },
-          ),
-        ]),
       ],
     );
   }
@@ -343,22 +437,36 @@ class _BatchAddDialogState extends State<_BatchAddDialog> {
 
   @override
   Widget build(BuildContext context) => material.AlertDialog(
-    title: Text(context.tr('Batch add simple rules'), style: AppTextStyle.title3.of(context, emphasized: true)),
+    title: Text(
+      context.tr('Batch add simple rules'),
+      style: AppTextStyle.title3.of(context, emphasized: true),
+    ),
     content: SizedBox(
       width: 360,
       child: TextField(
-        controller: _text, minLines: 5, maxLines: 10, autocorrect: false,
+        controller: _text,
+        minLines: 5,
+        maxLines: 10,
+        autocorrect: false,
         keyboardType: TextInputType.multiline,
         decoration: InputDecoration(
           labelText: context.tr('Rules'),
-          helperText: context.tr('One rule per line: suffix:example.com -> proxy. Outbounds are proxy, direct, block and warp-bypass.'),
+          helperText: context.tr(
+            'One rule per line: suffix:example.com -> proxy. Outbounds are proxy, direct, block and warp-bypass.',
+          ),
           border: const OutlineInputBorder(),
         ),
       ),
     ),
     actions: [
-      TextButton(onPressed: () => Navigator.pop(context), child: Text(context.tr('Cancel'))),
-      TextButton(onPressed: () => Navigator.pop(context, _text.text), child: Text(context.tr('Add'))),
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: Text(context.tr('Cancel')),
+      ),
+      TextButton(
+        onPressed: () => Navigator.pop(context, _text.text),
+        child: Text(context.tr('Add')),
+      ),
     ],
   );
 }

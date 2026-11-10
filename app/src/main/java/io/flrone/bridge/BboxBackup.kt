@@ -16,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import io.nekohasekai.sagernet.outbound.json.JsonArray
 import io.nekohasekai.sagernet.outbound.json.JsonNull
+import io.nekohasekai.sagernet.outbound.json.JsonObject
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -121,16 +122,26 @@ object BboxBackup {
         else -> value
     }
 
+    private fun uiFromMeta(meta: JsonObject): Map<String, Any?> {
+        var ui = meta.obj("flrone_ui")
+        // Backups written by the first version of this branch nested the UI object twice.
+        if (ui.contains("flrone_ui") && !ui.contains("preferences") && !ui.contains("settings") && !ui.contains("quality")) {
+            ui = ui.obj("flrone_ui")
+        }
+        return ui.associate { (key, value) -> key to metaToWire(value) }
+    }
+
     /** Loads a container into the holder [restore] reads, and returns the envelope the UI previews. */
     private fun stage(bytes: ByteArray, ui: Map<String, Any?> = emptyMap()): Map<String, Any?> {
         val loaded = runCatching { BackupRestore.load(ByteArrayInputStream(bytes)) }
             .onFailure { Logs.w(it) }.getOrNull() ?: error("This backup cannot be read")
+        val restoredUi = ui.ifEmpty { uiFromMeta(loaded.contents.meta) }
         val payload = mapOf(
             "format" to loaded.contents.formatVersion,
             "createdAt" to loaded.contents.createdAt,
             "profiles" to profileNames(loaded.database),
             KEY to Base64.encodeToString(bytes, Base64.DEFAULT),
-            "ui" to ui,
+            "ui" to restoredUi,
         )
         // The envelope is what travels to the UI and what [restore] decodes, so the staged database goes back.
         loaded.discard()
@@ -153,7 +164,7 @@ object BboxBackup {
                     ?: error("Nothing has been read yet: choose a backup to restore from")
             }
             val available = BackupRestore.available(loaded.contents)
-            val everything = scope != "profiles"
+            val everything = strategy == "Override" && scope != "profiles"
             val choice = BackupRestore.Choice(
                 profiles = available.profiles,
                 routes = available.routes && everything,
@@ -218,7 +229,7 @@ object BboxBackup {
         val file = runCatching { File.createTempFile("thrbackup-", ".container") }.getOrNull() ?: return@withContext false
         try {
             val selection = selection(scope)
-            file.outputStream().use { out -> BackupExport.write(selection, out, extraMeta = mapOf("flrone_ui" to ui)) }
+            file.outputStream().use { out -> BackupExport.write(selection, out, extraMeta = ui) }
             runCatching { configured.upload(file, selection.parts()); true }
                 .onFailure { Logs.w(it) }.getOrDefault(false)
         } finally {
@@ -238,7 +249,7 @@ object BboxBackup {
             "format" to loaded.contents.formatVersion,
             "createdAt" to loaded.contents.createdAt,
             "profiles" to profileNames(loaded.database),
-            "ui" to loaded.contents.meta.obj("flrone_ui").associate { (key, value) -> key to metaToWire(value) },
+            "ui" to uiFromMeta(loaded.contents.meta),
         )
         holder = Holder(payload, loaded)
         payload

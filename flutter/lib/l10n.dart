@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
+
 import 'ui/l10n.dart';
 
 const _zh = <String, String>{
@@ -18,26 +19,36 @@ const _zh = <String, String>{
   'Delay': '延迟',
   'Outbound node': '出站节点',
   'The selector is created only when you save.': '保存后才会创建自动选择器。',
+  'Compatible restores profiles only; choose Override for settings and routes.':
+      '兼容模式仅恢复配置；恢复设置和路由请选择覆盖模式。',
   "IP source": "检测来源",
   "Match": "匹配",
   "Capture HTTPS with eBPF": "使用 eBPF 抓取 HTTPS",
   "HTTPS excluded domains": "HTTPS 排除域名",
   "Add captured HTTPS domains": "从记录添加 HTTPS 域名",
   "Add captured HTTPS exclusions": "从记录添加 HTTPS 排除域名",
-  "Saved on this device. Capture stops when the local service restarts.": "设置保存在本机，重启本地服务时停止抓包。",
-  "Leave empty to capture all supported HTTPS domains. Exact names and *.example.com are accepted; exclusions take priority.": "留空表示抓取所有受支持的 HTTPS 域名。支持精确名称和 *.example.com，排除规则优先。",
-  "Skip plaintext capture for these HTTPS domains. Visible hostnames can still be extracted.": "不抓取这些 HTTPS 域名的明文，仍可提取可见域名。",
+  "Saved on this device. Capture stops when the local service restarts.":
+      "设置保存在本机，重启本地服务时停止抓包。",
+  "Leave empty to capture all supported HTTPS domains. Exact names and *.example.com are accepted; exclusions take priority.":
+      "留空表示抓取所有受支持的 HTTPS 域名。支持精确名称和 *.example.com，排除规则优先。",
+  "Skip plaintext capture for these HTTPS domains. Visible hostnames can still be extracted.":
+      "不抓取这些 HTTPS 域名的明文，仍可提取可见域名。",
   "Requires Root, Linux 5.10 or newer, permitted eBPF uprobes and a compatible 64-bit OpenSSL or BoringSSL library. Reconnect the target app after starting. QUIC and unsupported TLS stacks are not captured.": "需要 Root、Linux 5.10 或更新内核、eBPF uprobe 权限，以及兼容的 64 位 OpenSSL/BoringSSL 库。开启后请让目标应用重新连接。无法抓取 QUIC 或不兼容的 TLS 实现。",
   "Additional TLS libraries": "其他 TLS 库",
-  "Optional absolute library paths, one per line. System TLS libraries and running apps are discovered automatically.": "可选填库文件的绝对路径，每行一条。自动查找系统 TLS 库和正在运行的应用。",
-  "Collect visible TLS/QUIC hostnames through the local service. These records contain names only.": "从经过本地服务的 TLS/QUIC 流量中提取可见域名，仅记录域名信息。",
+  "Optional absolute library paths, one per line. System TLS libraries and running apps are discovered automatically.":
+      "可选填库文件的绝对路径，每行一条。自动查找系统 TLS 库和正在运行的应用。",
+  "Collect visible TLS/QUIC hostnames through the local service. These records contain names only.":
+      "从经过本地服务的 TLS/QUIC 流量中提取可见域名，仅记录域名信息。",
   "Matching domains are excluded from capture.": "不抓取匹配的域名。",
-  "Keeps up to 300 requests and 32 MiB. Large bodies keep a prefix. HTTPS ports use the HTTP authority when socket metadata is unavailable.": "最多保留 300 条请求、32 MiB 数据。超长正文只保存开头。无法获取套接字信息时，HTTPS 端口按 HTTP 请求目标判断。",
-  "An empty selection captures applications in this Android user. Flrone itself is excluded from eBPF capture. Applications sharing a UID share the same filter.": "未选择时抓取当前 Android 用户的应用。eBPF 不抓取 Flrone 自身；共享 UID 的应用使用相同筛选。",
+  "Keeps up to 300 requests and 32 MiB. Large bodies keep a prefix. HTTPS ports use the HTTP authority when socket metadata is unavailable.":
+      "最多保留 300 条请求、32 MiB 数据。超长正文只保存开头。无法获取套接字信息时，HTTPS 端口按 HTTP 请求目标判断。",
+  "An empty selection captures applications in this Android user. Flrone itself is excluded from eBPF capture. Applications sharing a UID share the same filter.":
+      "未选择时抓取当前 Android 用户的应用。eBPF 不抓取 Flrone 自身；共享 UID 的应用使用相同筛选。",
   "Connections skipped or interrupted": "跳过或中断的连接",
   "TLS libraries attached": "个 TLS 库已挂载探针",
   "Capture source": "采集来源",
-  "HTTP capture follows the local service. HTTPS uses Root/eBPF on this device. Start capture, then reconnect the target app.": "HTTP 抓取跟随本地服务；HTTPS 使用本机 Root/eBPF。开启抓包后，请让目标应用重新建立连接。",
+  "HTTP capture follows the local service. HTTPS uses Root/eBPF on this device. Start capture, then reconnect the target app.":
+      "HTTP 抓取跟随本地服务；HTTPS 使用本机 Root/eBPF。开启抓包后，请让目标应用重新建立连接。",
   "Capture settings changed; reload them before saving": "抓包设置已更改，请重新加载后保存",
   "Direction": "处理方向",
   "header": "透明改写",
@@ -48,7 +59,8 @@ const _zh = <String, String>{
   "Copy domains": "复制域名",
   "Export domains": "导出域名",
   "No captured domains": "暂无已提取域名",
-  "Domains are extracted from retained requests and visible TLS/QUIC names, using the current search filter. Encrypted hostnames cannot be recovered.": "按当前搜索条件，从保留的请求及可见 TLS／QUIC 信息中提取域名。无法还原被加密的域名。",
+  "Domains are extracted from retained requests and visible TLS/QUIC names, using the current search filter. Encrypted hostnames cannot be recovered.":
+      "按当前搜索条件，从保留的请求及可见 TLS／QUIC 信息中提取域名。无法还原被加密的域名。",
   "Domain only": "仅域名",
   "Original URL": "原始 URL",
   "Requests": "请求",
@@ -94,7 +106,8 @@ const _zh = <String, String>{
   "Ports must be between 1 and 65535": "端口须为 1–65535 的整数",
   "HTTPS domains": "HTTPS 抓取域名",
   "Capture domains": "抓取域名",
-  "Leave empty to capture all domains. Applies to both HTTP and HTTPS.": "留空表示全部域名，同时适用于 HTTP 和 HTTPS。",
+  "Leave empty to capture all domains. Applies to both HTTP and HTTPS.":
+      "留空表示全部域名，同时适用于 HTTP 和 HTTPS。",
   "Bypass domains": "绕过域名",
   "Filters and storage": "筛选与存储",
   "Capture applications": "抓取应用",
@@ -106,53 +119,96 @@ const _zh = <String, String>{
   'Dashboard': '仪表盘', 'Proxies': '代理', 'Profiles': '配置', 'Tools': '工具',
   'Connections': '连接', 'Logs': '日志', 'Settings': '设置', 'Status': '状态',
   'Running': '运行中', 'Not running': '未运行', 'Starting': '启动中', 'Stopping': '停止中',
-  'The kernel runs this selector directly; live ranking is not reported here': '内核直接管理该选择器，此处不显示实时排名',
+  'The kernel runs this selector directly; live ranking is not reported here':
+      '内核直接管理该选择器，此处不显示实时排名',
   'Start': '启动', 'Stop': '停止', 'Restart': '重启', 'Reload': '重新加载',
   'Network speed': '网络速度', 'Upload': '上传', 'Download': '下载', 'Total': '累计',
   'Outbound mode': '出站模式', 'Rule': '规则', 'Global': '全局', 'Direct': '直连',
   'Intranet IP': '内网 IP', 'No network': '无网络', 'This device': '本机',
   'Local proxy listeners': '本地代理监听', 'No local proxy listener': '未配置本地代理监听',
-  'LAN proxy': '局域网代理', 'Enabled': '已启用', 'Disabled': '已禁用', 'Port': '端口', 'Automatic port': '自动分配端口',
+  'LAN proxy': '局域网代理',
+  'Enabled': '已启用',
+  'Disabled': '已禁用',
+  'Port': '端口',
+  'Automatic port': '自动分配端口',
   'Add proxy listener': '添加代理监听', 'Invalid proxy port': '端口须为 1–65535',
   'HTTP / SOCKS': 'HTTP / SOCKS', 'HTTP / SOCKS over TLS': 'HTTP / SOCKS（TLS）',
   'Authentication required': '需要认证',
-  'Adds an HTTP and SOCKS proxy to the selected profile.': '在当前配置中添加 HTTP 和 SOCKS 代理。',
+  'Adds an HTTP and SOCKS proxy to the selected profile.':
+      '在当前配置中添加 HTTP 和 SOCKS 代理。',
   'Selected profile changed; reload it before saving': '当前配置已切换，请重新加载后保存',
-  'Device network addresses': '本机网络地址', 'Outbound IP': '出站 IP', 'Organization': '组织',
+  'Device network addresses': '本机网络地址',
+  'Outbound IP': '出站 IP',
+  'Organization': '组织',
   'Outbound IP details': '出站 IP详情',
   'Run time': '运行时长', 'Check failed': '检测失败', 'Tap icon to retry': '点击图标重试',
-  'Unknown type': '类型未知', 'Data center': '机房', 'Mobile network': '移动网络', 'Residential': '住宅',
+  'Unknown type': '类型未知',
+  'Data center': '机房',
+  'Mobile network': '移动网络',
+  'Residential': '住宅',
   'Business': '商业', 'IP quality unavailable': 'IP 质量查询失败',
   'IP query source': 'IP 查询来源', 'Quality query source': '质量查询来源',
-  'No type data': '未提供类型', 'Rate limited': '请求频率受限', 'Unavailable': '不可用', 'IP mismatch': 'IP 不匹配',
+  'No type data': '未提供类型',
+  'Rate limited': '请求频率受限',
+  'Unavailable': '不可用',
+  'IP mismatch': 'IP 不匹配',
   'Quality': '质量', 'Good': '优', 'Normal': '普通', 'Risky': '风险',
-  'Country': '国家/地区', 'City': '城市', 'Region': '地区', 'Location': '位置', 'Operator': '运营商', 'ISP': 'ISP', 'Last checked': '上次检测',
+  'Country': '国家/地区',
+  'City': '城市',
+  'Region': '地区',
+  'Location': '位置',
+  'Operator': '运营商',
+  'ISP': 'ISP',
+  'Last checked': '上次检测',
   'App': '应用', 'Process RSS': '进程常驻内存',
   'Heap in use': '使用中的堆', 'Retained idle heap': '保留的空闲堆',
   'Total memory': '总计', 'Core memory': '内核内存',
   'Release memory': '释放内存', 'Memory released': '已释放可回收内存',
-  "The total is the process's resident memory (PSS), split by allocator: the app's heap, native allocations — the core runs there — and the rest.": '总计为进程常驻内存（PSS），按分配器分类：应用堆、native 分配（内核在此）与其余部分。',
-  'Memory reported by the remote core. Detailed accounting is unavailable.': '此数据由远程内核上报，暂不提供详细内存分类。',
+  "The total is the process's resident memory (PSS), split by allocator: the app's heap, native allocations — the core runs there — and the rest.":
+      '总计为进程常驻内存（PSS），按分配器分类：应用堆、native 分配（内核在此）与其余部分。',
+  'Memory reported by the remote core. Detailed accounting is unavailable.':
+      '此数据由远程内核上报，暂不提供详细内存分类。',
   'Proxy groups': '代理组', 'Memory': '内存',
   'Current profile': '当前配置', 'No profile': '未选择配置', 'Add profile': '添加配置',
-  'Profile': '配置', 'Switch profile': '切换配置', 'Profile no longer exists': '配置已被删除',
+  'Profile': '配置',
+  'Switch profile': '切换配置',
+  'Profile no longer exists': '配置已被删除',
   'Groups': '组', 'Outbounds': '出站', 'Inbounds': '入站', 'Routing rules': '路由规则',
   'Advanced configuration': '高级配置', 'Resources': '资源', 'Rule sets': '规则集',
-  'DNS servers': 'DNS 服务器', 'DNS rules': 'DNS 规则', 'Default DNS server': '默认 DNS 服务器',
-  'Reverse mapping': '反向映射', 'Disable DNS cache': '禁用 DNS 缓存', 'Disable DNS cache expiration': '禁用 DNS 缓存过期',
-  'DNS cache capacity': 'DNS 缓存容量', 'Invalid value': '值无效', 'Default outbound': '默认出站',
-  'Find process': '查找进程', 'Edit route options': '编辑路由选项', 'JSON object required': '需要 JSON 对象',
+  'DNS servers': 'DNS 服务器',
+  'DNS rules': 'DNS 规则',
+  'Default DNS server': '默认 DNS 服务器',
+  'Reverse mapping': '反向映射',
+  'Disable DNS cache': '禁用 DNS 缓存',
+  'Disable DNS cache expiration': '禁用 DNS 缓存过期',
+  'DNS cache capacity': 'DNS 缓存容量',
+  'Invalid value': '值无效',
+  'Default outbound': '默认出站',
+  'Find process': '查找进程',
+  'Edit route options': '编辑路由选项',
+  'JSON object required': '需要 JSON 对象',
   'Log settings': '日志设置', 'Enable logging': '启用日志', 'Log timestamps': '日志时间戳',
   'Configuration changed; reload it before saving': '配置已发生变化，请重新加载后保存',
   'Undo': '撤销', 'Redo': '重做', 'Add': '添加', 'Timeout': '超时',
   'Edit dashboard': '编辑仪表盘', 'Remove': '移除', 'Available cards': '可添加的卡片',
-  'Active sing-box connections': 'sing-box 活动连接', 'App and core memory': '应用和内核的内存占用',
-  'Upload and download traffic': '上传和下载流量', 'Selected sing-box configuration': '当前 sing-box 配置',
-  'Groups and selected nodes': '代理组和所选节点', 'Available routing modes': '当前可用的路由模式',
-  'Import': '导入', 'URL': '链接', 'File': '文件', 'Clipboard': '剪贴板', 'Scan QR code': '扫描二维码',
+  'Active sing-box connections': 'sing-box 活动连接',
+  'App and core memory': '应用和内核的内存占用',
+  'Upload and download traffic': '上传和下载流量',
+  'Selected sing-box configuration': '当前 sing-box 配置',
+  'Groups and selected nodes': '代理组和所选节点',
+  'Available routing modes': '当前可用的路由模式',
+  'Import': '导入',
+  'URL': '链接',
+  'File': '文件',
+  'Clipboard': '剪贴板',
+  'Scan QR code': '扫描二维码',
   'Name': '名称', 'Save': '保存', 'Cancel': '取消', 'Back': '返回', 'Close': '关闭',
   'Delete': '删除', 'Edit': '编辑', 'Update': '更新', 'Update all': '全部更新',
-  'Share': '分享', 'Copy': '复制', 'Copied': '已复制', 'Copy link': '复制链接', 'Export': '导出',
+  'Share': '分享',
+  'Copy': '复制',
+  'Copied': '已复制',
+  'Copy link': '复制链接',
+  'Export': '导出',
   'Clear test results': '清除测试结果', 'Clear traffic statistics': '清除流量统计',
   'Cut': '剪切', 'Dialog': '对话框',
   'Exported': '已导出', 'Export failed': '导出失败',
@@ -165,12 +221,20 @@ const _zh = <String, String>{
   'Delete this profile?': '删除此配置？', 'This cannot be undone.': '此操作无法撤销。',
   'Search': '搜索', 'Clear search': '清空搜索', 'No results': '没有搜索结果',
   'No search results': '没有搜索结果', 'More': '更多', 'Reset': '重置',
-  'Show less': '收起', 'Show more': '展开', 'Show password': '显示密码', 'Hide password': '隐藏密码',
+  'Show less': '收起',
+  'Show more': '展开',
+  'Show password': '显示密码',
+  'Hide password': '隐藏密码',
   'Sort': '排序', 'Submit': '提交', 'Default': '默认', 'Latency': '延迟',
   'Test latency': '测试延迟', 'Test all': '全部测速', 'Testing': '测速',
   'Unreachable': '不可达', 'Not tested': '未测试', 'Selected': '已选择', 'Select': '选择',
-  'Automatic selection': '内核自动选择', 'Close connections after switching': '切换后关闭连接',
-  'Selector': '手动选择', 'Icon style': '图标样式', 'Filled': '填充', 'Plain': '简洁', 'Hidden': '隐藏',
+  'Automatic selection': '内核自动选择',
+  'Close connections after switching': '切换后关闭连接',
+  'Selector': '手动选择',
+  'Icon style': '图标样式',
+  'Filled': '填充',
+  'Plain': '简洁',
+  'Hidden': '隐藏',
   'Start the service to view proxy groups': '启动服务后查看代理组',
   'No proxy groups in this configuration': '当前配置没有代理组',
   'View': '查看', 'Details': '详情', 'Active': '活动', 'Closed': '已关闭', 'All': '全部',
@@ -182,22 +246,34 @@ const _zh = <String, String>{
   'Pause': '暂停', 'Resume': '继续', 'Clear': '清空', 'No logs': '暂无日志',
   'Core log': '核心日志',
   'Level': '级别', 'Error': '错误', 'Retry': '重试', 'Done': '完成', 'OK': '确定',
-  'Appearance': '外观', 'Theme': '主题', 'System': '跟随系统', 'Light': '浅色', 'Dark': '深色',
+  'Appearance': '外观',
+  'Theme': '主题',
+  'System': '跟随系统',
+  'Light': '浅色',
+  'Dark': '深色',
   'Accent color': '主题色',
   'Ghostty settings': 'Ghostty 设置', 'Terminal preview': '终端预览',
   'Light configuration': '浅色配置', 'Dark configuration': '深色配置',
   'Light theme': '浅色主题', 'Dark theme': '深色主题',
-  'Custom configuration': '自定义配置', 'Edit Ghostty configuration': '编辑 Ghostty 配置',
+  'Custom configuration': '自定义配置',
+  'Edit Ghostty configuration': '编辑 Ghostty 配置',
   'Font': '字体', 'Font follows theme': '字体跟随主题', 'Font size': '字号',
   'Import font': '导入字体', 'System fonts': '系统字体', 'Imported fonts': '已导入字体',
   'Delete this font?': '删除此字体？', 'Increase': '增大', 'Decrease': '减小',
   'New session': '新建会话', 'Sessions': '会话', 'Duplicate session': '复制会话',
   'No terminal sessions': '暂无终端会话', 'Close session': '关闭会话',
   'Close this SSH session?': '关闭此 SSH 会话？', 'Terminal type': '终端类型',
-  'Quick connect': '快速连接', 'Remember options and connect directly next time': '记住选项，下次直接连接',
-  'No SSH peers': '暂无 SSH 设备', 'Start a Tailscale endpoint with SSH-enabled peers.': '启动包含已启用 SSH 设备的 Tailscale 端点。',
-  'Paste multiple lines?': '粘贴多行文本？', 'Pasted text may execute commands in this terminal.': '粘贴内容可能在此终端执行命令。',
-  'Allow terminal to read clipboard?': '允许终端读取剪贴板？', 'Allow': '允许', 'Link': '链接', 'Keyboard': '键盘',
+  'Quick connect': '快速连接',
+  'Remember options and connect directly next time': '记住选项，下次直接连接',
+  'No SSH peers': '暂无 SSH 设备',
+  'Start a Tailscale endpoint with SSH-enabled peers.':
+      '启动包含已启用 SSH 设备的 Tailscale 端点。',
+  'Paste multiple lines?': '粘贴多行文本？',
+  'Pasted text may execute commands in this terminal.': '粘贴内容可能在此终端执行命令。',
+  'Allow terminal to read clipboard?': '允许终端读取剪贴板？',
+  'Allow': '允许',
+  'Link': '链接',
+  'Keyboard': '键盘',
   'Supported Ghostty options: foreground, background, cursor-color, selection-background, selection-foreground, palette, font-family.': '支持的 Ghostty 配置项：foreground、background、cursor-color、selection-background、selection-foreground、palette、font-family。',
   'Pure black mode': '纯黑模式', 'Pure black': '纯黑', 'Standard': '标准',
   'Navigation bar style': '导航栏样式', 'Floating': '悬浮', 'Docked': '固定',
@@ -206,51 +282,95 @@ const _zh = <String, String>{
   'Follow system': '跟随系统', 'Custom': '自定义', 'Custom color': '自定义颜色',
   'Text size preview': '文字大小预览', 'Reset accent colors?': '重置主题色？',
   'Delete this color?': '删除此颜色？', 'Grid': '网格', 'Spectrum': '光谱',
-  'Sliders': '滑块', 'Hue': '色相', 'Saturation': '饱和度', 'Brightness': '亮度', 'Hex': '十六进制',
+  'Sliders': '滑块',
+  'Hue': '色相',
+  'Saturation': '饱和度',
+  'Brightness': '亮度',
+  'Hex': '十六进制',
   'Blue': '蓝色', 'Purple': '紫色', 'Pink': '粉色', 'Red': '红色',
-  'Orange': '橙色', 'Yellow': '黄色', 'Green': '绿色', 'Gray': '灰色', 'Color style': '配色风格',
+  'Orange': '橙色',
+  'Yellow': '黄色',
+  'Green': '绿色',
+  'Gray': '灰色',
+  'Color style': '配色风格',
   'Vivid': '鲜明', 'Tinted': '染色', 'Soft': '柔和', 'Monochrome': '单色',
   'Floating navigation bar': '悬浮导航栏', 'Font scale': '字体缩放',
   'Dashboard cards': '仪表盘卡片', 'Reorder': '调整顺序', 'Columns': '列数',
   'Layout': '布局', 'Tabs': '标签页', 'List': '列表', 'Compact': '紧凑',
   'Access control': '访问控制', 'Per-app proxy': '分应用代理', 'Mode': '模式',
   'Bypass selected apps': '绕过选中的应用', 'Proxy selected apps': '仅代理选中的应用',
-  'Show system apps': '显示系统应用', 'Selected apps': '已选应用', 'Application query': '应用查询',
+  'Show system apps': '显示系统应用',
+  'Selected apps': '已选应用',
+  'Application query': '应用查询',
   'Grant Shizuku permission': '授予 Shizuku 权限', 'Managed app list': '托管应用列表',
   'Rescan managed apps': '重新扫描托管应用',
   'Disable managed app list to edit selection': '关闭托管应用列表后可编辑选择',
-  'Service': '服务', 'System HTTP proxy': '系统 HTTP 代理', 'Network takeover': '网络接管', 'Allow VPN bypass': '允许绕过 VPN',
-  'Auto redirect': '自动重定向', 'Dynamic notification': '动态通知', 'Battery optimization': '电池优化',
+  'Service': '服务',
+  'System HTTP proxy': '系统 HTTP 代理',
+  'Network takeover': '网络接管',
+  'Allow VPN bypass': '允许绕过 VPN',
+  'Auto redirect': '自动重定向',
+  'Dynamic notification': '动态通知',
+  'Battery optimization': '电池优化',
   'Unrestricted': '无限制', 'Allow background operation': '允许后台运行',
   'Restart required': '需要重启服务',
   'Apply': '应用', 'Later': '稍后', 'Core': '内核', 'Core version': '内核版本',
   'Disable deprecation warnings': '关闭弃用警告', 'Memory limit': '内存限制',
-  'Enable memory protection': '启用内存保护', 'Disable core memory killer': '禁用内核内存终止机制',
+  'Enable memory protection': '启用内存保护',
+  'Disable core memory killer': '禁用内核内存终止机制',
   'Power reports': '电量报告', 'Remote control': '远程控制', 'Add server': '添加服务器',
   'Address': '地址', 'Secret': '密钥', 'Connect': '连接', 'Disconnect': '断开',
   'Disconnect remote session to edit local profiles': '断开远程会话后可编辑本地配置',
-  'Backup and restore': '备份与恢复', 'Create backup': '创建备份', 'Restore backup': '恢复备份',
-  'Backup': '备份', 'Restore': '恢复', 'Backup complete': '备份完成', 'Restore complete': '恢复完成',
-  'Restore strategy': '恢复策略', 'Compatible': '合并', 'Override': '覆盖', 'Options': '选项',
+  'Backup and restore': '备份与恢复',
+  'Create backup': '创建备份',
+  'Restore backup': '恢复备份',
+  'Backup': '备份',
+  'Restore': '恢复',
+  'Backup complete': '备份完成',
+  'Restore complete': '恢复完成',
+  'Restore strategy': '恢复策略',
+  'Compatible': '合并',
+  'Override': '覆盖',
+  'Options': '选项',
   'Restore profiles only': '仅恢复配置', 'Restore all data': '恢复全部数据',
   'Restore {count} profiles?': '恢复 {count} 个配置？',
-  'No backup to restore': '没有可恢复的备份', 'No remote backup found': 'WebDAV 上没有找到备份',
+  'No backup to restore': '没有可恢复的备份',
+  'No remote backup found': 'WebDAV 上没有找到备份',
   'This backup holds no profiles': '这个备份里没有配置',
   'Profiles missing from this backup will be removed.': '备份中没有的配置将被删除。',
-  'Matching profiles will be replaced. Other profiles will be kept.': '匹配的配置将被替换，其他配置会保留。',
-  'Application settings and remote servers will also be restored.': '同时恢复应用设置和远程服务器。',
+  'Matching profiles will be replaced. Other profiles will be kept.':
+      '匹配的配置将被替换，其他配置会保留。',
+  'Application settings and remote servers will also be restored.':
+      '同时恢复应用设置和远程服务器。',
   'No account': '未绑定账户', 'Bind a WebDAV account': '请绑定 WebDAV 账户', 'Bind': '绑定',
-  'Connectivity': '连通性', 'Checking connection': '正在检查连接', 'Connected': '已连接', 'Connection failed': '连接失败',
+  'Connectivity': '连通性',
+  'Checking connection': '正在检查连接',
+  'Connected': '已连接',
+  'Connection failed': '连接失败',
   'WebDAV configuration': 'WebDAV 配置', 'Account': '账户',
   'Invalid backup file name': '无效的备份文件名', 'Optional': '可选',
-  'Enter a WebDAV HTTP or HTTPS directory address': '请输入 WebDAV 的 HTTP 或 HTTPS 目录地址',
-  'Invalid WebDAV credentials': '无效的 WebDAV 凭据', 'Delete WebDAV account': '删除 WebDAV 账户',
-  'Enter the WebDAV directory URL. Backups are stored in a folder on that server.': '请输入 WebDAV 目录地址。备份保存在该服务器上的文件夹中。',
+  'Enter a WebDAV HTTP or HTTPS directory address':
+      '请输入 WebDAV 的 HTTP 或 HTTPS 目录地址',
+  'Invalid WebDAV credentials': '无效的 WebDAV 凭据',
+  'Delete WebDAV account': '删除 WebDAV 账户',
+  'Enter the WebDAV directory URL. Backups are stored in a folder on that server.':
+      '请输入 WebDAV 目录地址。备份保存在该服务器上的文件夹中。',
   'About': '关于', 'Source code': '源代码', 'Open-source licenses': '开源许可',
-  'Other': '其他', 'General': '常规', 'Notification': '通知', 'Diagnostics': '诊断', 'Update settings': '更新设置', 'Check for updates': '检查更新', 'Update available': '有可用更新',
-  'You are up to date': '已是最新版本', 'No release metadata available': '暂无可验证的版本信息', 'Releases': '发布版本',
-  'A sing-box client with the FlClash Android interface.': '采用 FlClash Android 界面的 sing-box 客户端。',
-  'FlClash interface': 'FlClash 界面', 'Version': '版本', 'Network diagnostics': '网络诊断',
+  'Other': '其他',
+  'General': '常规',
+  'Notification': '通知',
+  'Diagnostics': '诊断',
+  'Update settings': '更新设置',
+  'Check for updates': '检查更新',
+  'Update available': '有可用更新',
+  'You are up to date': '已是最新版本',
+  'No release metadata available': '暂无可验证的版本信息',
+  'Releases': '发布版本',
+  'A sing-box client with the FlClash Android interface.':
+      '采用 FlClash Android 界面的 sing-box 客户端。',
+  'FlClash interface': 'FlClash 界面',
+  'Version': '版本',
+  'Network diagnostics': '网络诊断',
   'Thanks for the migration approach': '感谢迁移思路',
   'Network quality': '网络质量', 'STUN test': 'STUN 测试',
   'Domain resolution': '域名解析',
@@ -262,60 +382,95 @@ const _zh = <String, String>{
   'Scanning was cancelled. Tap retry to open the camera again.':
       '已取消扫码。点击重试可再次打开相机。',
   'One domain per line; commas work too': '每行一个域名，也可用逗号分隔',
-  "Lookups use the tunnel's direct DNS and time out after 5 seconds each.": '解析走隧道的直连 DNS，单条超时 5 秒。',
+  "Lookups use the tunnel's direct DNS and time out after 5 seconds each.":
+      '解析走隧道的直连 DNS，单条超时 5 秒。',
   'Resolve': '解析', 'Resolving': '解析中', 'Results': '结果', 'No address': '无解析结果',
   'Connect first: lookups run through the running tunnel': '请先连接：解析经由正在运行的隧道',
   'No endpoints': '没有端点', 'Endpoints': '端点', 'Peers': '设备',
   'Exit node': '出口节点', 'Logout': '退出登录', 'Terminal': '终端', 'Inbox': '收件箱',
   'Send file': '发送文件', 'Receive files': '接收文件',
   'sing-box JSON URL': 'sing-box JSON 配置链接',
-  'This URL must serve a sing-box JSON configuration.': '此链接需要返回 sing-box JSON 配置。',
-  'Empty clipboard': '剪贴板为空', 'Required': '必填', 'At least 15 minutes': '至少 15 分钟',
-  'No profiles yet': '还没有配置', 'Import a sing-box JSON configuration to get started.': '导入 sing-box JSON 配置即可开始使用。',
+  'This URL must serve a sing-box JSON configuration.':
+      '此链接需要返回 sing-box JSON 配置。',
+  'Empty clipboard': '剪贴板为空',
+  'Required': '必填',
+  'At least 15 minutes': '至少 15 分钟',
+  'No profiles yet': '还没有配置',
+  'Import a sing-box JSON configuration to get started.':
+      '导入 sing-box JSON 配置即可开始使用。',
   'Previous server': '上一个服务器', 'Next server': '下一个服务器',
   'Group settings': '分组设置',
   'Nothing changed': '无变更', 'Change of configuration': '配置变更',
   'Front proxy': '前置代理', 'Landing proxy': '落地代理',
-  'Routing profile': '路由配置', 'Import routing profile from subscription': '从订阅导入路由配置',
-  'The routing profile this group connects with; default follows the global one.': '此分组连接时使用的路由配置；默认跟随全局设置。',
+  'Routing profile': '路由配置',
+  'Import routing profile from subscription': '从订阅导入路由配置',
+  'The routing profile this group connects with; default follows the global one.':
+      '此分组连接时使用的路由配置；默认跟随全局设置。',
   'Auto clear unavailable': '自动清除不可用配置', 'Skip auto update': '跳过自动更新',
   'Subscription': '订阅',
   'Device identity': '设备标识', 'Send HWID': '发送 HWID',
-  'HWID': 'HWID', 'HWID OS': 'HWID 操作系统', 'HWID OS version': 'HWID 系统版本', 'HWID model': 'HWID 设备型号',
+  'HWID': 'HWID',
+  'HWID OS': 'HWID 操作系统',
+  'HWID OS version': 'HWID 系统版本',
+  'HWID model': 'HWID 设备型号',
   'After update': '更新后', 'Keep working profiles': '保留可用配置',
   'Remove duplicate servers': '移除重复服务器', 'Remove insecure servers': '移除不安全服务器',
   'Remove invalid servers': '移除无效服务器', 'URL test after update': '更新后进行 URL 测试',
   'Remove unavailable servers': '移除不可用服务器', 'Sort by latency': '按延迟排序',
   'Show info card': '显示信息卡片',
-  'Name filters': '名称过滤', 'Only names matching': '仅保留名称匹配项', 'Remove names matching': '移除名称匹配项',
+  'Name filters': '名称过滤',
+  'Only names matching': '仅保留名称匹配项',
+  'Remove names matching': '移除名称匹配项',
   'Regular expression': '正则表达式',
-  'Two regular expressions the server names must match, and must not match.': '两个正则表达式：服务器名称必须匹配前者、不得匹配后者。',
+  'Two regular expressions the server names must match, and must not match.':
+      '两个正则表达式：服务器名称必须匹配前者、不得匹配后者。',
   'Sorting and display': '排序与显示', 'Sort method': '排序方式', 'Manual order': '手动顺序',
-  'By type': '按类型', 'By address': '按地址', 'By name': '按名称', 'By test result': '按测试结果',
-  'By id': '按 ID', 'By traffic': '按流量', 'By security': '按安全性', 'By latency': '按延迟',
+  'By type': '按类型',
+  'By address': '按地址',
+  'By name': '按名称',
+  'By test result': '按测试结果',
+  'By id': '按 ID',
+  'By traffic': '按流量',
+  'By security': '按安全性',
+  'By latency': '按延迟',
   'Descending': '降序',
-  'Test sort by': '测试排序依据', 'Download speed': '下载速度', 'Upload speed': '上传速度', 'IP out': 'IP 出口',
+  'Test sort by': '测试排序依据',
+  'Download speed': '下载速度',
+  'Upload speed': '上传速度',
+  'IP out': 'IP 出口',
   'Traffic sort by': '流量排序依据', 'Downloaded': '已下载', 'Uploaded': '已上传',
   'Test items to show': '测试显示项', 'IP only': '仅 IP', 'Speed only': '仅速度',
-  'Server interval': '服务器间隔', 'Use server setting': '使用服务器间隔', 'Ignore server setting': '忽略服务器间隔',
+  'Server interval': '服务器间隔',
+  'Use server setting': '使用服务器间隔',
+  'Ignore server setting': '忽略服务器间隔',
   'Invalid regular expression': '无效的正则表达式',
-  'Must be a URL starting with http:// or https://': '必须是 http:// 或 https:// 开头的链接。',
-  'Must be at least 30 minutes, or empty to keep the default.': '至少 30 分钟，留空保持默认。',
-  'Must be shorter than 1000 characters, on a single line.': '长度需小于 1000 字符且不能换行。',
+  'Must be a URL starting with http:// or https://':
+      '必须是 http:// 或 https:// 开头的链接。',
+  'Must be at least 30 minutes, or empty to keep the default.':
+      '至少 30 分钟，留空保持默认。',
+  'Must be shorter than 1000 characters, on a single line.':
+      '长度需小于 1000 字符且不能换行。',
   'No such group': '分组不存在',
   'Empty fields keep the global subscription settings.': '留空字段使用全局订阅设置。',
-  'A front or landing profile forwards traffic before or after the proxy of this group.': '前置/落地配置在该分组的代理之前或之后转发流量。',
-  'The unavailable-removal and latency-sort options only take effect while the URL test is on.': '移除不可用与按延迟排序仅在开启 URL 测试时生效。',
+  'A front or landing profile forwards traffic before or after the proxy of this group.':
+      '前置/落地配置在该分组的代理之前或之后转发流量。',
+  'The unavailable-removal and latency-sort options only take effect while the URL test is on.':
+      '移除不可用与按延迟排序仅在开启 URL 测试时生效。',
   'Test panel': '批量测速', 'Test kind': '测试类型', 'IP check': 'IP 查询',
   'Scope': '范围', 'Connect only': '仅连接',
   'Progress': '进度', 'Preparing…': '准备中…', 'Stopping…': '停止中…',
   'Ok': '成功', 'Failed': '失败', 'Aborted': '中止',
   'Nothing to test': '没有可测试的配置', 'A test is already running': '已有测试在进行',
-  'The core service is unreachable': '无法连接核心服务', 'The core service died': '核心服务已中断',
+  'The core service is unreachable': '无法连接核心服务',
+  'The core service died': '核心服务已中断',
   'The test did not finish': '测试未完成',
-  'Latency histogram': '延迟分布', 'Testing now': '正在测速', 'Fastest servers': '最快服务器',
+  'Latency histogram': '延迟分布',
+  'Testing now': '正在测速',
+  'Fastest servers': '最快服务器',
   'Tap a result to connect through it.': '点击结果即可通过它连接。',
-  'Remove unavailable': '移除不可用', 'Dismiss': '收起', 'Removed N profiles': '已移除 N 个配置',
+  'Remove unavailable': '移除不可用',
+  'Dismiss': '收起',
+  'Removed N profiles': '已移除 N 个配置',
   'Edit settings': '参数设置', 'Must be a port number': '必须是端口号',
   'No typed form for this protocol': '该协议暂无参数表单',
   'Use the node editor to change the configuration text.': '请使用节点编辑器修改配置文本。',
@@ -323,50 +478,91 @@ const _zh = <String, String>{
   'uTLS': 'uTLS', 'Reality': 'Reality',
   'Reality public key': 'Reality 公钥', 'Reality short ID': 'Reality Short ID',
   'Short ID': '短 ID', 'Fingerprint': '指纹', 'Authority': 'Authority',
-  'Use system CA': '使用系统 CA', 'Pinned cert SHA256': '固定证书 SHA256', 'SpiderX': 'SpiderX',
+  'Use system CA': '使用系统 CA',
+  'Pinned cert SHA256': '固定证书 SHA256',
+  'SpiderX': 'SpiderX',
   'ECH': 'ECH', 'ECH config': 'ECH 配置',
   'Service name': '服务名称', 'Ping timeout': 'Ping 超时',
   'Max early data': '最大早期数据', 'Early data header': '早期数据请求头',
   'Min streams': '最小流数',
-  'Padding': '填充', 'TCP Brutal': 'TCP Brutal', 'Brutal up (Mbps)': 'Brutal 上行 (Mbps)', 'Brutal down (Mbps)': 'Brutal 下行 (Mbps)',
+  'Padding': '填充',
+  'TCP Brutal': 'TCP Brutal',
+  'Brutal up (Mbps)': 'Brutal 上行 (Mbps)',
+  'Brutal down (Mbps)': 'Brutal 下行 (Mbps)',
   'QUIC': 'QUIC', 'Keep alive period': '保活间隔',
-  'UUID': 'UUID', 'Encryption': '加密方式', 'Alter ID': 'Alter ID', 'Packet encoding': '包编码',
+  'UUID': 'UUID',
+  'Encryption': '加密方式',
+  'Alter ID': 'Alter ID',
+  'Packet encoding': '包编码',
   'Global padding': '全局填充', 'Authenticated length': '认证长度', 'Flow': 'Flow',
   'Plugin': '插件', 'Plugin options': '插件参数', 'UDP over TCP': 'UDP over TCP',
-  'Congestion control': '拥塞控制', 'UDP relay mode': 'UDP 中继模式', 'UDP over stream': 'UDP over stream',
-  'Zero RTT handshake': '0-RTT 握手', 'Heartbeat': '心跳', 'Protocol version': '协议版本',
-  'Auth type': '认证类型', 'Auth': '认证', 'Obfuscation': '混淆', 'Obfuscation password': '混淆密码',
+  'Congestion control': '拥塞控制',
+  'UDP relay mode': 'UDP 中继模式',
+  'UDP over stream': 'UDP over stream',
+  'Zero RTT handshake': '0-RTT 握手',
+  'Heartbeat': '心跳',
+  'Protocol version': '协议版本',
+  'Auth type': '认证类型',
+  'Auth': '认证',
+  'Obfuscation': '混淆',
+  'Obfuscation password': '混淆密码',
   'Up (Mbps)': '上行 (Mbps)', 'Down (Mbps)': '下行 (Mbps)', 'Server ports': '服务器端口',
   'Hop interval': '跳变间隔', 'Endpoint address': '端点地址', 'Endpoint port': '端点端口',
   'Local addresses': '本机地址', 'Pre-shared key': '预共享密钥',
   'Reserved': '保留字段', 'Persistent keepalive': '持久保活',
   'System interface': '系统接口',
-  'Transport': '传输层', 'Host': '主机', 'Server': '服务器', 'Server port': '服务器端口', 'Multiplex': '多路复用',
-  'Advanced': '高级', 'Authenticate': '认证', 'Not valid JSON': 'JSON 无效', 'Template': '模板',
+  'Transport': '传输层',
+  'Host': '主机',
+  'Server': '服务器',
+  'Server port': '服务器端口',
+  'Multiplex': '多路复用',
+  'Advanced': '高级',
+  'Authenticate': '认证',
+  'Not valid JSON': 'JSON 无效',
+  'Template': '模板',
   'TLS': 'TLS', 'Dial': '拨号', 'Reorder rules': '调整规则顺序',
   'Drag a rule to change the order; the first match wins': '拖动规则调整顺序；首条命中生效。',
   'Metered': '计费网络', 'Any': '任意', 'Open': '打开', 'Invalid number': '数字无效',
   'Custom inbound': '自定义入站',
-  'The listeners above are generated; these inbounds are added as they are written.': '上方的监听由配置生成；此处入站按原样添加。',
-  'The structured settings are ignored while the DNS object is in use.': '使用 DNS 对象时忽略结构化设置。',
+  'The listeners above are generated; these inbounds are added as they are written.':
+      '上方的监听由配置生成；此处入站按原样添加。',
+  'The structured settings are ignored while the DNS object is in use.':
+      '使用 DNS 对象时忽略结构化设置。',
   'HTTP/2': 'HTTP/2',
   'ALPN': 'ALPN', 'Auth group': '认证组', 'Bind interface': '绑定接口',
-  'Certificate': '证书', 'Certificate authority': 'CA 证书', 'Client certificate': '客户端证书',
+  'Certificate': '证书',
+  'Certificate authority': 'CA 证书',
+  'Client certificate': '客户端证书',
   'Client key': '客户端密钥', 'Client random': '客户端随机数', 'Client version': '客户端版本',
-  'Connect timeout': '连接超时', 'Custom SNI': '自定义 SNI', 'Disable version fallback': '禁用版本回退',
+  'Connect timeout': '连接超时',
+  'Custom SNI': '自定义 SNI',
+  'Disable version fallback': '禁用版本回退',
   'Flavor': '风格', 'Health check': '健康检查', 'Host key': '主机密钥',
-  'Host key algorithms': '主机密钥算法', 'IPv4 bind address': 'IPv4 绑定地址', 'IPv6 bind address': 'IPv6 绑定地址',
+  'Host key algorithms': '主机密钥算法',
+  'IPv4 bind address': 'IPv4 绑定地址',
+  'IPv6 bind address': 'IPv6 绑定地址',
   'Idle session check interval': '空闲会话检查间隔', 'Idle session timeout': '空闲会话超时',
-  'Insecure concurrency': '不安全并发', 'Min idle session': '最小空闲会话', 'Multipath TCP': 'Multipath TCP',
-  'Multiplexing': '多路复用', 'Obfuscation host': '混淆主机', 'Obfuscation mode': '混淆模式',
+  'Insecure concurrency': '不安全并发',
+  'Min idle session': '最小空闲会话',
+  'Multipath TCP': 'Multipath TCP',
+  'Multiplexing': '多路复用',
+  'Obfuscation host': '混淆主机',
+  'Obfuscation mode': '混淆模式',
   'PSK': 'PSK', 'Private key passphrase': '私钥口令', 'Reuse address': '复用地址',
-  'Reuse connections': '复用连接', 'Server path': '服务器路径', 'Static challenge': '静态挑战',
-  'TCP fast open': 'TCP fast open', 'Traffic pattern': '流量模式', 'UDP fragment': 'UDP 分片',
+  'Reuse connections': '复用连接',
+  'Server path': '服务器路径',
+  'Static challenge': '静态挑战',
+  'TCP fast open': 'TCP fast open',
+  'Traffic pattern': '流量模式',
+  'UDP fragment': 'UDP 分片',
   'User': '用户', 'User key': '用户密钥',
-  'Configuration changes will replace the remote content until its next update.': '修改将保留到远程配置下次更新。',
+  'Configuration changes will replace the remote content until its next update.':
+      '修改将保留到远程配置下次更新。',
   'New profile': '新建配置', 'Import from URL': '从链接导入',
   'New node': '新建节点',
-  'Open configuration': '打开配置内容', 'QR code': '二维码', 'No remote servers': '暂无远程服务器',
+  'Open configuration': '打开配置内容',
+  'QR code': '二维码',
+  'No remote servers': '暂无远程服务器',
   "Disconnected": "已断开",
   "Username": "用户名",
   "Password": "密码",
@@ -409,8 +605,10 @@ const _zh = <String, String>{
   "Refresh": "刷新",
   "Serial test": "串行测试",
   "Duration": "时长",
-  "This test transfers data on a metered network. Continue?": "当前网络按流量计费，测试会消耗数据流量。继续？",
-  "Import profiles and remote servers, and restore settings from this backup?": "导入备份中的配置和远程服务器，并恢复设置？",
+  "This test transfers data on a metered network. Continue?":
+      "当前网络按流量计费，测试会消耗数据流量。继续？",
+  "Import profiles and remote servers, and restore settings from this backup?":
+      "导入备份中的配置和远程服务器，并恢复设置？",
   'Loading': '加载中', 'Start failed': '启动失败',
   'Style': '样式', 'Size': '大小', 'Tight': '密集', 'Loose': '宽松', 'Speed': '速度',
   'Scroll to selected': '定位已选代理', 'Hide timeout proxies': '隐藏超时代理',
@@ -418,11 +616,24 @@ const _zh = <String, String>{
   'Folded {count} connection resets': '已折叠 {count} 条连接重置噪音',
   'Hide connection-reset noise': '隐藏连接重置噪音',
   'Export crash logs': '导出崩溃日志', 'No crash logs': '暂无崩溃日志',
-  'Trace': '跟踪', 'Debug': '调试', 'Info': '信息', 'Warn': '警告', 'Fatal': '致命', 'Panic': '崩溃',
-  'Turn on': '开启', 'Turn off': '关闭', 'Select all': '全选', 'Deselect all': '取消全选', 'Action': '操作', 'Time': '时间',
+  'Trace': '跟踪',
+  'Debug': '调试',
+  'Info': '信息',
+  'Warn': '警告',
+  'Fatal': '致命',
+  'Panic': '崩溃',
+  'Turn on': '开启',
+  'Turn off': '关闭',
+  'Select all': '全选',
+  'Deselect all': '取消全选',
+  'Action': '操作',
+  'Time': '时间',
   'Clipboard import': '从剪贴板导入', 'Clipboard export': '导出到剪贴板',
-  'Show apps without Internet permission': '显示无网络权限应用', 'Application query failed': '应用查询失败',
-  'Access control is disabled': '应用访问控制未开启', 'Only selected apps use the VPN': '仅选中的应用使用 VPN', 'Selected apps bypass the VPN': '选中的应用绕过 VPN',
+  'Show apps without Internet permission': '显示无网络权限应用',
+  'Application query failed': '应用查询失败',
+  'Access control is disabled': '应用访问控制未开启',
+  'Only selected apps use the VPN': '仅选中的应用使用 VPN',
+  'Selected apps bypass the VPN': '选中的应用绕过 VPN',
   // --- Throne settings the B-box UI never had: service, inbound, TUN, DNS, routing, core, testing, subscriptions
   'Mixed port': '混合端口',
   'Random inbound port': '随机入境端口',
@@ -484,8 +695,15 @@ const _zh = <String, String>{
   'Direct test URL': '直连测试地址',
   'Speed test': '测速',
   'Speed test mode': '测速模式',
-  'Logging': '日志', 'Statistics': '统计', 'Security': '安全', 'Xray': 'Xray', 'API dashboard': 'API 仪表盘',
-  'Xray VLESS preference': 'Xray VLESS 偏好', 'XHTTP only': '仅 XHTTP', 'XHTTP and Reality': 'XHTTP 与 Reality', 'All VLESS': '全部 VLESS',
+  'Logging': '日志',
+  'Statistics': '统计',
+  'Security': '安全',
+  'Xray': 'Xray',
+  'API dashboard': 'API 仪表盘',
+  'Xray VLESS preference': 'Xray VLESS 偏好',
+  'XHTTP only': '仅 XHTTP',
+  'XHTTP and Reality': 'XHTTP 与 Reality',
+  'All VLESS': '全部 VLESS',
   'Show the country code': '显示国家代码', 'Show the country icon': '显示国家图标',
   'Speed test timeout': '测速超时',
   'Exit detection': '出口检测',
@@ -531,11 +749,14 @@ const _zh = <String, String>{
   'System proxy': '系统代理',
   'Append the HTTP proxy': '写入系统 HTTP 代理',
   'Proxy bypass': '代理绕过列表',
-  'One host or CIDR per line. Empty means the proxy is applied to every connection.': '每行一个主机或网段。留空表示所有连接都走代理。',
+  'One host or CIDR per line. Empty means the proxy is applied to every connection.':
+      '每行一个主机或网段。留空表示所有连接都走代理。',
   'Private ranges': '私有网段',
-  'One CIDR per line. These are reached directly instead of through the tunnel.': '每行一个网段。这些地址直接访问，不经过隧道。',
+  'One CIDR per line. These are reached directly instead of through the tunnel.':
+      '每行一个网段。这些地址直接访问，不经过隧道。',
   'Predefined hosts entries': '预定义 hosts 条目',
-  'One entry per line, in hosts format: "address hostname".': '每行一条，hosts 格式：地址 + 主机名。',
+  'One entry per line, in hosts format: "address hostname".':
+      '每行一条，hosts 格式：地址 + 主机名。',
   'Persist the cache': '持久化缓存',
   'Optimistic cache': '乐观缓存',
   'Optimistic cache timeout': '乐观缓存超时',
@@ -551,9 +772,11 @@ const _zh = <String, String>{
   'Simple download URL': '简单下载地址',
   'A file of known size used to measure throughput': '用于测速的已知大小文件地址',
   'Custom HWID parameters': '自定义 HWID 参数',
-  'key=value pairs separated by commas, sent alongside the identifier': '逗号分隔的 key=value，随设备标识一起发送',
+  'key=value pairs separated by commas, sent alongside the identifier':
+      '逗号分隔的 key=value，随设备标识一起发送',
   'WARP mode': 'WARP 模式',
-  'WARP replaces the outbound of the running profile with Cloudflare WARP.': 'WARP 会用 Cloudflare WARP 替换当前配置的出站。',
+  'WARP replaces the outbound of the running profile with Cloudflare WARP.':
+      'WARP 会用 Cloudflare WARP 替换当前配置的出站。',
   'WireGuard': 'WireGuard',
   'Endpoint': '端点',
   'Private key': '私钥',
@@ -575,9 +798,11 @@ const _zh = <String, String>{
   'Show traffic total': '显示累计流量',
   'Show proxy speed': '显示代理速度',
   'Notification title template': '通知标题模板',
-  'Use {title} for the profile name, for example 🚀 {title}': '用 {title} 表示配置名，例如 🚀 {title}',
+  'Use {title} for the profile name, for example 🚀 {title}':
+      '用 {title} 表示配置名，例如 🚀 {title}',
   'Notification content template': '通知内容模板',
-  'Leave empty for the built-in speed line; {up} {down} {totalUp} {totalDown}': '留空使用内置速率行；{up} {down} {totalUp} {totalDown}',
+  'Leave empty for the built-in speed line; {up} {down} {totalUp} {totalDown}':
+      '留空使用内置速率行；{up} {down} {totalUp} {totalDown}',
   'Notification buttons': '通知按钮',
   'The first three of the enabled ones show, in a fixed order': '按固定顺序显示启用的前三项',
   'Previous': '上一台',
@@ -637,11 +862,14 @@ const _zh = <String, String>{
   'Wrong MD5': '错误 MD5',
   'Wrong timestamp': '错误时间戳',
   'Off': '关闭',
-  'Applied when a node is imported, not to nodes already saved.': '仅作用于新导入的节点，不影响已保存的节点。',
+  'Applied when a node is imported, not to nodes already saved.':
+      '仅作用于新导入的节点，不影响已保存的节点。',
   'e.g. 10-100, empty uses the built-in range': '如 10-100，留空使用内置范围',
   'e.g. 2-5, empty uses the built-in range': '如 2-5，留空使用内置范围',
-  'custom only: e.g. 10-100, empty uses the built-in range': '仅自定义实现：如 10-100，留空使用内置范围',
-  'custom only: e.g. 2-5, empty uses the built-in range': '仅自定义实现：如 2-5，留空使用内置范围',
+  'custom only: e.g. 10-100, empty uses the built-in range':
+      '仅自定义实现：如 10-100，留空使用内置范围',
+  'custom only: e.g. 2-5, empty uses the built-in range':
+      '仅自定义实现：如 2-5，留空使用内置范围',
   'Used by Hysteria, Hysteria2, TUIC and MASQUE profiles that leave a field empty. Empty keeps the core default.':
       '用于留空对应字段的 Hysteria、Hysteria2、TUIC 和 MASQUE 配置；留空时使用内核默认值。',
   'e.g. chrome, firefox, safari': '如 chrome、firefox、safari',
@@ -664,8 +892,10 @@ const _zh = <String, String>{
   'Simple rules': '简单规则',
   'Rules': '规则',
   'Use this profile': '使用此路由档',
-  'The current profile builds every configuration that has no group override.': '当前路由档将用于所有未单独指定路由档的分组。',
-  'One rule per line: suffix:example.com -> proxy. Outbounds are proxy, direct, block and warp-bypass.': '每行一条规则：suffix:example.com -> proxy。出站可选 proxy、direct、block、warp-bypass。',
+  'The current profile builds every configuration that has no group override.':
+      '当前路由档将用于所有未单独指定路由档的分组。',
+  'One rule per line: suffix:example.com -> proxy. Outbounds are proxy, direct, block and warp-bypass.':
+      '每行一条规则：suffix:example.com -> proxy。出站可选 proxy、direct、block、warp-bypass。',
   'Auto selector': '自动选择器',
   'Filters': '过滤',
   'Name filter': '名称过滤',
@@ -704,7 +934,10 @@ const _zh = <String, String>{
   'Edit rule': '编辑规则',
   'Delete rule?': '删除规则？',
   'Rules run top to bottom; the first match wins.': '规则自上而下匹配，首个命中生效。',
-  'Inverted': '反向', 'Private IP': '私有 IP', 'Private source IP': '私有来源 IP', 'No conditions': '无条件匹配',
+  'Inverted': '反向',
+  'Private IP': '私有 IP',
+  'Private source IP': '私有来源 IP',
+  'No conditions': '无条件匹配',
   'Domains': '域名',
   'Domain': '域名',
   'Domain suffix': '域名后缀',
@@ -755,44 +988,55 @@ const _zh = <String, String>{
   'On': '开启',
   'Mux max streams': 'Mux 最大流数',
   'Fragment fallback delay': '分片回退延迟',
-  'Mixed-case SNI and other tricks, applied when the node is dialed.': '大小写混合 SNI 等伪装，在拨号该节点时生效。',
+  'Mixed-case SNI and other tricks, applied when the node is dialed.':
+      '大小写混合 SNI 等伪装，在拨号该节点时生效。',
   '0 = Xray default 8': '0 = Xray 默认 8',
   '0 = unbounded': '0 = 不限',
-  'Xray-core multiplex (smux over Xray transports). Counts are -1 to 32767.': 'Xray-core 复用（Xray 传输上的 smux）。计数范围 -1 到 32767。',
+  'Xray-core multiplex (smux over Xray transports). Counts are -1 to 32767.':
+      'Xray-core 复用（Xray 传输上的 smux）。计数范围 -1 到 32767。',
   'Refreshes every few seconds while this page is open.': '页面打开期间每几秒自动刷新。',
   'Type': '类型',
   'Target': '目标',
   'Simple address': '简单地址',
   'Simple process name': '简单进程名',
   'Simple process path': '简单进程路径',
-  'Simple rules share one outbound and one action; the match goes in the fields below.': '简单规则共用一个出站和一个动作；匹配内容填在下方字段。',
+  'Simple rules share one outbound and one action; the match goes in the fields below.':
+      '简单规则共用一个出站和一个动作；匹配内容填在下方字段。',
   'Read-only': '只读',
   'This profile is built in and cannot be changed here.': '此配置为内置预置，无法在此修改。',
   'Endpoint ids': '端点 ID',
-  'Profile ids whose endpoints this route can prefer; used by preferred-by rules.': '此路由可优选的端点所属 profile ID；供 preferred-by 规则使用。',
+  'Profile ids whose endpoints this route can prefer; used by preferred-by rules.':
+      '此路由可优选的端点所属 profile ID；供 preferred-by 规则使用。',
   'Endpoint preferred by': '端点优选',
   'Preferred endpoint': '优选端点',
-  'This rule names one endpoint as preferred; it has no match conditions.': '此规则指定一个优选端点；没有匹配条件。',
+  'This rule names one endpoint as preferred; it has no match conditions.':
+      '此规则指定一个优选端点；没有匹配条件。',
   'A remote profile downloads its rules from the URL.': '远程配置从 URL 下载规则。',
   'Batch add simple rules': '批量添加简单规则',
   'Nodes': '节点',
   'App settings': '应用设置',
-  'This configuration carries only its node list; membership is edited on the Proxies screen.': '此配置仅包含节点列表；成员在代理页管理。',
-  'DNS, routing rules and log settings are app settings, as in Throne.': 'DNS、路由规则和日志设置由应用统一控制，与 Throne 一致。',
+  'This configuration carries only its node list; membership is edited on the Proxies screen.':
+      '此配置仅包含节点列表；成员在代理页管理。',
+  'DNS, routing rules and log settings are app settings, as in Throne.':
+      'DNS、路由规则和日志设置由应用统一控制，与 Throne 一致。',
   'Restore defaults?': '恢复默认配置？',
-  'Every setting on this page returns to its Throne default.': '本页所有设置将恢复为 Throne 默认值。',
+  'Every setting on this page returns to its Throne default.':
+      '本页所有设置将恢复为 Throne 默认值。',
   'Restore defaults': '恢复默认',
   'Throne official profiles': 'Throne 官方预置路由档',
-  'The official profiles are remote route profiles of the routeprofiles repository.': '官方预置为 routeprofiles 仓库的远程路由档。',
+  'The official profiles are remote route profiles of the routeprofiles repository.':
+      '官方预置为 routeprofiles 仓库的远程路由档。',
   'No official profiles are bundled in this build': '此构建未内置官方预置',
   'route profiles added': '条路由档已添加',
   'Restore default rules': '恢复默认规则',
   'Restore default rules?': '恢复默认规则？',
-  'The rules become the Default profile\'s own: one hijack-dns rule that routes DNS.': '规则将替换为 Default 档的默认规则：一条路由 DNS 的 hijack-dns 规则。',
+  'The rules become the Default profile\'s own: one hijack-dns rule that routes DNS.':
+      '规则将替换为 Default 档的默认规则：一条路由 DNS 的 hijack-dns 规则。',
   'Throne preset rules': 'Throne 预设规则',
   'Not a valid package name: {names}': '不是有效包名：{names}',
   'Failed to import.': '导入失败。',
-  'A generated identity fills the fields of the mode above. Enable WARP to route traffic through it.': '生成的身份凭证会填入上方所选模式的字段，开启 WARP 后即可使用。',
+  'A generated identity fills the fields of the mode above. Enable WARP to route traffic through it.':
+      '生成的身份凭证会填入上方所选模式的字段，开启 WARP 后即可使用。',
   'Cloudflare WARP': 'Cloudflare WARP',
   'Generating a WARP identity registers a new device with Cloudflare.\n\nDo you accept the Cloudflare WARP terms of service?\n\nhttps://www.cloudflare.com/application/terms/': '生成 WARP 身份凭证会向 Cloudflare 注册一台新设备。\n\n是否接受 Cloudflare WARP 服务条款？\n\nhttps://www.cloudflare.com/application/terms/',
   'Accept': '接受',
@@ -800,23 +1044,31 @@ const _zh = <String, String>{
   'Generating…': '正在生成…',
   'Registers a new identity and fills the fields above': '注册新的身份凭证并填入上方字段',
   'Identity generated': '身份凭证已生成',
-  'Identity generated, the AmneziaWG packets failed: {error}': '身份凭证已生成，但 AmneziaWG 数据包生成失败：{error}',
+  'Identity generated, the AmneziaWG packets failed: {error}':
+      '身份凭证已生成，但 AmneziaWG 数据包生成失败：{error}',
   'Not set': '未设置',
   'One value per line.': '每行一个值。',
   'One domain per line; only that exact host matches.': '每行一个域名；仅匹配该主机名本身。',
-  'One suffix per line; google.com matches google.com and its subdomains.': '每行一个后缀；google.com 匹配 google.com 及其子域名。',
+  'One suffix per line; google.com matches google.com and its subdomains.':
+      '每行一个后缀；google.com 匹配 google.com 及其子域名。',
   'One keyword per line; the host has to contain it.': '每行一个关键词；主机名需包含该关键词。',
-  'One Go regular expression per line, matched against the host.': '每行一个 Go 正则表达式，匹配主机名。',
-  'One CIDR per line, for example 10.0.0.0/8 or 2001:db8::/32.': '每行一个 CIDR，例如 10.0.0.0/8 或 2001:db8::/32。',
-  "One CIDR per line; the connection's own address has to fall inside it.": '每行一个 CIDR；连接自身的地址需落在其中。',
+  'One Go regular expression per line, matched against the host.':
+      '每行一个 Go 正则表达式，匹配主机名。',
+  'One CIDR per line, for example 10.0.0.0/8 or 2001:db8::/32.':
+      '每行一个 CIDR，例如 10.0.0.0/8 或 2001:db8::/32。',
+  "One CIDR per line; the connection's own address has to fall inside it.":
+      '每行一个 CIDR；连接自身的地址需落在其中。',
   'One port per line.': '每行一个端口。',
   'One range per line, for example 1000:2000.': '每行一个端口范围，例如 1000:2000。',
   "One port per line; the connection's own source port.": '每行一个端口；指连接自身的源端口。',
   'One process name per line.': '每行一个进程名。',
   'One absolute process path per line.': '每行一个进程绝对路径。',
-  'One Go regular expression per line, matched against the path.': '每行一个 Go 正则表达式，匹配进程路径。',
-  'One Android package per line, for example com.example.app.': '每行一个 Android 包名，例如 com.example.app。',
-  'One regular expression per line, matched against the package name.': '每行一个正则表达式，匹配包名。',
+  'One Go regular expression per line, matched against the path.':
+      '每行一个 Go 正则表达式，匹配进程路径。',
+  'One Android package per line, for example com.example.app.':
+      '每行一个 Android 包名，例如 com.example.app。',
+  'One regular expression per line, matched against the package name.':
+      '每行一个正则表达式，匹配包名。',
   'One inbound tag per line.': '每行一个入站标签。',
   'One network name per line.': '每行一个 Wi-Fi 名称。',
   'One access point address per line.': '每行一个接入点地址。',
@@ -826,57 +1078,90 @@ const _zh = <String, String>{
   'Paste a sing-box fragment carrying route or DNS rules; both are recognised automatically and checked against the schema first.':
       '粘贴含路由或 DNS 规则的 sing-box 片段，会自动识别规则种类并先做 schema 校验。',
   'Rule kind': '规则种类',
-  'Used for a bare rule or a bare "rules" array; a fragment with "route" or "dns" says it itself.': '仅用于单个规则或裸 "rules" 数组；带 "route" 或 "dns" 的片段自身已说明。',
+  'Used for a bare rule or a bare "rules" array; a fragment with "route" or "dns" says it itself.':
+      '仅用于单个规则或裸 "rules" 数组；带 "route" 或 "dns" 的片段自身已说明。',
   'Paste a sing-box rule fragment': '粘贴 sing-box 规则片段',
-  'A rule, an array of rules, {"rules": [...]}, or a config carrying "route" and "dns".': '单条规则、规则数组、{"rules": [...]}，或含 "route" 与 "dns" 的配置片段。',
+  'A rule, an array of rules, {"rules": [...]}, or a config carrying "route" and "dns".':
+      '单条规则、规则数组、{"rules": [...]}，或含 "route" 与 "dns" 的配置片段。',
   'Not a rule fragment': '不是规则片段',
   'Route rules to add': '待添加的路由规则',
   'DNS rules to add': '待添加的 DNS 规则',
   'DNS rules wait for the DNS object': 'DNS 规则等待 DNS 对象启用',
-  'They are stored in the DNS object, which Settings, DNS has switched off; turn it on for them to apply.': '这些规则保存在 DNS 对象中，而「设置 → DNS」当前未启用该对象；启用后才会生效。',
+  'They are stored in the DNS object, which Settings, DNS has switched off; turn it on for them to apply.':
+      '这些规则保存在 DNS 对象中，而「设置 → DNS」当前未启用该对象；启用后才会生效。',
   'The schema rejects part of this fragment': 'schema 校验未通过',
   'Fix the underlined fields before importing.': '请先修正带下划线的字段再导入。',
   'Import DNS rules': '导入 DNS 规则',
-  'Paste a sing-box fragment with dns.rules; it is checked against the schema first.': '粘贴含 dns.rules 的 sing-box 片段，导入前会先做 schema 校验。',
+  'Paste a sing-box fragment with dns.rules; it is checked against the schema first.':
+      '粘贴含 dns.rules 的 sing-box 片段，导入前会先做 schema 校验。',
   'Route rules belong to a route profile': '路由规则属于路由配置',
   'Open a route profile to import those.': '请打开对应的路由配置导入这些规则。',
-  'Imported rules are appended to the DNS object above.': '导入的规则会追加到上方的 DNS 对象中。',
-  'Imported rules are kept in the DNS object, which is switched off here; turn it on for them to apply.': '导入的规则保存在 DNS 对象中，此处该对象已关闭；启用后才会生效。',
+  'Imported rules are appended to the DNS object above.':
+      '导入的规则会追加到上方的 DNS 对象中。',
+  'Imported rules are kept in the DNS object, which is switched off here; turn it on for them to apply.':
+      '导入的规则保存在 DNS 对象中，此处该对象已关闭；启用后才会生效。',
 };
 
 extension BoxLocalization on BuildContext {
-  String tr(String value) => Localizations.localeOf(this).languageCode == 'zh' ? _zh[value] ?? value : value;
+  String tr(String value) => Localizations.localeOf(this).languageCode == 'zh'
+      ? _zh[value] ?? value
+      : value;
 }
 
 class BoxUiLocalizations extends UiLocalizations {
   BoxUiLocalizations(this.locale);
   final Locale locale;
-  String _t(String value) => locale.languageCode == 'zh' ? _zh[value] ?? value : value;
-  @override String get back => _t('Back');
-  @override String get cancel => _t('Cancel');
-  @override String get clearSearch => _t('Clear search');
-  @override String get close => _t('Close');
-  @override String get copy => _t('Copy');
-  @override String get cut => _t('Cut');
-  @override String get dialog => _t('Dialog');
-  @override String get hidePassword => _t('Hide password');
-  @override String get more => _t('More');
-  @override String get noSearchResults => _t('No search results');
-  @override String get paste => _t('Paste');
-  @override String get reset => _t('Reset');
-  @override String get search => _t('Search');
-  @override String get select => _t('Select');
-  @override String get selectAll => _t('Select all');
-  @override String get showLess => _t('Show less');
-  @override String get showMore => _t('Show more');
-  @override String get showPassword => _t('Show password');
-  @override String get sort => _t('Sort');
-  @override String get submit => _t('Submit');
+  String _t(String value) =>
+      locale.languageCode == 'zh' ? _zh[value] ?? value : value;
+  @override
+  String get back => _t('Back');
+  @override
+  String get cancel => _t('Cancel');
+  @override
+  String get clearSearch => _t('Clear search');
+  @override
+  String get close => _t('Close');
+  @override
+  String get copy => _t('Copy');
+  @override
+  String get cut => _t('Cut');
+  @override
+  String get dialog => _t('Dialog');
+  @override
+  String get hidePassword => _t('Hide password');
+  @override
+  String get more => _t('More');
+  @override
+  String get noSearchResults => _t('No search results');
+  @override
+  String get paste => _t('Paste');
+  @override
+  String get reset => _t('Reset');
+  @override
+  String get search => _t('Search');
+  @override
+  String get select => _t('Select');
+  @override
+  String get selectAll => _t('Select all');
+  @override
+  String get showLess => _t('Show less');
+  @override
+  String get showMore => _t('Show more');
+  @override
+  String get showPassword => _t('Show password');
+  @override
+  String get sort => _t('Sort');
+  @override
+  String get submit => _t('Submit');
 }
 
 class BoxUiDelegate extends LocalizationsDelegate<UiLocalizations> {
   const BoxUiDelegate();
-  @override bool isSupported(Locale locale) => true;
-  @override Future<UiLocalizations> load(Locale locale) => SynchronousFuture(BoxUiLocalizations(locale));
-  @override bool shouldReload(BoxUiDelegate old) => false;
+  @override
+  bool isSupported(Locale locale) => true;
+  @override
+  Future<UiLocalizations> load(Locale locale) =>
+      SynchronousFuture(BoxUiLocalizations(locale));
+  @override
+  bool shouldReload(BoxUiDelegate old) => false;
 }

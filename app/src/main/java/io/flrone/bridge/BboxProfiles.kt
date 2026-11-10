@@ -32,6 +32,7 @@ import io.nekohasekai.sagernet.outbound.common.XrayMultiplex
 import io.nekohasekai.sagernet.outbound.common.xrayXudpProxyUDP443Modes
 import io.nekohasekai.sagernet.outbound.distinctNodes
 import io.nekohasekai.sagernet.outbound.import.ProfileImport
+import io.nekohasekai.sagernet.outbound.json.JsonInput
 import io.nekohasekai.sagernet.outbound.types.AutoSelector
 import io.nekohasekai.sagernet.ui.settings.SettingChecks
 import io.nekohasekai.sagernet.validation.Empty
@@ -472,7 +473,7 @@ object BboxProfiles {
         val outbound = OutboundFactory.newByType(type)
         if (outbound.invalid) error("Unknown proxy type: $type")
         if (outbound.name.isBlank()) outbound.name = outbound.displayType().ifBlank { type }
-        val gid = groupId?.takeIf { it > 0L } ?: GroupRepo.all().firstOrNull()?.id
+        val gid = groupId?.takeIf { it > 0L } ?: GroupRepo.rawGroups().firstOrNull()?.id
         mapOf(
             "id" to 0L,
             "groupId" to gid,
@@ -486,7 +487,15 @@ object BboxProfiles {
     suspend fun commitNode(values: Map<String, Any?>): Map<String, Any?> = withContext(Dispatchers.IO) {
         val content = values["content"] as? String ?: error("Missing node content")
         val name = (values["name"] as? String)?.trim().orEmpty()
-        val outbound = parseOutbounds(content).singleOrNull() ?: error("The content must describe exactly one node")
+        val document = JsonInput.parseObjectOrNull(content)
+        val chainDocument = document?.takeIf { it.string("type") == "chain" }
+        val outbound = if (chainDocument != null) {
+            OutboundFactory.newByType("chain").also {
+                if (it.invalid || !it.parseFromJson(chainDocument)) error("Invalid chain node")
+            }
+        } else {
+            parseOutbounds(content).singleOrNull() ?: error("The content must describe exactly one node")
+        }
         if (name.isNotEmpty()) outbound.name = name
         val issues = ArrayList<io.nekohasekai.sagernet.validation.Issue>()
         outbound.validate(issues, SettingsMapper.buildContext())
@@ -571,14 +580,14 @@ object BboxProfiles {
     // ------------------------------------------------------------------------------------- auto selector
 
     /** Creates a fresh auto-selector node in [groupId], or the first group when it is omitted. */
-    suspend fun createAutoSelector(groupId: Long?): Map<String, Any?> = withContext(Dispatchers.IO) {
+    suspend fun createAutoSelector(groupId: Long?, name: String? = null): Map<String, Any?> = withContext(Dispatchers.IO) {
         val gid = groupId?.takeIf { it > 0L } ?: GroupRepo.all().firstOrNull()?.id ?: defaultGroup().id
         val entity = ProfileManager.addProfile(AutoSelector(), gid)
         // A new selector starts on the group it was made from and carries a name: with an empty list it
         // tracked nothing (so it could never pick a node) and rendered as "no group" on the proxies screen.
         AutoSelectorProfiles.load(entity.id)?.let { selector ->
             selector.gids = arrayListOf(gid)
-            if (selector.name.isBlank()) selector.name = "Auto Selector"
+            if (selector.name.isBlank()) selector.name = name?.trim().orEmpty().ifBlank { "Auto Selector" }
             AutoSelectorProfiles.save(entity.id, selector)
         }
         BboxBridge.scheduleRefresh(immediate = true)
