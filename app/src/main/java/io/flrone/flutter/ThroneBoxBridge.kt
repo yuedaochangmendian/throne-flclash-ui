@@ -51,6 +51,7 @@ import io.flrone.bridge.BboxProfileWire
 import io.flrone.bridge.BboxProfiles
 import io.flrone.bridge.BboxRoutes
 import io.flrone.bridge.BboxScanChunks
+import io.flrone.bridge.BboxSpeedTest
 import io.flrone.bridge.BboxTestSession
 import io.flrone.bridge.BboxWarp
 import io.flrone.bridge.Capabilities
@@ -465,6 +466,25 @@ class ThroneBoxBridge(
                 "groups.testSession.visible" -> {
                     setTestSessionVisible(call.argument<Boolean>("visible") == true)
                     result.success(null)
+                }
+                // The Bettbox speed test, run by the kernel itself (core/mobile/speedtest.go):
+                // start returns at once and the screen polls `speedTest.query` while `running`.
+                // The parameters cross as the kernel's own JSON, so no shape is re-stated here.
+                "speedTest.start" -> result.respond {
+                    BboxSpeedTest.start(call.argument<String>("params").orEmpty())
+                }
+                "speedTest.query" -> result.respond { BboxSpeedTest.query() }
+                "speedTest.cancel" -> result.respond { BboxSpeedTest.cancel() }
+                "speedTest.servers" -> result.respond {
+                    mapOf(
+                        "servers" to BboxSpeedTest.servers(
+                            call.argument<String>("outbound").orEmpty(),
+                            call.argument<String>("search").orEmpty(),
+                        ),
+                    )
+                }
+                "speedTest.outbounds" -> result.respond {
+                    mapOf("outbounds" to BboxSpeedTest.outbounds())
                 }
                 "profiles.list" -> result.success(profilesWire(BboxBridge.state.value))
                 "profiles.select" -> result.respond {

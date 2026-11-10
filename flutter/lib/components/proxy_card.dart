@@ -143,31 +143,22 @@ class ProxyNodeCard extends StatelessWidget {
         json,
       )).toString();
 
-  /// A speed session over this node alone (download, upload or both); the panel that opens shows
-  /// its live curve and the finished ranking, since a card only carries latency.
-  Future<void> _speedTest(BuildContext context, int speedMode) async {
-    final box = context.box;
-    try {
-      final started = await box.groupTestSessionStart({
-        'kind': 2,
-        'profileIds': [node['id']],
-        'speedMode': speedMode,
-      });
-      if (!context.mounted) return;
-      if (started == false) {
-        showAppBanner(context, context.tr('A test is already running'));
-        return;
-      }
-      await openPage(
-        context,
-        SpeedTestPage(
-          profileIds: [(node['id'] as num?)?.toInt() ?? 0],
-          initialSpeedMode: speedMode,
-        ),
-      );
-    } catch (error) {
-      box.report(error);
-    }
+  /// A speed session over this node alone, narrowed to the direction the menu
+  /// entry names. The kernel's tester measures through one outbound of the
+  /// running box, so the node names it and the screen's start button runs it.
+  Future<void> _speedTest(
+    BuildContext context, {
+    bool download = true,
+    bool upload = true,
+  }) async {
+    await openPage(
+      context,
+      SpeedTestPage(
+        outbound: node['tag'].toString(),
+        download: download,
+        upload: upload,
+      ),
+    );
   }
 
   @override
@@ -215,17 +206,17 @@ class ProxyNodeCard extends StatelessWidget {
             PopupMenuItem(
               glyph: AppGlyphs.dataUsage,
               label: context.tr('Download and upload'),
-              onPressed: () => _speedTest(context, 0),
+              onPressed: () => _speedTest(context),
             ),
             PopupMenuItem(
               glyph: AppGlyphs.arrowDown,
               label: context.tr('Download'),
-              onPressed: () => _speedTest(context, 1),
+              onPressed: () => _speedTest(context, download: true, upload: false),
             ),
             PopupMenuItem(
               glyph: AppGlyphs.arrowUp,
               label: context.tr('Upload'),
-              onPressed: () => _speedTest(context, 2),
+              onPressed: () => _speedTest(context, download: false),
             ),
           ],
         ),

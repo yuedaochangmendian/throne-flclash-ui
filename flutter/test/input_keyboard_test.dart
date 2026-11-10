@@ -108,10 +108,10 @@ void main() {
 
   testWidgets('the rule fields keep a keyboard that can paste', (tester) async {
     await mount(tester);
-    openPage(tester.element(find.byType(HomePage)), const RouteEditorPage(id: 1));
+    openPage(tester.element(find.byType(HomePage)), const AdditionalRulesPage(profileId: 1));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Add rule'));
+    await tester.tap(find.byTooltip('Add rule'));
     await tester.pumpAndSettle();
     expectOrdinaryKeyboard(tester, 'add rule');
 

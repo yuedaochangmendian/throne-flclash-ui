@@ -1,3 +1,12 @@
+#### 4.1.0
+
+* **The speed test runs inside the kernel and follows Bettbox.** `core/mobile/speedtest.go` (patched in by `buildScript/core-patch`) runs Bettbox's tester over the instance's own outbounds: Apple mensura, Cloudflare and speedtest.net, h1/h2/h3 transports, N parallel streams for a fixed duration, 20 latency samples with jitter, download/upload loaded latency, RPM, the exit IP and the per-sample curves. Four gobind calls sit behind the existing channel, so the C ABI above them is unchanged and the test measures exactly the hop the selected outbound names
+* **Speed animation is one set of widgets.** The speed screen and the test panel draw the same gauge, phase row and curve, so a single run and a batch run move alike. The screen also gains Bettbox's provider, protocol, duration and stream count pickers
+* **Rules have their own screen.** The profile form no longer folds the rule list inside itself: `additional_rules.dart` lists every route profile's rules with a search field, drag order, an import button, an add button, an empty state, and a per-row edit/delete menu. The profile editor keeps a row that opens it, and the JSON fragment import an earlier simplification dropped is back
+* **The proxy-chain picker no longer throws.** Material's `CheckboxListTile` wants a `Material` ancestor the dialog frame does not provide, so every open failed with `Null check operator used on a null value` over a blank dialog; Prism's own checkbox row replaces it. The picker also skips selectors and chains, which a hop may not be
+* **A rule row's corners follow the section's real rows.** The last rule no longer rounds its bottom against the "Add rule" row beneath it
+* **Delay testing follows FlClash's target rules.** Targets are deduped, the rows FlClash refuses to test (REJECT, REJECT-DROP, PASS, REMATCH) are skipped, and one group's run no longer overlaps another's
+
 #### 4.0.1
 
 * **Proxy latency results now update the active card in place.** The proxy page watches catalog state, so the freshly persisted delay replaces the spinner without selecting another node. Single-node tests keep their own running state instead of inheriting a shared test-session queue, and the hit target shrinks to the delay figure so the rest of the card only changes the selected node.

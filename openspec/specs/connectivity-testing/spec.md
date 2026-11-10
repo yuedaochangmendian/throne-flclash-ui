@@ -51,3 +51,14 @@ The user SHALL be able to configure test concurrency, timeout, and the test URL 
 #### Scenario: Custom test URL
 - **WHEN** the user sets a custom test URL and runs tests
 - **THEN** the tests use the configured URL
+
+### Requirement: Speed test outbound
+The speed test SHALL measure through a named outbound of the running proxy instance, and SHALL refuse the run when that outbound no longer exists rather than measuring the host's own connection.
+
+#### Scenario: Outbound vanished
+- **WHEN** a speed test names an outbound that was deleted or renamed
+- **THEN** the run ends with an explicit error and no speed value is reported
+
+#### Scenario: VPN stopped
+- **WHEN** the user opens the speed screen with no instance running
+- **THEN** the start action is unavailable and the screen says the VPN must be started first

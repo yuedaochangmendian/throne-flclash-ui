@@ -27,3 +27,4 @@
 *.pro eol=lf
 *.toml eol=lf
 *.lock eol=lf
+*.go eol=lf

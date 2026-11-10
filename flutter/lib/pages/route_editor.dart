@@ -81,23 +81,26 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
     }
   }
 
-  Future<void> _editRule(int index) async {
+  /// Pastes a sing-box fragment; route rules join this profile and DNS rules go
+  /// to the DNS object, both checked against the schema first. The sheet says
+  /// where each kind lands, so one entry covers both screens' imports.
+  Future<void> _importRules() async {
     if (widget.id == 0) {
       context.box.report(StateError(context.tr('Save the profile first')));
       return;
     }
-    final saved = await openPage<Json>(
-      context,
-      RuleEditorPage(
-        profileId: widget.id,
-        index: index,
-        rule: index < 0 ? const {} : _rules[index],
-        rules: _rules,
-      ),
+    final box = context.box;
+    final request = await showDialog<RuleImportRequest>(
+      context: context,
+      builder: (_) => RuleImportPage(profileId: widget.id),
     );
-    if (saved == null || !mounted) return;
-    setState(() => _rules = rows(saved['rules']));
-    await _loadRules();
+    if (request == null || !mounted) return;
+    try {
+      await applyRuleImport(box, request, profileId: widget.id);
+      if (mounted) await _loadRules();
+    } catch (error) {
+      box.report(error);
+    }
   }
 
   Future<void> _save() async {
@@ -273,11 +276,56 @@ class _RouteEditorPageState extends State<RouteEditorPage> {
             ),
           )
         else
-          RuleOrderSection(
-            profileId: widget.id,
-            rules: _rules,
-            onChanged: (rules) => setState(() => _rules = rules),
-            onEdit: _editRule,
+          // The rules live on their own screen, as FlClash keeps them: a list
+          // with its own search, drag order and add button, not a fold of the
+          // profile's settings form.
+          generateSection(
+            title: context.tr('Rules'),
+            items: [
+              ListItem(
+                leading: const GlyphIcon(AppGlyphs.rules),
+                title: Text(context.tr('Additional rules')),
+                subtitle: Text(ruleCountSummary(context, _rules)),
+                onTap: widget.id == 0
+                    ? null
+                    : () async {
+                        await openPage(
+                          context,
+                          AdditionalRulesPage(
+                            profileId: widget.id,
+                            profileName: _name.text,
+                          ),
+                        );
+                        if (mounted) await _loadRules();
+                      },
+              ),
+            ],
+            footer: widget.id == 0
+                ? context.tr('Save the profile first')
+                : context.tr(
+                    'Rules run top to bottom; the first match wins.',
+                  ),
+          ),
+        // The list above only edits rules one at a time; a fragment pasted from
+        // a sing-box config is the other way in, and it is the entry the DNS
+        // page's own sheet points at when a route rule shows up there.
+        if (!_isRaw)
+          generateSection(
+            items: [
+              ListItem(
+                leading: const GlyphIcon(AppGlyphs.code),
+                title: Text(context.tr('Import rules from JSON')),
+                subtitle: Text(
+                  context.tr(
+                    'Paste a sing-box fragment carrying route or DNS rules; both are recognised automatically and checked against the schema first.',
+                  ),
+                ),
+                onTap: _importRules,
+              ),
+            ],
+            footer: context.tr(
+              'Imported rules are appended to the list above.',
+            ),
           ),
         if (widget.id > 0)
           generateSection(
