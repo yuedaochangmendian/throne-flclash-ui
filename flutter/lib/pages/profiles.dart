@@ -17,6 +17,7 @@ String remoteProfileLink(Json profile) => Uri(
 
 // The typed-form protocols the manual "New node" flow can start from, in the native editor's order.
 const manualProtocols = <(String, String)>[
+  ('chain', 'Chain Proxy'),
   ('shadowsocks', 'Shadowsocks'), ('vmess', 'VMess'), ('vless', 'VLESS'),
   ('xrayvless', 'VLESS (Xray)'), ('trojan', 'Trojan'), ('hysteria', 'Hysteria'),
   ('tuic', 'TUIC'), ('juicity', 'Juicity'), ('anytls', 'AnyTLS'), ('shadowtls', 'ShadowTLS'),
@@ -236,8 +237,7 @@ class _AddProfileMenuState extends State<AddProfileMenu> {
     setState(() => _busy = true);
     try {
       // The new selector tracks the group the user is looking at, not whichever group happens to be first.
-      final info = json(await context.box.profileAutoSelectorCreate(context.box.selectedProfileId));
-      if (mounted) await openPage(context, AutoSelectorPage(id: (info['id'] as num?)?.toInt() ?? 0));
+      if (mounted) await openPage(context, const AutoSelectorPage(id: 0));
     } catch (error) { if (mounted) context.box.report(error); }
     finally { if (mounted) setState(() => _busy = false); }
   }
@@ -247,7 +247,7 @@ class _AddProfileMenuState extends State<AddProfileMenu> {
     try {
       // A fresh node of the chosen protocol, opened straight into the typed form.
       final info = json(await context.box.profileCreateNode(context.box.selectedProfileId, type));
-      if (mounted) await openForm(context, ProtocolFormPage(id: (info['id'] as num?)?.toInt() ?? 0));
+      if (mounted) await openForm(context, ProtocolFormPage(id: 0, draft: info));
     } catch (error) { if (mounted) context.box.report(error); }
     finally { if (mounted) setState(() => _busy = false); }
   }
@@ -287,8 +287,7 @@ class _AddProfilePageState extends State<AddProfilePage> {
     setState(() => _loading = true);
     try {
       // The new selector tracks the group the user is looking at, not whichever group happens to be first.
-      final info = json(await context.box.profileAutoSelectorCreate(context.box.selectedProfileId));
-      if (mounted) await openPage(context, AutoSelectorPage(id: (info['id'] as num?)?.toInt() ?? 0));
+      if (mounted) await openPage(context, const AutoSelectorPage(id: 0));
     } catch (error) { if (mounted) context.box.report(error); }
     finally { if (mounted) setState(() => _loading = false); }
   }
@@ -297,7 +296,7 @@ class _AddProfilePageState extends State<AddProfilePage> {
     setState(() => _loading = true);
     try {
       final info = json(await context.box.profileCreateNode(context.box.selectedProfileId, type));
-      if (mounted) await openForm(context, ProtocolFormPage(id: (info['id'] as num?)?.toInt() ?? 0));
+      if (mounted) await openForm(context, ProtocolFormPage(id: 0, draft: info));
     } catch (error) { if (mounted) context.box.report(error); }
     finally { if (mounted) setState(() => _loading = false); }
   }
@@ -350,6 +349,8 @@ class _ProfileFormState extends State<ProfileForm> {
   late bool _remote = widget.initial['remote'] == true || _url.text.isNotEmpty;
   late bool _auto = widget.initial['autoUpdate'] != false;
   bool _saving = false, _attempted = false;
+  String? _errorMessage;
+  int? _groupId;
 
   ({String field, String message})? get _issue {
     if (_name.text.trim().isEmpty) return (field: 'name', message: '${context.tr('Name')}: ${context.tr('Required')}');
@@ -363,11 +364,17 @@ class _ProfileFormState extends State<ProfileForm> {
     }
     return null;
   }
-  void _changed(String _) { if (_attempted) setState(() {}); }
+  void _changed(String _) { if (_attempted) setState(() { _errorMessage = null; }); }
 
   @override void dispose() { _name.dispose(); _url.dispose(); _interval.dispose(); super.dispose(); }
   Future<void> _save() async {
     if (_saving) return;
+    final imported = (widget.initial['nodeCount'] as num?)?.toInt();
+    final needsGroup = imported == 1 && context.box.profiles.length > 1;
+    if (needsGroup && _groupId == null) {
+      setState(() { _attempted = true; _errorMessage = context.tr('Target group'); });
+      return;
+    }
     if (_issue != null) { setState(() => _attempted = true); return; }
     final box = context.box;
     setState(() => _saving = true);
@@ -376,6 +383,7 @@ class _ProfileFormState extends State<ProfileForm> {
       final previousInterval = (widget.initial['interval'] as num?)?.toInt() ?? 60;
       await box.profileSave({
         ...widget.initial, 'name': _name.text.trim(), 'url': _remote ? _url.text.trim() : '',
+        if (needsGroup && _groupId != null) 'groupId': _groupId,
         'autoUpdate': _remote && _auto,
         'interval': interval != null && interval >= 15 ? interval : previousInterval >= 15 ? previousInterval : 60,
       });
@@ -386,10 +394,18 @@ class _ProfileFormState extends State<ProfileForm> {
   @override Widget build(BuildContext context) {
     final issue = _attempted ? _issue : null;
     final imported = (widget.initial['nodeCount'] as num?)?.toInt();
+    final groups = context.box.profiles;
+    final needsGroup = imported == 1 && groups.length > 1;
     return FormPage(
       title: widget.initial['id'] == null ? 'Add profile' : 'Edit',
-      saving: _saving, onSave: _save, error: issue?.message,
+      saving: _saving, onSave: _save, error: _errorMessage ?? issue?.message,
       children: [
+        if (needsGroup) generateSection(title: context.tr('Target group'), items: [
+          for (final group in groups)
+            ListItem(title: Text(group['name'].toString()), trailing: _groupId == (group['id'] as num?)?.toInt()
+              ? const GlyphIcon(AppGlyphs.checkCircle) : null,
+              onTap: () => setState(() => _groupId = (group['id'] as num?)?.toInt())),
+        ]),
         generateSection(items: [
           FormRow(title: context.tr('Name'), invalid: issue?.field == 'name',
             trailing: FormRowTextField(controller: _name, hintText: context.tr('Required'),
@@ -402,7 +418,7 @@ class _ProfileFormState extends State<ProfileForm> {
               autocorrect: false, onChanged: _changed)),
         ], footer: _remote
             ? context.tr('This URL must serve a sing-box JSON configuration.')
-            : imported == null ? null : imported == 1
+            : imported == null ? null : imported == 1 && groups.isEmpty
                 ? context.tr('One node will be imported into the Default group.')
                 : '$imported ${context.tr('nodes will be imported.')}'),
         if (_remote) generateSection(items: [

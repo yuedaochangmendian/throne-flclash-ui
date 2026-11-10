@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import '../widgets.dart';
@@ -8,12 +9,13 @@ import '../components/status_panel.dart';
 import '../components/memory_panel.dart';
 import '../components/intranet_panel.dart';
 import '../components/profile_panel.dart';
+import '../components/service_status_panel.dart';
 import '../components/proxy_groups_panel.dart';
 import '../components/system_proxy_panel.dart';
 
 export '../components/dashboard_editor.dart' show DashboardEditor;
 
-const dashboardCards = ['Status', 'Network speed', 'Outbound mode', 'Current profile', 'Proxy groups', 'Memory', 'Intranet IP', 'Network takeover'];
+const dashboardCards = ['Status', 'Network speed', 'Outbound mode', 'Current profile', 'Proxy groups', 'Memory', 'Intranet IP', 'Network takeover', 'Service status'];
 const defaultDashboardCards = ['Status', 'Network speed', 'Outbound mode', 'Current profile', 'Proxy groups'];
 const defaultHiddenCards = ['Memory', 'Intranet IP'];
 
@@ -38,8 +40,11 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Map<String, Widget> _cards() {
     final box = context.box;
+    final hidden = box.preferences['hiddenCards'] as List? ?? defaultHiddenCards;
+    final showServiceStatus = box.capabilities.known && box.capabilities.of('serviceStatus') && !hidden.contains('Service status');
     return <String, Widget>{
       'Status': const StatusPanel(),
+      if (showServiceStatus) 'Service status': const ServiceStatusPanel(),
       if (box.capabilities.of('lanProxy')) 'Intranet IP': const IntranetPanel(),
       'Network speed': const _SpeedPanel(),
       if ((box.dashboard['modes'] as List? ?? []).isNotEmpty) 'Outbound mode': const _ModePanel(),
@@ -96,9 +101,7 @@ class _DashboardPageState extends State<DashboardPage> {
             else SliverPadding(padding: padding, sliver: SliverToBoxAdapter(child: Column(spacing: gap, children: [
               if (box.remote) ListItem(title: Text(box.dashboard['remote'].toString()), subtitle: Text(context.tr('Remote control')),
                 trailing: TextButton(onPressed: () => box.remoteDisconnect(), child: Text(context.tr('Disconnect')))),
-              if (box.applyRequired != null) ListItem(title: Text(context.tr('Restart required')), trailing: TextButton(
-                onPressed: () async { if (await box.serviceReload(restart: true)) box.clearApplyRequired(); },
-                child: Text(context.tr('Apply')))),
+              if (box.running && box.applyRequired != null) const _RestartHint(),
               for (final card in shown) RepaintBoundary(key: _keyOf(card), child: cards[card]),
               for (final note in rows(box.dashboard['deprecated'])) ListItem(title: Text(note['message'].toString()),
                 onTap: note['url'] == null ? null : () => box.openUrl(note['url'])),
@@ -110,10 +113,59 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 }
 
+/// Shows the "restart required" hint for three seconds when a config change is
+/// applied while the service is running, then collapses away. The underlying
+/// [BoxController.applyRequired] flag is left set so the configuration page
+/// keeps an explicit Apply entry even after the hint disappears.
+class _RestartHint extends StatefulWidget {
+  const _RestartHint();
+  @override State<_RestartHint> createState() => _RestartHintState();
+}
+
+class _RestartHintState extends State<_RestartHint> {
+  bool _visible = true;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer(const Duration(seconds: 3), () {
+      if (mounted) setState(() => _visible = false);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final box = context.box;
+    return AnimatedSize(
+      duration: midDuration,
+      curve: Curves.easeOutCubic,
+      alignment: Alignment.topCenter,
+      child: _visible
+          ? ListItem(
+              title: Text(context.tr('Restart required')),
+              trailing: TextButton(
+                onPressed: () async {
+                  if (await box.serviceReload(restart: true)) box.clearApplyRequired();
+                },
+                child: Text(context.tr('Apply')),
+              ),
+            )
+          : const SizedBox(width: double.infinity, height: 0),
+    );
+  }
+}
+
 // The phone layout of FlClash's current dashboard/widgets/traffic.dart.
 class _SpeedPanel extends StatelessWidget {
   const _SpeedPanel();
-  @override Widget build(BuildContext context) => BoxPanel(child: Column(children: [
+  @override Widget build(BuildContext context) => BoxPanel(onTap: () => openForm(context, const SpeedTestPage()), child: Column(children: [
     const PanelTitle('Network speed', AppGlyphs.speed),
     const SizedBox(height: 12),
     Row(spacing: 10, children: [for (final upload in [true, false]) Expanded(child: _SpeedTile(upload: upload))]),

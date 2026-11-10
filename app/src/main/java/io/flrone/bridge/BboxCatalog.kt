@@ -70,7 +70,7 @@ object BboxCatalog {
     fun load(): Catalog {
         val selected = DataStore.selectedProxy
         val entities = ArrayList<Pair<ProxyGroup, List<ProxyEntity>>>()
-        val groups = GroupRepo.all()
+        val groups = GroupRepo.rawGroups()
         for (group in groups) {
             entities += group to runCatching { ProfileManager.members(group.id) }.getOrDefault(emptyList())
         }
@@ -82,6 +82,7 @@ object BboxCatalog {
                 tag = group.displayName(),
                 type = if (group.isSubscription) "subscription" else "group",
                 selected = selectedName,
+                selectedId = members.firstOrNull { it.id == selected }?.id ?: 0L,
                 selectable = true,
                 nodes = members.map { node(it, labels) },
             )

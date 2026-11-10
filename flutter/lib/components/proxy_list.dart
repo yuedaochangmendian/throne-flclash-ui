@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart' show listEquals, setEquals;
 import '../widgets.dart';
 import 'group_monogram.dart';
 import 'proxy_card.dart';
+import 'proxy_motion.dart';
 
 // Slivers, pinned headers and folding motion adapted from FlClash v0.9.2
 // views/proxies/list.dart. Nodes and actions come from the sing-box session.
@@ -93,12 +94,15 @@ class _ProxyListViewState extends State<ProxyListView> {
   void _locate(String name) {
     if (!_controller.hasClients) return;
     final group = widget.groups.firstWhere((group) => group.name == name);
-    final index = group.nodes.indexWhere((node) => node['tag'] == group.group['selected']);
+    final selectedId = (group.group['selectedId'] as num?)?.toInt();
+    final index = selectedId == null
+        ? group.nodes.indexWhere((node) => node['tag'] == group.group['selected'])
+        : group.nodes.indexWhere((node) => (node['id'] as num?)?.toInt() == selectedId);
     if (index < 0) return;
     final extent = ProxyCardMetrics.of(context, context.box.preferences).rowExtent;
     final offset = _offsetOf(name) + (index ~/ _columns) * extent;
     _controller.animateTo(offset.clamp(_controller.position.minScrollExtent, _controller.position.maxScrollExtent),
-      duration: context.motionDuration(const Duration(milliseconds: 300)), curve: Curves.easeOutCubic);
+      duration: context.motionDuration(commonDuration), curve: proxyMotionCurve);
   }
 
   @override Widget build(BuildContext context) => LayoutBuilder(builder: (context, constraints) {

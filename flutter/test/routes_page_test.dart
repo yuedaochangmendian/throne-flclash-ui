@@ -1,8 +1,10 @@
 import 'dart:async';
+
 import 'package:flrone/main.dart';
 import 'package:flrone/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+
 import 'support/errors.dart';
 
 /// A rule as BboxRoutes.ruleToMap emits it: metadata, the string fields, every list field and the booleans.
@@ -17,19 +19,49 @@ Map<String, Object?> rule({
   List<String> processName = const [],
   List<String> networkType = const [],
 }) => {
-  'name': name, 'type': type, 'disabled': false, 'action': action, 'outbound_id': outboundId,
-  'ip_version': '', 'network': '', 'protocol': '', 'reject_method': '', 'override_address': '',
-  'override_port': '', 'tls_fragment_fallback_delay': '', 'tls_spoof': '', 'tls_spoof_method': '',
+  'name': name,
+  'type': type,
+  'disabled': false,
+  'action': action,
+  'outbound_id': outboundId,
+  'ip_version': '',
+  'network': '',
+  'protocol': '',
+  'reject_method': '',
+  'override_address': '',
+  'override_port': '',
+  'tls_fragment_fallback_delay': '',
+  'tls_spoof': '',
+  'tls_spoof_method': '',
   'strategy': '',
-  'inbound': <String>[], 'domain': domain, 'domain_suffix': domainSuffix,
-  'domain_keyword': <String>[], 'domain_regex': <String>[], 'source_ip_cidr': <String>[],
-  'ip_cidr': ipCidr, 'source_port': <String>[], 'source_port_range': <String>[], 'port': <String>[],
-  'port_range': <String>[], 'process_name': processName, 'process_path': <String>[],
-  'process_path_regex': <String>[], 'package_name': <String>[], 'package_name_regex': <String>[],
-  'network_type': networkType, 'wifi_ssid': <String>[], 'wifi_bssid': <String>[],
-  'rule_set': <String>[], 'sniffers': <String>[],
-  'source_ip_is_private': false, 'ip_is_private': false, 'invert': false, 'no_drop': false,
-  'sniff_override_dest': false, 'network_is_expensive': false, 'tls_fragment': false,
+  'inbound': <String>[],
+  'domain': domain,
+  'domain_suffix': domainSuffix,
+  'domain_keyword': <String>[],
+  'domain_regex': <String>[],
+  'source_ip_cidr': <String>[],
+  'ip_cidr': ipCidr,
+  'source_port': <String>[],
+  'source_port_range': <String>[],
+  'port': <String>[],
+  'port_range': <String>[],
+  'process_name': processName,
+  'process_path': <String>[],
+  'process_path_regex': <String>[],
+  'package_name': <String>[],
+  'package_name_regex': <String>[],
+  'network_type': networkType,
+  'wifi_ssid': <String>[],
+  'wifi_bssid': <String>[],
+  'rule_set': <String>[],
+  'sniffers': <String>[],
+  'source_ip_is_private': false,
+  'ip_is_private': false,
+  'invert': false,
+  'no_drop': false,
+  'sniff_override_dest': false,
+  'network_is_expensive': false,
+  'tls_fragment': false,
   'tls_record_fragment': false,
 };
 
@@ -50,7 +82,8 @@ void main() {
     events = StreamController<dynamic>.broadcast();
     dataPathCalls = <String>[];
     savedRules = <Map<String, Object?>>[];
-    final messenger = TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
+    final messenger =
+        TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(channel, (call) async {
       switch (call.method) {
         // The host cannot answer the data plane's one channel call (older host,
@@ -60,21 +93,37 @@ void main() {
           return null;
         case 'ready':
           return {
-            'version': 'test', 'coreVersion': 'test', 'preferences': {'locale': 'en'},
+            'version': 'test',
+            'coreVersion': 'test',
+            'preferences': {'locale': 'en'},
             'dashboard': {'status': 'Stopped'},
           };
         case 'routes.get':
           return {
-            'id': 1, 'name': 'Default', 'defaultOutbound': 'direct', 'isRemote': false,
-            'remoteUrl': '', 'autoUpdate': false, 'isRaw': false, 'endpointIds': <int>[],
-            'rules': '', 'ruleCount': rules.length,
+            'id': 1,
+            'name': 'Default',
+            'defaultOutbound': 'direct',
+            'isRemote': false,
+            'remoteUrl': '',
+            'autoUpdate': false,
+            'isRaw': false,
+            'endpointIds': <int>[],
+            'rules': '',
+            'ruleCount': rules.length,
           };
         case 'routes.list':
           return {
             'currentId': 1,
             'profiles': [
-              {'id': 1, 'name': 'Default', 'current': true, 'isRemote': false, 'isRaw': false,
-                'ruleCount': rules.length, 'simpleRuleCount': 0},
+              {
+                'id': 1,
+                'name': 'Default',
+                'current': true,
+                'isRemote': false,
+                'isRaw': false,
+                'ruleCount': rules.length,
+                'simpleRuleCount': 0,
+              },
             ],
           };
         case 'routes.rules':
@@ -99,61 +148,87 @@ void main() {
     });
   }
 
-  testWidgets('the route profile editor and its rule editor render without exceptions', (tester) async {
+  testWidgets(
+    'the route profile editor and its rule editor render without exceptions',
+    (tester) async {
+      reportFlutterErrors();
+      rules = [
+        rule(name: 'Direct LAN', domainSuffix: ['.lan']),
+        rule(
+          name: 'Simple',
+          type: 'simple_address_proxy',
+          outboundId: -1,
+          domain: ['example.org'],
+        ),
+        rule(
+          name: 'Simple warp',
+          type: 'simple_process_name_warp_bypass',
+          outboundId: -5,
+          processName: ['com.example'],
+        ),
+      ];
+      await mount(tester);
+      openPage(
+        tester.element(find.byType(HomePage)),
+        const RouteEditorPage(id: 1),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Default'), findsWidgets);
+      expect(find.text('Direct LAN'), findsOneWidget);
+      expect(find.text('Simple'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+
+      // Editing an existing plain rule.
+      await tester.tap(find.text('Direct LAN'));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit rule'), findsWidgets);
+      expect(tester.takeException(), isNull);
+      Navigator.of(tester.element(find.text('Edit rule').first)).pop();
+      await tester.pumpAndSettle();
+
+      // Editing a simple rule (type token carries the action suffix).
+      await tester.tap(find.text('Simple'));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit rule'), findsWidgets);
+      expect(tester.takeException(), isNull);
+      Navigator.of(tester.element(find.text('Edit rule').first)).pop();
+      await tester.pumpAndSettle();
+
+      // Editing a simple rule whose action is warp_bypass.
+      await tester.ensureVisible(find.text('Simple warp'));
+      await tester.tap(find.text('Simple warp'));
+      await tester.pumpAndSettle();
+      expect(find.text('Edit rule'), findsWidgets);
+      expect(tester.takeException(), isNull);
+      Navigator.of(tester.element(find.text('Edit rule').first)).pop();
+      await tester.pumpAndSettle();
+
+      // Adding a new rule starts from an empty draft.
+      await tester.tap(find.text('Add rule'));
+      await tester.pumpAndSettle();
+      expect(find.text('Add rule'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
+
+  testWidgets('a rule enabled state is saved and shown immediately', (
+    tester,
+  ) async {
     reportFlutterErrors();
     rules = [
-      rule(name: 'Direct LAN', domainSuffix: ['.lan']),
-      rule(name: 'Simple', type: 'simple_address_proxy', outboundId: -1, domain: ['example.org']),
-      rule(name: 'Simple warp', type: 'simple_process_name_warp_bypass', outboundId: -5,
-        processName: ['com.example']),
+      rule(name: 'Direct LAN', domainSuffix: ['.lan'])..['disabled'] = true,
     ];
     await mount(tester);
-    openPage(tester.element(find.byType(HomePage)), const RouteEditorPage(id: 1));
+    openPage(
+      tester.element(find.byType(HomePage)),
+      const RouteEditorPage(id: 1),
+    );
     await tester.pumpAndSettle();
-    expect(find.text('Default'), findsWidgets);
-    expect(find.text('Direct LAN'), findsOneWidget);
-    expect(find.text('Simple'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-
-    // Editing an existing plain rule.
-    await tester.tap(find.text('Direct LAN'));
-    await tester.pumpAndSettle();
-    expect(find.text('Edit rule'), findsWidgets);
-    expect(tester.takeException(), isNull);
-    Navigator.of(tester.element(find.text('Edit rule').first)).pop();
-    await tester.pumpAndSettle();
-
-    // Editing a simple rule (type token carries the action suffix).
-    await tester.tap(find.text('Simple'));
-    await tester.pumpAndSettle();
-    expect(find.text('Edit rule'), findsWidgets);
-    expect(tester.takeException(), isNull);
-    Navigator.of(tester.element(find.text('Edit rule').first)).pop();
-    await tester.pumpAndSettle();
-
-    // Editing a simple rule whose action is warp_bypass.
-    await tester.tap(find.text('Simple warp'));
-    await tester.pumpAndSettle();
-    expect(find.text('Edit rule'), findsWidgets);
-    expect(tester.takeException(), isNull);
-    Navigator.of(tester.element(find.text('Edit rule').first)).pop();
-    await tester.pumpAndSettle();
-
-    // Adding a new rule starts from an empty draft.
-    await tester.tap(find.text('Add rule'));
-    await tester.pumpAndSettle();
-    expect(find.text('Add rule'), findsWidgets);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('a rule enabled state is saved and shown immediately', (tester) async {
-    reportFlutterErrors();
-    rules = [rule(name: 'Direct LAN', domainSuffix: ['.lan'])..['disabled'] = true];
-    await mount(tester);
-    openPage(tester.element(find.byType(HomePage)), const RouteEditorPage(id: 1));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('Disabled'), findsOneWidget,
-      reason: 'the rule list must show the saved disabled state');
+    expect(
+      find.textContaining('Disabled'),
+      findsOneWidget,
+      reason: 'the rule list must show the saved disabled state',
+    );
     await tester.tap(find.text('Direct LAN'));
     await tester.pumpAndSettle();
     expect(find.text('Enabled'), findsWidgets);
@@ -167,19 +242,25 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('the route list falls back to the channel when data.path is unavailable', (tester) async {
-    reportFlutterErrors();
-    rules = [];
-    await mount(tester);
-    openPage(tester.element(find.byType(HomePage)), const RouteProfilesPage());
-    await tester.pumpAndSettle();
+  testWidgets(
+    'the route list falls back to the channel when data.path is unavailable',
+    (tester) async {
+      reportFlutterErrors();
+      rules = [];
+      await mount(tester);
+      openPage(
+        tester.element(find.byType(HomePage)),
+        const RouteProfilesPage(),
+      );
+      await tester.pumpAndSettle();
 
-    // data.path was asked once, answered null, and the list still rendered from
-    // routes.list — the screen must not see the difference.
-    expect(dataPathCalls, isNotEmpty);
-    expect(find.text('Default'), findsWidgets);
-    expect(tester.takeException(), isNull);
-  });
+      // data.path was asked once, answered null, and the list still rendered from
+      // routes.list — the screen must not see the difference.
+      expect(dataPathCalls, isNotEmpty);
+      expect(find.text('Default'), findsWidgets);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
   // The scalar rule fields are fixed menus with the legal values Throne for
   // Android ships in arrays.xml, not free-text rows. These are pure helpers,
@@ -187,31 +268,65 @@ void main() {
   group('rule enum options (Throne for Android parity)', () {
     test('ip_version stores 4/6, not the old ipv4/ipv6 hints', () {
       expect(ruleEnumValues['ip_version']!.map((o) => o.value), ['', '4', '6']);
-      expect(ruleEnumValues['ip_version']!.map((o) => o.label), ['Any', 'IPv4', 'IPv6']);
+      expect(ruleEnumValues['ip_version']!.map((o) => o.label), [
+        'Any',
+        'IPv4',
+        'IPv6',
+      ]);
       expect(ruleEnumValues['ip_version']!.length, 3);
     });
 
     test('network and protocol carry the full upstream value sets', () {
-      expect(ruleEnumValues['network']!.map((o) => o.value), ['', 'tcp', 'udp', 'icmp']);
+      expect(ruleEnumValues['network']!.map((o) => o.value), [
+        '',
+        'tcp',
+        'udp',
+        'icmp',
+      ]);
       expect(ruleEnumValues['protocol']!.map((o) => o.value), [
-        '', 'http', 'tls', 'quic', 'stun', 'dns', 'bittorrent', 'dtls', 'ssh',
-        'rdp', 'ntp',
+        '',
+        'http',
+        'tls',
+        'quic',
+        'stun',
+        'dns',
+        'bittorrent',
+        'dtls',
+        'ssh',
+        'rdp',
+        'ntp',
       ]);
     });
 
     test('reject_method and strategy keep an empty first (unset) option', () {
       expect(ruleEnumValues['reject_method']!.first.value, '');
-      expect(ruleEnumValues['reject_method']!.map((o) => o.value).skip(1).toList(),
-          ['default', 'drop', 'reply']);
+      expect(
+        ruleEnumValues['reject_method']!.map((o) => o.value).skip(1).toList(),
+        ['default', 'drop', 'reply'],
+      );
       expect(ruleEnumValues['strategy']!.first.value, '');
-      expect(ruleEnumValues['strategy']!.map((o) => o.value).skip(1).toList(),
-          ['ipv4_only', 'ipv6_only', 'prefer_ipv4', 'prefer_ipv6']);
+      expect(ruleEnumValues['strategy']!.map((o) => o.value).skip(1).toList(), [
+        'ipv4_only',
+        'ipv6_only',
+        'prefer_ipv4',
+        'prefer_ipv6',
+      ]);
     });
 
     test('action keeps bypass and adds hijack-dns', () {
       final values = ruleEnumValues['action']!.map((o) => o.value).toList();
-      expect(values, containsAll(<String>['route', 'reject', 'hijack-dns',
-        'sniff', 'resolve', 'route-options', 'bypass']));
+      expect(
+        values,
+        containsAll(<String>[
+          'route',
+          'reject',
+          'hijack-dns',
+          'sniff',
+          'resolve',
+          'route-options',
+          'bypass',
+        ]),
+      );
     });
 
     test('an unknown stored value is appended, not dropped (ensureValue)', () {
@@ -220,7 +335,11 @@ void main() {
       expect(options.last.label, 'ipv4');
       expect(ruleEnumLabel('ip_version', 'ipv4'), 'ipv4');
       // A known value is never duplicated into the option list.
-      expect(ruleEnumOptions('ip_version', '4').map((o) => o.value), ['', '4', '6']);
+      expect(ruleEnumOptions('ip_version', '4').map((o) => o.value), [
+        '',
+        '4',
+        '6',
+      ]);
       // An unknown field has no presets, but ensureValue still keeps its
       // current value selectable instead of silently dropping it.
       final unknown = ruleEnumOptions('unknown_field', 'x');
@@ -237,38 +356,60 @@ void main() {
       expect(ruleEnumLabel('strategy', ''), 'Default');
     });
 
-    test('selecting the unset option removes the key instead of storing ""', () {
-      final original = <String, dynamic>{'name': 'r', 'ip_version': '4', 'action': 'route'};
-      final cleared = ruleEnumApply(original, 'ip_version', '');
-      expect(cleared.containsKey('ip_version'), isFalse);
-      expect(cleared['name'], 'r');
-      expect(cleared['action'], 'route');
-      expect(original['ip_version'], '4', reason: 'input map is not mutated');
-      final set = ruleEnumApply(original, 'ip_version', '6');
-      expect(set['ip_version'], '6');
-      // A previously-unset field can be added again.
-      expect(ruleEnumApply(cleared, 'ip_version', '6')['ip_version'], '6');
-    });
+    test(
+      'selecting the unset option removes the key instead of storing ""',
+      () {
+        final original = <String, dynamic>{
+          'name': 'r',
+          'ip_version': '4',
+          'action': 'route',
+        };
+        final cleared = ruleEnumApply(original, 'ip_version', '');
+        expect(cleared.containsKey('ip_version'), isFalse);
+        expect(cleared['name'], 'r');
+        expect(cleared['action'], 'route');
+        expect(original['ip_version'], '4', reason: 'input map is not mutated');
+        final set = ruleEnumApply(original, 'ip_version', '6');
+        expect(set['ip_version'], '6');
+        // A previously-unset field can be added again.
+        expect(ruleEnumApply(cleared, 'ip_version', '6')['ip_version'], '6');
+      },
+    );
   });
 
   testWidgets('a legacy ip_version still renders', (tester) async {
     reportFlutterErrors();
-    rules = [{...rule(name: 'Legacy'), 'ip_version': 'ipv4'}];
+    rules = [
+      {...rule(name: 'Legacy'), 'ip_version': 'ipv4'},
+    ];
     await mount(tester);
-    openPage(tester.element(find.byType(HomePage)), const RouteEditorPage(id: 1));
+    openPage(
+      tester.element(find.byType(HomePage)),
+      const RouteEditorPage(id: 1),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Legacy'));
     await tester.pumpAndSettle();
     expect(find.text('Edit rule'), findsWidgets);
-    expect(tester.takeException(), isNull,
-      reason: 'ensureValue must keep an out-of-preset value renderable');
+    expect(
+      tester.takeException(),
+      isNull,
+      reason: 'ensureValue must keep an out-of-preset value renderable',
+    );
   });
 
-  testWidgets('a custom rule folds the long tail behind Advanced', (tester) async {
+  testWidgets('a custom rule folds the long tail behind Advanced', (
+    tester,
+  ) async {
     reportFlutterErrors();
-    rules = [{...rule(name: 'Custom one')}];
+    rules = [
+      {...rule(name: 'Custom one')},
+    ];
     await mount(tester);
-    openPage(tester.element(find.byType(HomePage)), const RouteEditorPage(id: 1));
+    openPage(
+      tester.element(find.byType(HomePage)),
+      const RouteEditorPage(id: 1),
+    );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Custom one'));
     await tester.pumpAndSettle();
@@ -288,66 +429,74 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('a list member is edited one value per line, as the native editor does', (tester) async {
-    reportFlutterErrors();
-    rules = [rule(name: 'Ads', domainSuffix: ['ads.example'])];
-    await mount(tester);
-    openPage(tester.element(find.byType(HomePage)), const RouteEditorPage(id: 1));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Ads'));
-    await tester.pumpAndSettle();
+  testWidgets(
+    'a list member is edited one value per line, as the native editor does',
+    (tester) async {
+      reportFlutterErrors();
+      rules = [
+        rule(name: 'Ads', domainSuffix: ['ads.example']),
+      ];
+      await mount(tester);
+      openPage(
+        tester.element(find.byType(HomePage)),
+        const RouteEditorPage(id: 1),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Ads'));
+      await tester.pumpAndSettle();
 
-    // The row shows what is set; the value is not a comma-joined single line any more.
-    expect(find.text('ads.example'), findsOneWidget);
-    // A field with nothing set says so, as the native rows do.
-    expect(find.text('Not set'), findsWidgets);
+      // The row shows what is set; the value is not a comma-joined single line any more.
+      expect(find.text('ads.example'), findsOneWidget);
+      // A field with nothing set says so, as the native rows do.
+      expect(find.text('Not set'), findsWidgets);
 
-    await tester.tap(find.text('Domain suffix'));
-    await tester.pumpAndSettle();
-    // The dialog carries the hint the native one shows above its field.
-    expect(find.textContaining('google.com matches google.com and its subdomains'), findsOneWidget);
+      await tester.tap(find.text('Domain suffix'));
+      await tester.pumpAndSettle();
+      // The dialog carries the hint the native one shows above its field.
+      expect(
+        find.textContaining('google.com matches google.com and its subdomains'),
+        findsOneWidget,
+      );
 
-    // The dialog's field is the last one built; the page behind keeps its own text fields.
-    await tester.enterText(find.byType(TextField).last, 'a.com\nb.com\n\n  c.com  ');
-    await tester.tap(find.text('OK'));
-    await tester.pumpAndSettle();
+      // The dialog's field is the last one built; the page behind keeps its own text fields.
+      await tester.enterText(
+        find.byType(TextField).last,
+        'a.com\nb.com\n\n  c.com  ',
+      );
+      await tester.tap(find.text('OK'));
+      await tester.pumpAndSettle();
 
-    // One value per line, blank lines dropped and each line trimmed.
-    expect(find.text('a.com, b.com, c.com'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-  });
+      // One value per line, blank lines dropped and each line trimmed.
+      expect(find.text('a.com, b.com, c.com'), findsOneWidget);
+      expect(tester.takeException(), isNull);
+    },
+  );
 
-  testWidgets('the import page previews a fragment and adds its route rules', (tester) async {
+  testWidgets('the route editor keeps only the core fields', (tester) async {
     reportFlutterErrors();
     rules = [];
     await mount(tester);
-    openPage(tester.element(find.byType(HomePage)), const RouteEditorPage(id: 1));
+    openPage(
+      tester.element(find.byType(HomePage)),
+      const RouteEditorPage(id: 1),
+    );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Import rules from JSON'));
-    await tester.pumpAndSettle();
-    expect(find.text('Import rules from JSON'), findsWidgets);
-    expect(find.textContaining('Paste a sing-box fragment'), findsWidgets);
-    expect(find.text('Rule kind'), findsNothing);
+    // Core profile fields and the rule list survive the simplification.
+    expect(find.text('Name'), findsOneWidget);
+    expect(find.text('Default outbound'), findsOneWidget);
+    expect(find.text('Remote'), findsWidgets);
+    expect(find.text('Add rule'), findsOneWidget);
+    expect(find.text('Use this profile'), findsOneWidget);
 
-    final editor = find.byKey(const Key('rule-import-field'));
-    await tester.enterText(editor, '{"domain_suffix": ["a.com"], "outbound": "proxy"}');
-    // The preview parses after the debounce.
-    await tester.pump(const Duration(milliseconds: 400));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Route rules to add'), findsOneWidget);
-    expect(find.text('DNS rules to add'), findsOneWidget);
-    expect(tester.takeException(), isNull);
-
-    await tester.tap(find.text('Import').last);
-    await tester.pumpAndSettle();
-
-    // The rule reached the profile through routes.saveRules, in the editor's own shape.
-    expect(savedRules, hasLength(1));
-    expect(savedRules.single['domain_suffix'], ['a.com']);
-    expect(savedRules.single['outbound_id'], -1);
-    expect(savedRules.single['type'], 'custom');
+    // Low-frequency "Rule actions" and the endpoint-id field are gone, and the
+    // remote profile section is deliberately kept.
+    expect(find.text('Rule actions'), findsNothing);
+    expect(find.text('Import rules from JSON'), findsNothing);
+    expect(find.text('Batch add simple rules'), findsNothing);
+    expect(find.text('Restore default rules'), findsNothing);
+    expect(find.text('Endpoint ids'), findsNothing);
+    expect(find.text('Remote profile'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 }

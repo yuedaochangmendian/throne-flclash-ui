@@ -149,6 +149,11 @@ object BboxEgress {
     /** When [cached] was measured; 0 when there is none. A served-from-cache answer carries its real time, so the card's "last checked" stays honest. */
     fun cachedAt(direct: Boolean = false): Long = if (direct) cachedDirectAt else cachedAt
 
+    /** A manual IP-card tap counts as a fresh check even when the address is unchanged. */
+    fun touch(direct: Boolean = false) {
+        if (direct) cachedDirectAt = System.currentTimeMillis() else cachedAt = System.currentTimeMillis()
+    }
+
     /**
      * Probes the egress, through the mixed inbound unless [direct]. Returns the cached answer while it is fresh unless
      * [force]; a failure keeps the previous answer and reports the error through [onError].

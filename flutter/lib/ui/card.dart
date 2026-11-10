@@ -119,6 +119,7 @@ class Card extends StatelessWidget {
     this.statesController,
     this.inert = false,
     this.fillsSelection = false,
+    this.claimsChildPresses = true,
     required this.child,
   }) : isSelected = isSelected ?? false;
 
@@ -131,6 +132,7 @@ class Card extends StatelessWidget {
   final bool isSelected;
   final bool fillsSelection;
   final bool isError;
+  final bool claimsChildPresses;
   final void Function()? onPressed;
   final Widget child;
   final EdgeInsets? padding;

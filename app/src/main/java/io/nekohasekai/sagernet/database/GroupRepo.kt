@@ -43,6 +43,9 @@ object GroupRepo {
     // ------------------------------------------------------------------------------------------------ reads
 
     /** Every group in tab order; an empty table first gets the Default group. */
+    /** The groups as stored, without creating the Default group of an empty table. */
+    fun rawGroups(): List<ProxyGroup> = dao.allGroups()
+
     fun all(): List<ProxyGroup> {
         val groups = dao.allGroups()
         if (groups.isNotEmpty()) return groups

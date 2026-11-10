@@ -5,8 +5,6 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.Canvas
-import android.graphics.drawable.AdaptiveIconDrawable
-import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.ktx.app
@@ -86,11 +84,10 @@ object BboxApps {
         }.onFailure { Logs.w(it) }.getOrNull()
     }
 
-    /** Flutter gets a plain PNG: adaptive icons are flattened onto white so their mask is never transparent. */
+    /** Flutter gets the launcher icon's own transparency, without a white or masked surround. */
     private fun Drawable.toBitmap(size: Int = 96): Bitmap {
         val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
         val canvas = Canvas(bitmap)
-        canvas.drawColor(0xFFFFFFFF.toInt())
         setBounds(0, 0, size, size)
         draw(canvas)
         return bitmap

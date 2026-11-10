@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:collection/collection.dart';
 import '../widgets.dart';
+import 'proxy_motion.dart';
 import 'package:flutter/foundation.dart' show ValueListenable;
 
 const _stripInset = 16.0;
@@ -101,8 +102,8 @@ class _GroupTabsState extends State<GroupTabs> {
     } else {
       position.animateTo(
         target,
-        duration: commonDuration,
-        curve: Curves.easeOutCubic,
+        duration: context.motionDuration(commonDuration),
+        curve: proxyMotionCurve,
       );
     }
   }
@@ -393,7 +394,8 @@ class _GroupTabState extends State<_GroupTab> {
       padding: const EdgeInsets.symmetric(horizontal: _tabPadding),
       onPressed: widget.onPressed,
       child: AnimatedDefaultTextStyle(
-        duration: midDuration,
+        duration: context.motionDuration(commonDuration),
+        curve: proxyMotionCurve,
         style: AppTextStyle.subheadline
             .of(context, emphasized: true)
             .copyWith(

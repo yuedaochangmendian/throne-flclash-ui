@@ -141,6 +141,7 @@ class FormRowTextField extends StatelessWidget {
   final bool enableSuggestions;
   final ValueChanged<String>? onChanged;
   final ValueChanged<String>? onFieldSubmitted;
+  final bool showCursor;
 
   const FormRowTextField({
     super.key,
@@ -157,6 +158,7 @@ class FormRowTextField extends StatelessWidget {
     this.enableSuggestions = true,
     this.onChanged,
     this.onFieldSubmitted,
+    this.showCursor = true,
   });
 
   @override
@@ -193,6 +195,7 @@ class FormRowTextField extends StatelessWidget {
       onFieldSubmitted: onFieldSubmitted,
       textAlign: TextAlign.end,
       cursorWidth: _cursorWidth,
+      showCursor: showCursor,
       decoration: InputDecoration.collapsed(
         border: material.InputBorder.none,
         hintText: null,

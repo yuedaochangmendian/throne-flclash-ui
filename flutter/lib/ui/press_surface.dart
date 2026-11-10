@@ -38,6 +38,7 @@ class PressSurface extends StatefulWidget {
     this.onKeyEvent,
     this.childFills = false,
     this.clipsChild = false,
+    this.claimsChildPresses = true,
     required this.child,
   });
 
@@ -76,6 +77,7 @@ class PressSurface extends StatefulWidget {
   final FocusOnKeyEventCallback? onKeyEvent;
   final bool childFills;
   final bool clipsChild;
+  final bool claimsChildPresses;
   final Widget child;
 
   @override
@@ -427,6 +429,7 @@ class _PressSurfaceState extends State<PressSurface>
       selected: widget.selected,
       childFills: widget.childFills,
       clipsChild: widget.clipsChild,
+      claimsChildPresses: widget.claimsChildPresses,
       onTap: _activate,
       onPointerDown: _enabled ? _handlePointerDown : null,
       onPointerEnd: _handlePointerEnd,

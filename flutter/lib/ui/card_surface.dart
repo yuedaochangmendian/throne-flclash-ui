@@ -41,6 +41,7 @@ class CardSurface extends SingleChildRenderObjectWidget {
     required this.selected,
     this.childFills = false,
     this.clipsChild = false,
+    this.claimsChildPresses = true,
     this.onTap,
     this.onPointerDown,
     this.onPointerEnd,
@@ -77,6 +78,8 @@ class CardSurface extends SingleChildRenderObjectWidget {
   /// Lays the child out to fill the surface, for a background behind it.
   final bool childFills;
   final bool clipsChild;
+  /// Descendant press recognizers keep their own tap instead of the card's.
+  final bool claimsChildPresses;
   final VoidCallback? onTap;
   final ValueChanged<PointerDownEvent>? onPointerDown;
   final ValueChanged<PointerEvent>? onPointerEnd;
@@ -104,6 +107,7 @@ class CardSurface extends SingleChildRenderObjectWidget {
           selected: selected,
           childFills: childFills,
           clipsChild: clipsChild,
+          claimsChildPresses: claimsChildPresses,
           textDirection: Directionality.of(context),
         )
         ..onTap = onTap
@@ -136,6 +140,7 @@ class CardSurface extends SingleChildRenderObjectWidget {
       ..selected = selected
       ..childFills = childFills
       ..clipsChild = clipsChild
+      ..claimsChildPresses = claimsChildPresses
       ..textDirection = Directionality.of(context)
       ..onTap = onTap
       ..onPointerDown = onPointerDown
@@ -166,6 +171,7 @@ class RenderCardSurface extends RenderShiftedBox
     required bool selected,
     required bool childFills,
     required bool clipsChild,
+    required bool claimsChildPresses,
     required TextDirection textDirection,
   }) : _shape = shape,
        _fill = fill,
@@ -185,9 +191,10 @@ class RenderCardSurface extends RenderShiftedBox
        _interactive = interactive,
        _selected = selected,
        _childFills = childFills,
-       _clipsChild = clipsChild,
-       _textDirection = textDirection,
-       _tinting = look == PressLook.tint && pressed.value > 0,
+        _claimsChildPresses = claimsChildPresses,
+        _clipsChild = clipsChild,
+        _textDirection = textDirection,
+        _tinting = look == PressLook.tint && pressed.value > 0,
        super(null);
 
   // iOS 27 fades a held button to three quarters in a light scheme and mixes
@@ -396,6 +403,7 @@ class RenderCardSurface extends RenderShiftedBox
     markNeedsSemanticsUpdate();
   }
 
+  bool _claimsChildPresses;
   bool _childFills;
 
   set childFills(bool value) {
@@ -407,6 +415,13 @@ class RenderCardSurface extends RenderShiftedBox
   }
 
   bool _clipsChild;
+
+  bool get claimsChildPresses => _claimsChildPresses;
+
+  set claimsChildPresses(bool value) {
+    if (_claimsChildPresses == value) return;
+    _claimsChildPresses = value;
+  }
 
   set clipsChild(bool value) {
     if (_clipsChild == value) {
@@ -610,7 +625,8 @@ class RenderCardSurface extends RenderShiftedBox
   );
 
   static bool _claimsPress(HitTestTarget target) => switch (target) {
-    RenderCardSurface(:final interactive) => interactive,
+    RenderCardSurface(:final interactive, :final claimsChildPresses) =>
+      interactive && claimsChildPresses,
     RenderSemanticsGestureHandler(:final onTap) => onTap != null,
     SemanticsAnnotationsMixin(:final properties) => properties.onTap != null,
     _ => false,

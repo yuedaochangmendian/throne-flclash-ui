@@ -22,6 +22,7 @@ internal object BboxGroupsWire {
             "tag" to group.tag,
             "type" to group.type,
             "selected" to group.selected,
+            "selectedId" to group.selectedId.toInt(),
             "selectable" to group.selectable,
             "nodeCount" to group.nodes.size,
             // Tested and did not answer. The dashboard chip used to walk every node row for this.

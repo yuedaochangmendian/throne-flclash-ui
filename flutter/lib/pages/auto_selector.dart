@@ -12,7 +12,8 @@ class AutoSelectorPage extends StatefulWidget {
   State<AutoSelectorPage> createState() => _AutoSelectorPageState();
 }
 
-class _AutoSelectorPageState extends State<AutoSelectorPage> with WidgetsBindingObserver {
+class _AutoSelectorPageState extends State<AutoSelectorPage>
+    with WidgetsBindingObserver {
   Json _info = const {};
   Json _status = const {};
   bool _loading = true;
@@ -24,9 +25,11 @@ class _AutoSelectorPageState extends State<AutoSelectorPage> with WidgetsBinding
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
-    _scheduleStatus();
+    if (widget.id > 0) {
+      WidgetsBinding.instance.addObserver(this);
+      WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+      _scheduleStatus();
+    }
   }
 
   @override
@@ -47,7 +50,7 @@ class _AutoSelectorPageState extends State<AutoSelectorPage> with WidgetsBinding
   @override
   void dispose() {
     _statusTimer?.cancel();
-    WidgetsBinding.instance.removeObserver(this);
+    if (widget.id > 0) WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
@@ -58,13 +61,20 @@ class _AutoSelectorPageState extends State<AutoSelectorPage> with WidgetsBinding
       if (!mounted) return;
       setState(() {
         _info = data;
-        _gids..clear()..addAll((data['gids'] as List? ?? const []).map((e) => (e as num).toInt()));
+        _gids
+          ..clear()
+          ..addAll(
+            (data['gids'] as List? ?? const []).map((e) => (e as num).toInt()),
+          );
         _loading = false;
       });
       await _loadStatus();
     } catch (error) {
       if (!mounted) return;
-      setState(() { _loading = false; _error = BoxController.describe(error); });
+      setState(() {
+        _loading = false;
+        _error = BoxController.describe(error);
+      });
     }
   }
 
@@ -98,8 +108,29 @@ class _AutoSelectorPageState extends State<AutoSelectorPage> with WidgetsBinding
     }
   }
 
+  Future<void> _draftSave() async {
+    setState(() => _saving = true);
+    try {
+      await context.box.profileAutoSelectorCreate(
+        context.box.selectedProfileId,
+        name: _info['name']?.toString().trim(),
+      );
+      if (mounted) context.safeNestedPop();
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _error = BoxController.describe(error);
+        });
+      }
+    }
+  }
+
   Future<void> _save() async {
-    setState(() { _saving = true; _error = null; });
+    setState(() {
+      _saving = true;
+      _error = null;
+    });
     final box = context.box;
     try {
       await box.profileAutoSelectorSave(widget.id, {
@@ -109,137 +140,229 @@ class _AutoSelectorPageState extends State<AutoSelectorPage> with WidgetsBinding
       if (mounted) context.safeNestedPop();
     } catch (error) {
       if (!mounted) return;
-      setState(() { _saving = false; _error = BoxController.describe(error); });
+      setState(() {
+        _saving = false;
+        _error = BoxController.describe(error);
+      });
     }
   }
 
-  void _set(String key, Object? value) => setState(() => _info = {..._info, key: value});
+  void _set(String key, Object? value) =>
+      setState(() => _info = {..._info, key: value});
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return FormPage(title: 'Auto selector', onSave: () {}, saving: true, children: const []);
+    if (widget.id == 0) {
+      return FormPage(
+        title: 'Auto selector',
+        saving: _saving,
+        onSave: _draftSave,
+        error: _error,
+        children: [
+          generateSection(
+            title: context.tr('Name'),
+            items: [
+              FormRow(
+                title: context.tr('Name'),
+                trailing: FormRowTextField(
+                  initialValue: _info['name']?.toString() ?? '',
+                  hintText: context.tr('Optional'),
+                  onChanged: (value) => _set('name', value),
+                ),
+              ),
+            ],
+            footer: context.tr('The selector is created only when you save.'),
+          ),
+        ],
+      );
     }
-    final groups = (_info['groups'] as List? ?? const []).map((e) => json(e)).toList();
+    if (_loading) {
+      return FormPage(
+        title: 'Auto selector',
+        onSave: () {},
+        saving: true,
+        children: const [],
+      );
+    }
+    final groups = (_info['groups'] as List? ?? const [])
+        .map((e) => json(e))
+        .toList();
     return FormPage(
       title: 'Auto selector',
       saving: _saving,
       onSave: _save,
       error: _error,
       actions: [
-        IconButtonData(glyph: AppGlyphs.refresh, tooltip: 'Refresh', onPressed: _load),
+        IconButtonData(
+          glyph: AppGlyphs.refresh,
+          tooltip: 'Refresh',
+          onPressed: _load,
+        ),
       ],
       children: [
         ..._statusSection(context),
-        generateSection(title: context.tr('Filters'), items: [
-          FormRow(title: context.tr('Name'), trailing: FormRowTextField(
-            initialValue: '${_info['name'] ?? ''}',
-            hintText: context.tr('Optional'),
-            autocorrect: false,
-            onChanged: (value) => _set('name', value),
-          )),
-          FormRow(title: context.tr('Name filter'), trailing: FormRowTextField(
-            initialValue: '${_info['nameFilter'] ?? ''}',
-            hintText: context.tr('Regex on the node name'),
-            autocorrect: false,
-            onChanged: (value) => _set('nameFilter', value),
-          )),
-          FormRow(title: context.tr('Country filter'), trailing: FormRowTextField(
-            initialValue: '${_info['countryFilter'] ?? ''}',
-            hintText: context.tr('Comma-separated country codes'),
-            autocorrect: false,
-            onChanged: (value) => _set('countryFilter', value),
-          )),
-          ListItem.toggle(
-            title: Text(context.tr('Exclude unavailable')),
-            value: _info['excludeUnavailable'] == true,
-            onChanged: (value) => _set('excludeUnavailable', value),
-          ),
-        ]),
-        generateSection(title: context.tr('Scheduling'), items: [
-          _number('Probe interval', 'intervalSec', unit: 's'),
-          _number('Benchmark interval', 'benchIntervalSec', unit: 's'),
-          _number('Watch interval', 'watchIntervalSec', unit: 's'),
-          _number('Active size', 'activeSize'),
-          _number('Expected', 'expected'),
-        ]),
-        generateSection(title: context.tr('Probing'), items: [
-          FormRow(title: context.tr('Test URL'), trailing: FormRowTextField(
-            initialValue: '${_info['testURL'] ?? ''}',
-            hintText: context.tr('Empty uses the Testing page URL'),
-            keyboardType: TextInputType.text, autocorrect: false,
-            onChanged: (value) => _set('testURL', value),
-          )),
-          FormRow(title: context.tr('Connectivity URL'), trailing: FormRowTextField(
-            initialValue: '${_info['connectivityURL'] ?? ''}',
-            hintText: context.tr('Empty uses the test URL'),
-            keyboardType: TextInputType.text, autocorrect: false,
-            onChanged: (value) => _set('connectivityURL', value),
-          )),
-          _number('Tolerance', 'toleranceMs', unit: 'ms'),
-          _number('Max RTT', 'maxRTTms', unit: 'ms'),
-          _number('Dial retries', 'dialRetries'),
-          _number('Sampling', 'sampling'),
-        ]),
-        generateSection(title: context.tr('Balancing'), items: [
-          ListItem.toggle(
-            title: Text(context.tr('Balance')),
-            value: _info['balance'] == true,
-            onChanged: (value) => _set('balance', value),
-          ),
-          if (_info['balance'] == true) ...[
-            ListItem(
-              title: Text(context.tr('Balance mode')),
-              trailing: Text(context.tr(_balanceName('${_info['balanceMode'] ?? 'rotate'}')), style: context.listValueStyle),
-              onTap: () async {
-                final picked = await showDialog<String>(context: context, builder: (context) => SimpleDialog(
-                  title: Text(context.tr('Balance mode')),
-                  children: [
-                    for (final value in const ['rotate', 'sticky'])
-                      SimpleDialogOption(
-                        onPressed: () => Navigator.pop(context, value),
-                        child: Text(context.tr(_balanceName(value))),
-                      ),
-                  ],
-                ));
-                if (picked != null) _set('balanceMode', picked);
-              },
+        generateSection(
+          title: context.tr('Filters'),
+          items: [
+            FormRow(
+              title: context.tr('Name'),
+              trailing: FormRowTextField(
+                initialValue: '${_info['name'] ?? ''}',
+                hintText: context.tr('Optional'),
+                autocorrect: false,
+                onChanged: (value) => _set('name', value),
+              ),
             ),
-            _number('Balance interval', 'balanceIntervalSec', unit: 's'),
+            FormRow(
+              title: context.tr('Name filter'),
+              trailing: FormRowTextField(
+                initialValue: '${_info['nameFilter'] ?? ''}',
+                hintText: context.tr('Regex on the node name'),
+                autocorrect: false,
+                onChanged: (value) => _set('nameFilter', value),
+              ),
+            ),
+            FormRow(
+              title: context.tr('Country filter'),
+              trailing: FormRowTextField(
+                initialValue: '${_info['countryFilter'] ?? ''}',
+                hintText: context.tr('Comma-separated country codes'),
+                autocorrect: false,
+                onChanged: (value) => _set('countryFilter', value),
+              ),
+            ),
+            ListItem.toggle(
+              title: Text(context.tr('Exclude unavailable')),
+              value: _info['excludeUnavailable'] == true,
+              onChanged: (value) => _set('excludeUnavailable', value),
+            ),
           ],
-          ListItem.toggle(
-            title: Text(context.tr('Interrupt on switch')),
-            value: _info['interruptOnSwitch'] == true,
-            onChanged: (value) => _set('interruptOnSwitch', value),
-          ),
-        ]),
-        generateSection(title: context.tr('Source groups'), items: [
-          for (final group in groups)
-            ListItem.checkbox(
-              title: Text('${group['name']}'),
-              value: _gids.contains((group['id'] as num?)?.toInt()),
-              onChanged: (value) => setState(() {
-                final id = (group['id'] as num?)?.toInt() ?? 0;
-                if (value == true) { _gids.add(id); } else { _gids.remove(id); }
-              }),
+        ),
+        generateSection(
+          title: context.tr('Scheduling'),
+          items: [
+            _number('Probe interval', 'intervalSec', unit: 's'),
+            _number('Benchmark interval', 'benchIntervalSec', unit: 's'),
+            _number('Watch interval', 'watchIntervalSec', unit: 's'),
+            _number('Active size', 'activeSize'),
+            _number('Expected', 'expected'),
+          ],
+        ),
+        generateSection(
+          title: context.tr('Probing'),
+          items: [
+            FormRow(
+              title: context.tr('Test URL'),
+              trailing: FormRowTextField(
+                initialValue: '${_info['testURL'] ?? ''}',
+                hintText: context.tr('Empty uses the Testing page URL'),
+                keyboardType: TextInputType.text,
+                autocorrect: false,
+                onChanged: (value) => _set('testURL', value),
+              ),
             ),
-        ], footer: context.tr('The selector only ranks the nodes of these groups.')),
-        generateSection(title: context.tr('Advanced'), items: [
-          _number('Pool cap', 'poolCap'),
-          _number('Build limit', 'buildLimit'),
-          _number('Result validity', 'resultValidityMins', unit: 'min'),
-        ]),
+            FormRow(
+              title: context.tr('Connectivity URL'),
+              trailing: FormRowTextField(
+                initialValue: '${_info['connectivityURL'] ?? ''}',
+                hintText: context.tr('Empty uses the test URL'),
+                keyboardType: TextInputType.text,
+                autocorrect: false,
+                onChanged: (value) => _set('connectivityURL', value),
+              ),
+            ),
+            _number('Tolerance', 'toleranceMs', unit: 'ms'),
+            _number('Max RTT', 'maxRTTms', unit: 'ms'),
+            _number('Dial retries', 'dialRetries'),
+            _number('Sampling', 'sampling'),
+          ],
+        ),
+        generateSection(
+          title: context.tr('Balancing'),
+          items: [
+            ListItem.toggle(
+              title: Text(context.tr('Balance')),
+              value: _info['balance'] == true,
+              onChanged: (value) => _set('balance', value),
+            ),
+            if (_info['balance'] == true) ...[
+              ListItem(
+                title: Text(context.tr('Balance mode')),
+                trailing: Text(
+                  context.tr(
+                    _balanceName('${_info['balanceMode'] ?? 'rotate'}'),
+                  ),
+                  style: context.listValueStyle,
+                ),
+                onTap: () async {
+                  final picked = await showDialog<String>(
+                    context: context,
+                    builder: (context) => SimpleDialog(
+                      title: Text(context.tr('Balance mode')),
+                      children: [
+                        for (final value in const ['rotate', 'sticky'])
+                          SimpleDialogOption(
+                            onPressed: () => Navigator.pop(context, value),
+                            child: Text(context.tr(_balanceName(value))),
+                          ),
+                      ],
+                    ),
+                  );
+                  if (picked != null) _set('balanceMode', picked);
+                },
+              ),
+              _number('Balance interval', 'balanceIntervalSec', unit: 's'),
+            ],
+            ListItem.toggle(
+              title: Text(context.tr('Interrupt on switch')),
+              value: _info['interruptOnSwitch'] == true,
+              onChanged: (value) => _set('interruptOnSwitch', value),
+            ),
+          ],
+        ),
+        generateSection(
+          title: context.tr('Source groups'),
+          items: [
+            for (final group in groups)
+              ListItem.checkbox(
+                title: Text('${group['name']}'),
+                value: _gids.contains((group['id'] as num?)?.toInt()),
+                onChanged: (value) => setState(() {
+                  final id = (group['id'] as num?)?.toInt() ?? 0;
+                  if (value == true) {
+                    _gids.add(id);
+                  } else {
+                    _gids.remove(id);
+                  }
+                }),
+              ),
+          ],
+          footer: context.tr(
+            'The selector only ranks the nodes of these groups.',
+          ),
+        ),
+        generateSection(
+          title: context.tr('Advanced'),
+          items: [
+            _number('Pool cap', 'poolCap'),
+            _number('Build limit', 'buildLimit'),
+            _number('Result validity', 'resultValidityMins', unit: 'min'),
+          ],
+        ),
       ],
     );
   }
 
   Widget _number(String title, String key, {String? unit}) {
-    return FormRow(title: context.tr(title), trailing: FormRowTextField(
-      initialValue: '${_info[key] ?? ''}',
-      keyboardType: TextInputType.number,
-      hintText: unit,
-      onChanged: (value) => _set(key, int.tryParse(value)),
-    ));
+    return FormRow(
+      title: context.tr(title),
+      trailing: FormRowTextField(
+        initialValue: '${_info[key] ?? ''}',
+        keyboardType: TextInputType.number,
+        hintText: unit,
+        onChanged: (value) => _set(key, int.tryParse(value)),
+      ),
+    );
   }
 
   String _balanceName(String value) => value == 'sticky' ? 'Sticky' : 'Rotate';
@@ -247,46 +370,88 @@ class _AutoSelectorPageState extends State<AutoSelectorPage> with WidgetsBinding
   /// The live view of the running selector: its phase and selection, then the ranked members,
   /// each one pin-able. A stopped service has no members to show.
   List<Widget> _statusSection(BuildContext context) {
-    final autoNote = context.tr('Refreshes every few seconds while this page is open.');
+    final autoNote = context.tr(
+      'Refreshes every few seconds while this page is open.',
+    );
     final phase = _status['phase']?.toString() ?? 'idle';
     if (phase == 'idle') {
       // The FFI driver owns the core, so this runtime has no live view of it: say that
       // instead of reporting "not running" for a selector the kernel is ranking.
       final external = _status['driver'] == 'ffi';
-      return [generateSection(items: [
-        ListItem(
-          title: Text(context.tr('Status')),
-          subtitle: Text(context.tr(external
-              ? 'The kernel runs this selector directly; live ranking is not reported here'
-              : 'Not running')),
+      return [
+        generateSection(
+          items: [
+            ListItem(
+              title: Text(context.tr('Status')),
+              subtitle: Text(
+                context.tr(
+                  external
+                      ? 'The kernel runs this selector directly; live ranking is not reported here'
+                      : 'Not running',
+                ),
+              ),
+            ),
+          ],
+          footer: autoNote,
         ),
-      ], footer: autoNote)];
+      ];
     }
-    final members = (_status['members'] as List? ?? const []).map((e) => json(e)).toList();
+    final members = (_status['members'] as List? ?? const [])
+        .map((e) => json(e))
+        .toList();
     final pinnedId = (_status['pinned_id'] as num?)?.toInt() ?? -1;
     return [
-      generateSection(title: context.tr('Status'), items: [
-        ListItem(title: Text(context.tr('Phase')), trailing: Text('${_status['core_phase'] ?? phase}', style: context.listValueStyle)),
-        ListItem(title: Text(context.tr('Selected')),
-          subtitle: Text('${_status['selected_name'] ?? ''}')),
-        ListItem(title: Text(context.tr('Pinned')),
-          trailing: Text(pinnedId < 0 ? context.tr('Automatic') : '#$pinnedId', style: context.listValueStyle),
-          onTap: () => _pin(-1)),
-        ListItem(title: Text(context.tr('Members')), subtitle: Text(
-          '${_status['members_alive'] ?? 0} alive · ${_status['members_qualified'] ?? 0} qualified · ${_status['members_cooldown'] ?? 0} cooldown')),
-        ListItem(leading: const GlyphIcon(AppGlyphs.bolt), title: Text(context.tr('Recheck now')),
-          onTap: _recheck),
-      ], footer: autoNote),
-      if (members.isNotEmpty)
-        generateSection(title: context.tr('Ranking'), items: [
-          for (final member in members)
-            ListItem(
-              title: Text('${member['name'] ?? member['tag']}'),
-              subtitle: Text(_memberSummary(member)),
-              trailing: member['id'] == pinnedId ? const GlyphIcon(AppGlyphs.pin) : null,
-              onTap: () => _memberMenu(member),
+      generateSection(
+        title: context.tr('Status'),
+        items: [
+          ListItem(
+            title: Text(context.tr('Phase')),
+            trailing: Text(
+              '${_status['core_phase'] ?? phase}',
+              style: context.listValueStyle,
             ),
-        ]),
+          ),
+          ListItem(
+            title: Text(context.tr('Selected')),
+            subtitle: Text('${_status['selected_name'] ?? ''}'),
+          ),
+          ListItem(
+            title: Text(context.tr('Pinned')),
+            trailing: Text(
+              pinnedId < 0 ? context.tr('Automatic') : '#$pinnedId',
+              style: context.listValueStyle,
+            ),
+            onTap: () => _pin(-1),
+          ),
+          ListItem(
+            title: Text(context.tr('Members')),
+            subtitle: Text(
+              '${_status['members_alive'] ?? 0} alive · ${_status['members_qualified'] ?? 0} qualified · ${_status['members_cooldown'] ?? 0} cooldown',
+            ),
+          ),
+          ListItem(
+            leading: const GlyphIcon(AppGlyphs.bolt),
+            title: Text(context.tr('Recheck now')),
+            onTap: _recheck,
+          ),
+        ],
+        footer: autoNote,
+      ),
+      if (members.isNotEmpty)
+        generateSection(
+          title: context.tr('Ranking'),
+          items: [
+            for (final member in members)
+              ListItem(
+                title: Text('${member['name'] ?? member['tag']}'),
+                subtitle: Text(_memberSummary(member)),
+                trailing: member['id'] == pinnedId
+                    ? const GlyphIcon(AppGlyphs.pin)
+                    : null,
+                onTap: () => _memberMenu(member),
+              ),
+          ],
+        ),
     ];
   }
 
@@ -299,13 +464,22 @@ class _AutoSelectorPageState extends State<AutoSelectorPage> with WidgetsBinding
   }
 
   Future<void> _memberMenu(Json member) async {
-    final picked = await showDialog<String>(context: context, builder: (context) => SimpleDialog(
-      title: Text('${member['name'] ?? member['tag']}'),
-      children: [
-        SimpleDialogOption(onPressed: () => Navigator.pop(context, 'pin'), child: Text(context.tr('Pin'))),
-        SimpleDialogOption(onPressed: () => Navigator.pop(context, 'auto'), child: Text(context.tr('Use automatic'))),
-      ],
-    ));
+    final picked = await showDialog<String>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text('${member['name'] ?? member['tag']}'),
+        children: [
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, 'pin'),
+            child: Text(context.tr('Pin')),
+          ),
+          SimpleDialogOption(
+            onPressed: () => Navigator.pop(context, 'auto'),
+            child: Text(context.tr('Use automatic')),
+          ),
+        ],
+      ),
+    );
     if (!mounted) return;
     if (picked == 'pin') await _pin((member['id'] as num?)?.toInt() ?? -1);
     if (picked == 'auto') await _pin(-1);

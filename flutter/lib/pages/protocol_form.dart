@@ -1,6 +1,7 @@
 import 'dart:convert' as convert;
 
 import 'package:flutter/services.dart';
+
 import '../widgets.dart';
 import '../components/form.dart';
 
@@ -12,9 +13,11 @@ import '../components/form.dart';
 /// Synthetic keys (`__state`, `__must`) carry menu state the JSON has no room for; they are stripped
 /// before the document is saved.
 class ProtocolFormPage extends StatefulWidget {
-  const ProtocolFormPage({super.key, required this.id});
+  const ProtocolFormPage({super.key, required this.id, this.draft});
   final int id;
-  @override State<ProtocolFormPage> createState() => _ProtocolFormPageState();
+  final Json? draft;
+  @override
+  State<ProtocolFormPage> createState() => _ProtocolFormPageState();
 }
 
 class _ProtocolFormPageState extends State<ProtocolFormPage> {
@@ -22,24 +25,60 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
   String? _error;
   bool _loading = true, _saving = false, _attempted = false;
   late final TextEditingController _name = TextEditingController();
+  final _controllers = <String, TextEditingController>{};
 
-  @override void initState() {
+  @override
+  void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
   }
 
-  @override void dispose() { _name.dispose(); super.dispose(); }
+  TextEditingController _controller(String path, {required String text}) {
+    final controller = _controllers.putIfAbsent(
+      path,
+      () => TextEditingController(text: text),
+    );
+    return controller;
+  }
+
+  @override
+  void dispose() {
+    _name.dispose();
+    for (final controller in _controllers.values) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  bool get _draft => widget.draft != null;
 
   Future<void> _load() async {
-    setState(() { _error = null; _loading = true; });
+    setState(() {
+      _error = null;
+      _loading = true;
+    });
     try {
-      final data = json(await context.box.profileNodeConfig(widget.id));
+      final data = _draft
+          ? json(widget.draft!)
+          : json(await context.box.profileNodeConfig(widget.id));
       if (!mounted) return;
       _name.text = data['name']?.toString() ?? '';
+      for (final controller in _controllers.values) {
+        controller.dispose();
+      }
+      _controllers.clear();
       final decoded = convert.jsonDecode(data['json']?.toString() ?? '{}');
-      setState(() { _root = json(decoded); _loading = false; });
+      setState(() {
+        _root = json(decoded);
+        _loading = false;
+      });
     } catch (error) {
-      if (mounted) setState(() { _error = BoxController.describe(error); _loading = false; });
+      if (mounted) {
+        setState(() {
+          _error = BoxController.describe(error);
+          _loading = false;
+        });
+      }
     }
   }
 
@@ -47,7 +86,9 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
     final type = _root?['type']?.toString() ?? '';
     if (type.isNotEmpty) return type;
     // Xray-shaped outbounds (xrayvless) carry "protocol" + "streamSettings" instead of "type".
-    if (_root?['protocol'] != null && _root?['streamSettings'] is Json) return 'xrayvless';
+    if (_root?['protocol'] != null && _root?['streamSettings'] is Json) {
+      return 'xrayvless';
+    }
     return '';
   }
 
@@ -55,7 +96,11 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
   Object? _get(String path) {
     Object? current = _root;
     for (final segment in path.split('.')) {
-      if (current is Json) { current = current[segment]; } else { return null; }
+      if (current is Json) {
+        current = current[segment];
+      } else {
+        return null;
+      }
     }
     return current;
   }
@@ -80,9 +125,15 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
   String _text(String path) => _get(path)?.toString() ?? '';
   int _int(String path) => (_get(path) as num?)?.toInt() ?? 0;
   bool _bool(String path) => _get(path) == true;
-  List<String> _lines(String path) => (_get(path) as List? ?? const []).map((e) => '$e').toList();
+  List<String> _lines(String path) =>
+      (_get(path) as List? ?? const []).map((e) => '$e').toList();
 
   // ------------------------------------------------------------------------------------------------ blocks
+
+  List<_Field> _chainBlock() => [
+    _Field('name', 'Name', 'name'),
+    _Field('list', 'Proxy chain', 'chain'),
+  ];
 
   List<_Field> _tlsBlock({required bool mustTls}) => [
     // The must-TLS screens hide the switch; the save keeps the block on regardless.
@@ -91,44 +142,165 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
     _Field('tls.insecure', 'Allow insecure', 'bool'),
     _Field('tls.alpn', 'ALPN', 'lines', hint: 'One protocol per line'),
     _Field('tls.utls.enabled', 'uTLS', 'bool'),
-    _Field('tls.utls.fingerprint', 'uTLS fingerprint', 'choice', choices: _utlsChoices, showIf: ('tls.utls.enabled', 'true')),
+    _Field(
+      'tls.utls.fingerprint',
+      'uTLS fingerprint',
+      'choice',
+      choices: _utlsChoices,
+      showIf: ('tls.utls.enabled', 'true'),
+    ),
     _Field('tls.reality.enabled', 'Reality', 'bool'),
-    _Field('tls.reality.public_key', 'Reality public key', 'text', showIf: ('tls.reality.enabled', 'true')),
-    _Field('tls.reality.short_id', 'Reality short ID', 'text', showIf: ('tls.reality.enabled', 'true')),
+    _Field(
+      'tls.reality.public_key',
+      'Reality public key',
+      'text',
+      showIf: ('tls.reality.enabled', 'true'),
+    ),
+    _Field(
+      'tls.reality.short_id',
+      'Reality short ID',
+      'text',
+      showIf: ('tls.reality.enabled', 'true'),
+    ),
     _Field('tls.ech.enabled', 'ECH', 'bool'),
-    _Field('tls.ech.config', 'ECH config', 'lines', showIf: ('tls.ech.enabled', 'true')),
+    _Field(
+      'tls.ech.config',
+      'ECH config',
+      'lines',
+      showIf: ('tls.ech.enabled', 'true'),
+    ),
   ];
 
   List<_Field> _transportBlock() => [
-    _Field('transport.type', 'Transport', 'choice', choices: const [
-      ('tcp', 'TCP'), ('ws', 'WebSocket'), ('http', 'HTTP'), ('grpc', 'gRPC'), ('httpupgrade', 'HTTPUpgrade'),
-    ]),
-    _Field('transport.host', 'Host', 'text', showIf: ('transport.type', 'ws,http,httpupgrade')),
-    _Field('transport.path', 'Path', 'text', showIf: ('transport.type', 'ws,http,httpupgrade')),
-    _Field('transport.method', 'Method', 'text', showIf: ('transport.type', 'http')),
-    _Field('transport.headers', 'Headers', 'headers', showIf: ('transport.type', 'ws,http,httpupgrade')),
-    _Field('transport.service_name', 'Service name', 'text', showIf: ('transport.type', 'grpc')),
-    _Field('transport.idle_timeout', 'Idle timeout', 'text', showIf: ('transport.type', 'http,grpc')),
-    _Field('transport.ping_timeout', 'Ping timeout', 'text', showIf: ('transport.type', 'http,grpc')),
-    _Field('transport.max_early_data', 'Max early data', 'int', showIf: ('transport.type', 'ws')),
-    _Field('transport.early_data_header_name', 'Early data header', 'text', showIf: ('transport.type', 'ws')),
+    _Field(
+      'transport.type',
+      'Transport',
+      'choice',
+      choices: const [
+        ('tcp', 'TCP'),
+        ('ws', 'WebSocket'),
+        ('http', 'HTTP'),
+        ('grpc', 'gRPC'),
+        ('httpupgrade', 'HTTPUpgrade'),
+      ],
+    ),
+    _Field(
+      'transport.host',
+      'Host',
+      'text',
+      showIf: ('transport.type', 'ws,http,httpupgrade'),
+    ),
+    _Field(
+      'transport.path',
+      'Path',
+      'text',
+      showIf: ('transport.type', 'ws,http,httpupgrade'),
+    ),
+    _Field(
+      'transport.method',
+      'Method',
+      'text',
+      showIf: ('transport.type', 'http'),
+    ),
+    _Field(
+      'transport.headers',
+      'Headers',
+      'headers',
+      showIf: ('transport.type', 'ws,http,httpupgrade'),
+    ),
+    _Field(
+      'transport.service_name',
+      'Service name',
+      'text',
+      showIf: ('transport.type', 'grpc'),
+    ),
+    _Field(
+      'transport.idle_timeout',
+      'Idle timeout',
+      'text',
+      showIf: ('transport.type', 'http,grpc'),
+    ),
+    _Field(
+      'transport.ping_timeout',
+      'Ping timeout',
+      'text',
+      showIf: ('transport.type', 'http,grpc'),
+    ),
+    _Field(
+      'transport.max_early_data',
+      'Max early data',
+      'int',
+      showIf: ('transport.type', 'ws'),
+    ),
+    _Field(
+      'transport.early_data_header_name',
+      'Early data header',
+      'text',
+      showIf: ('transport.type', 'ws'),
+    ),
   ];
 
   List<_Field> _muxBlock() => [
     _Field('multiplex.__state', 'Multiplex', 'muxState'),
-    _Field('multiplex.__mode', 'Mode', 'choice',
-        choices: const [('streams', 'Max streams'), ('connections', 'Max connections')],
-        showIf: ('multiplex.__state', 'custom')),
-    _Field('multiplex.protocol', 'Protocol', 'choice',
-        choices: const [('h2mux', 'h2mux'), ('smux', 'smux'), ('yamux', 'yamux')],
-        showIf: ('multiplex.__state', 'custom')),
-    _Field('multiplex.max_streams', 'Max streams', 'int', showIf: ('multiplex.__mode', 'streams')),
-    _Field('multiplex.max_connections', 'Max connections', 'int', showIf: ('multiplex.__mode', 'connections')),
-    _Field('multiplex.min_streams', 'Min streams', 'int', showIf: ('multiplex.__mode', 'connections')),
-    _Field('multiplex.padding', 'Padding', 'bool', showIf: ('multiplex.__state', 'custom')),
-    _Field('multiplex.brutal.enabled', 'TCP Brutal', 'bool', showIf: ('multiplex.__state', 'custom')),
-    _Field('multiplex.brutal.up_mbps', 'Brutal up (Mbps)', 'int', showIf: ('multiplex.__brutal', 'true')),
-    _Field('multiplex.brutal.down_mbps', 'Brutal down (Mbps)', 'int', showIf: ('multiplex.__brutal', 'true')),
+    _Field(
+      'multiplex.__mode',
+      'Mode',
+      'choice',
+      choices: const [
+        ('streams', 'Max streams'),
+        ('connections', 'Max connections'),
+      ],
+      showIf: ('multiplex.__state', 'custom'),
+    ),
+    _Field(
+      'multiplex.protocol',
+      'Protocol',
+      'choice',
+      choices: const [('h2mux', 'h2mux'), ('smux', 'smux'), ('yamux', 'yamux')],
+      showIf: ('multiplex.__state', 'custom'),
+    ),
+    _Field(
+      'multiplex.max_streams',
+      'Max streams',
+      'int',
+      showIf: ('multiplex.__mode', 'streams'),
+    ),
+    _Field(
+      'multiplex.max_connections',
+      'Max connections',
+      'int',
+      showIf: ('multiplex.__mode', 'connections'),
+    ),
+    _Field(
+      'multiplex.min_streams',
+      'Min streams',
+      'int',
+      showIf: ('multiplex.__mode', 'connections'),
+    ),
+    _Field(
+      'multiplex.padding',
+      'Padding',
+      'bool',
+      showIf: ('multiplex.__state', 'custom'),
+    ),
+    _Field(
+      'multiplex.brutal.enabled',
+      'TCP Brutal',
+      'bool',
+      showIf: ('multiplex.__state', 'custom'),
+    ),
+    _Field(
+      'multiplex.brutal.up_mbps',
+      'Brutal up (Mbps)',
+      'int',
+      showIf: ('multiplex.__brutal', 'true'),
+    ),
+    _Field(
+      'multiplex.brutal.down_mbps',
+      'Brutal down (Mbps)',
+      'int',
+      showIf: ('multiplex.__brutal', 'true'),
+    ),
   ];
 
   /// The dial fields every outbound carries, flat at the document root (DialFields export).
@@ -147,7 +319,11 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
     _Field('quic.idle_timeout', 'Idle timeout', 'text'),
     _Field('quic.keep_alive_period', 'Keep alive period', 'text'),
     _Field('quic.stream_receive_window', 'Stream receive window', 'text'),
-    _Field('quic.connection_receive_window', 'Connection receive window', 'text'),
+    _Field(
+      'quic.connection_receive_window',
+      'Connection receive window',
+      'text',
+    ),
     _Field('quic.max_concurrent_streams', 'Max concurrent streams', 'int'),
     _Field('quic.initial_packet_size', 'Initial packet size', 'int'),
   ];
@@ -166,36 +342,89 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
   String get _muxMode {
     final stored = _get('__mode')?.toString();
     if (stored != null && stored.isNotEmpty) return stored;
-    return _get('multiplex.max_connections') != null ? 'connections' : 'streams';
+    return _get('multiplex.max_connections') != null
+        ? 'connections'
+        : 'streams';
   }
 
   /// The utls fingerprint menu's "Default" is the empty fingerprint (the native derive rule).
   List<(String, String)> get _utlsChoices => const [
-    ('', 'Default'), ('chrome', 'chrome'), ('firefox', 'firefox'), ('edge', 'edge'), ('safari', 'safari'),
-    ('360', '360'), ('qq', 'qq'), ('ios', 'ios'), ('android', 'android'), ('random', 'random'),
-    ('randomized', 'randomized'), ('unsafe', 'unsafe'),
+    ('', 'Default'),
+    ('chrome', 'chrome'),
+    ('firefox', 'firefox'),
+    ('edge', 'edge'),
+    ('safari', 'safari'),
+    ('360', '360'),
+    ('qq', 'qq'),
+    ('ios', 'ios'),
+    ('android', 'android'),
+    ('random', 'random'),
+    ('randomized', 'randomized'),
+    ('unsafe', 'unsafe'),
   ];
 
   // ------------------------------------------------------------------------------------------------ schemas
 
-  bool get _supported => const [
-    'shadowsocks', 'vmess', 'vless', 'xrayvless', 'trojan', 'tuic', 'hysteria', 'wireguard',
-    'direct', 'socks', 'http', 'anytls', 'shadowtls', 'snell', 'naive', 'juicity',
-    'mieru', 'masque', 'ssh', 'trusttunnel', 'openconnect', 'openvpn',
-  ].contains(_type);
+  bool get _supported =>
+      _type == 'chain' ||
+      const [
+        'shadowsocks',
+        'vmess',
+        'vless',
+        'xrayvless',
+        'trojan',
+        'tuic',
+        'hysteria',
+        'wireguard',
+        'direct',
+        'socks',
+        'http',
+        'anytls',
+        'shadowtls',
+        'snell',
+        'naive',
+        'juicity',
+        'mieru',
+        'masque',
+        'ssh',
+        'trusttunnel',
+        'openconnect',
+        'openvpn',
+      ].contains(_type);
 
   List<_Section> _schemas() => switch (_type) {
+    'chain' => [_Section(null, _chainBlock())],
     'shadowsocks' => [
       ..._basic(),
       _Section(null, [
-        _Field('method', 'Method', 'choice', choices: [
-          for (final method in const [
-            'none', '2022-blake3-aes-128-gcm', '2022-blake3-aes-256-gcm', '2022-blake3-chacha20-poly1305',
-            'aes-128-gcm', 'aes-192-gcm', 'aes-256-gcm', 'chacha20-ietf-poly1305', 'xchacha20-ietf-poly1305',
-            'aes-128-ctr', 'aes-192-ctr', 'aes-256-ctr', 'aes-128-cfb', 'aes-192-cfb', 'aes-256-cfb',
-            'rc4-md5', 'chacha20-ietf', 'xchacha20',
-          ]) (method, method),
-        ]),
+        _Field(
+          'method',
+          'Method',
+          'choice',
+          choices: [
+            for (final method in const [
+              'none',
+              '2022-blake3-aes-128-gcm',
+              '2022-blake3-aes-256-gcm',
+              '2022-blake3-chacha20-poly1305',
+              'aes-128-gcm',
+              'aes-192-gcm',
+              'aes-256-gcm',
+              'chacha20-ietf-poly1305',
+              'xchacha20-ietf-poly1305',
+              'aes-128-ctr',
+              'aes-192-ctr',
+              'aes-256-ctr',
+              'aes-128-cfb',
+              'aes-192-cfb',
+              'aes-256-cfb',
+              'rc4-md5',
+              'chacha20-ietf',
+              'xchacha20',
+            ])
+              (method, method),
+          ],
+        ),
         _Field('password', 'Password', 'password'),
         _Field('plugin', 'Plugin', 'text'),
         _Field('plugin_opts', 'Plugin options', 'text'),
@@ -206,13 +435,29 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
       ..._basic(),
       _Section(null, [
         _Field('uuid', 'UUID', 'text', required: true),
-        _Field('security', 'Encryption', 'choice', choices: const [
-          ('auto', 'auto'), ('none', 'none'), ('zero', 'zero'),
-          ('aes-128-gcm', 'aes-128-gcm'), ('chacha20-poly1305', 'chacha20-poly1305'),
-        ]),
+        _Field(
+          'security',
+          'Encryption',
+          'choice',
+          choices: const [
+            ('auto', 'auto'),
+            ('none', 'none'),
+            ('zero', 'zero'),
+            ('aes-128-gcm', 'aes-128-gcm'),
+            ('chacha20-poly1305', 'chacha20-poly1305'),
+          ],
+        ),
         _Field('alter_id', 'Alter ID', 'int'),
-        _Field('packet_encoding', 'Packet encoding', 'choice',
-            choices: const [('', 'Default'), ('packetaddr', 'packetaddr'), ('xudp', 'xudp')]),
+        _Field(
+          'packet_encoding',
+          'Packet encoding',
+          'choice',
+          choices: const [
+            ('', 'Default'),
+            ('packetaddr', 'packetaddr'),
+            ('xudp', 'xudp'),
+          ],
+        ),
         _Field('global_padding', 'Global padding', 'bool'),
         _Field('authenticated_length', 'Authenticated length', 'bool'),
       ]),
@@ -224,7 +469,15 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
       ..._basic(),
       _Section(null, [
         _Field('uuid', 'UUID', 'text', required: true),
-        _Field('flow', 'Flow', 'choice', choices: const [('none', 'none'), ('xtls-rprx-vision', 'xtls-rprx-vision')]),
+        _Field(
+          'flow',
+          'Flow',
+          'choice',
+          choices: const [
+            ('none', 'none'),
+            ('xtls-rprx-vision', 'xtls-rprx-vision'),
+          ],
+        ),
       ]),
       _Section('Transport', _transportBlock()),
       _Section('TLS', _tlsBlock(mustTls: false)),
@@ -237,10 +490,22 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
         _Field('settings.address', 'Server', 'text', required: true),
         _Field('settings.port', 'Server port', 'int', required: true),
         _Field('settings.id', 'UUID', 'text', required: true),
-        _Field('settings.encryption', 'Encryption', 'choice', choices: const [('none', 'none')]),
-        _Field('settings.flow', 'Flow', 'choice', choices: const [
-          ('', 'none'), ('xtls-rprx-vision', 'xtls-rprx-vision'), ('xtls-rprx-vision-udp443', 'xtls-rprx-vision-udp443'),
-        ]),
+        _Field(
+          'settings.encryption',
+          'Encryption',
+          'choice',
+          choices: const [('none', 'none')],
+        ),
+        _Field(
+          'settings.flow',
+          'Flow',
+          'choice',
+          choices: const [
+            ('', 'none'),
+            ('xtls-rprx-vision', 'xtls-rprx-vision'),
+            ('xtls-rprx-vision-udp443', 'xtls-rprx-vision-udp443'),
+          ],
+        ),
       ]),
       _Section('Transport', _xrayTransportBlock()),
       _Section('TLS', _xrayTlsBlock()),
@@ -259,10 +524,27 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
       _Section(null, [
         _Field('uuid', 'UUID', 'text', required: true),
         _Field('password', 'Password', 'password'),
-        _Field('congestion_control', 'Congestion control', 'choice',
-            choices: const [('', 'Default'), ('cubic', 'cubic'), ('new_reno', 'new_reno'), ('bbr', 'bbr')]),
-        _Field('udp_relay_mode', 'UDP relay mode', 'choice',
-            choices: const [('', 'Default'), ('native', 'native'), ('quic', 'quic')]),
+        _Field(
+          'congestion_control',
+          'Congestion control',
+          'choice',
+          choices: const [
+            ('', 'Default'),
+            ('cubic', 'cubic'),
+            ('new_reno', 'new_reno'),
+            ('bbr', 'bbr'),
+          ],
+        ),
+        _Field(
+          'udp_relay_mode',
+          'UDP relay mode',
+          'choice',
+          choices: const [
+            ('', 'Default'),
+            ('native', 'native'),
+            ('quic', 'quic'),
+          ],
+        ),
         _Field('udp_over_stream', 'UDP over stream', 'bool'),
         _Field('zero_rtt_handshake', 'Zero RTT handshake', 'bool'),
         _Field('heartbeat', 'Heartbeat', 'text'),
@@ -273,17 +555,71 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
     'hysteria' => [
       ..._basic(),
       _Section(null, [
-        _Field('protocol_version', 'Protocol version', 'choice', choices: const [('1', 'Hysteria 1'), ('2', 'Hysteria 2')]),
-        _Field('auth_type', 'Auth type', 'choice', choices: const [('', 'Default'), ('base64', 'base64'), ('string', 'string')], showIf: ('protocol_version', '1')),
+        _Field(
+          'protocol_version',
+          'Protocol version',
+          'choice',
+          choices: const [('1', 'Hysteria 1'), ('2', 'Hysteria 2')],
+        ),
+        _Field(
+          'auth_type',
+          'Auth type',
+          'choice',
+          choices: const [
+            ('', 'Default'),
+            ('base64', 'base64'),
+            ('string', 'string'),
+          ],
+          showIf: ('protocol_version', '1'),
+        ),
         _Field('auth', 'Auth', 'password', showIf: ('protocol_version', '1')),
-        _Field('password', 'Password', 'password', showIf: ('protocol_version', '2')),
-        _Field('obfs_type', 'Obfuscation', 'choice',
-            choices: const [('', 'None'), ('salamander', 'salamander'), ('gecko', 'gecko')], showIf: ('protocol_version', '2')),
-        _Field('obfs', 'Obfuscation password', 'password', showIf: ('protocol_version', '2')),
-        _Field('up_mbps', 'Up (Mbps)', 'int', showIf: ('protocol_version', '2')),
-        _Field('down_mbps', 'Down (Mbps)', 'int', showIf: ('protocol_version', '2')),
-        _Field('server_ports', 'Server ports', 'lines', showIf: ('protocol_version', '2')),
-        _Field('hop_interval', 'Hop interval', 'text', showIf: ('protocol_version', '2')),
+        _Field(
+          'password',
+          'Password',
+          'password',
+          showIf: ('protocol_version', '2'),
+        ),
+        _Field(
+          'obfs_type',
+          'Obfuscation',
+          'choice',
+          choices: const [
+            ('', 'None'),
+            ('salamander', 'salamander'),
+            ('gecko', 'gecko'),
+          ],
+          showIf: ('protocol_version', '2'),
+        ),
+        _Field(
+          'obfs',
+          'Obfuscation password',
+          'password',
+          showIf: ('protocol_version', '2'),
+        ),
+        _Field(
+          'up_mbps',
+          'Up (Mbps)',
+          'int',
+          showIf: ('protocol_version', '2'),
+        ),
+        _Field(
+          'down_mbps',
+          'Down (Mbps)',
+          'int',
+          showIf: ('protocol_version', '2'),
+        ),
+        _Field(
+          'server_ports',
+          'Server ports',
+          'lines',
+          showIf: ('protocol_version', '2'),
+        ),
+        _Field(
+          'hop_interval',
+          'Hop interval',
+          'text',
+          showIf: ('protocol_version', '2'),
+        ),
       ]),
       _Section('TLS', _tlsBlock(mustTls: true)),
       _Section('QUIC', _quicBlock()),
@@ -303,10 +639,7 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
         _Field('system', 'System interface', 'bool'),
       ]),
     ],
-    'direct' => [
-      ..._basic(),
-      _Section('Dial', _dialBlock()),
-    ],
+    'direct' => [..._basic(), _Section('Dial', _dialBlock())],
     'socks' => [
       ..._basic(),
       _Section(null, [
@@ -328,7 +661,11 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
       ..._basic(),
       _Section(null, [
         _Field('password', 'Password', 'password'),
-        _Field('idle_session_check_interval', 'Idle session check interval', 'text'),
+        _Field(
+          'idle_session_check_interval',
+          'Idle session check interval',
+          'text',
+        ),
         _Field('idle_session_timeout', 'Idle session timeout', 'text'),
         _Field('min_idle_session', 'Min idle session', 'int'),
       ]),
@@ -359,8 +696,17 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
         _Field('username', 'Username', 'text'),
         _Field('password', 'Password', 'password'),
         _Field('quic', 'QUIC', 'bool'),
-        _Field('congestion_control', 'Congestion control', 'choice',
-            choices: const [('', 'Default'), ('cubic', 'cubic'), ('new_reno', 'new_reno'), ('bbr', 'bbr')]),
+        _Field(
+          'congestion_control',
+          'Congestion control',
+          'choice',
+          choices: const [
+            ('', 'Default'),
+            ('cubic', 'cubic'),
+            ('new_reno', 'new_reno'),
+            ('bbr', 'bbr'),
+          ],
+        ),
         _Field('insecure_concurrency', 'Insecure concurrency', 'int'),
         _Field('uot', 'UDP over TCP', 'bool'),
       ]),
@@ -369,7 +715,12 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
         _Field('tls.certificate', 'Certificate', 'lines'),
         _Field('tls.fragment', 'TLS fragment', 'muxState'),
         _Field('tls.ech.enabled', 'ECH', 'bool'),
-        _Field('tls.ech.config', 'ECH config', 'lines', showIf: ('tls.ech.enabled', 'true')),
+        _Field(
+          'tls.ech.config',
+          'ECH config',
+          'lines',
+          showIf: ('tls.ech.enabled', 'true'),
+        ),
       ]),
     ],
     'juicity' => [
@@ -384,13 +735,26 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
       ..._basic(),
       _Section(null, [
         _Field('server_ports', 'Server ports', 'lines'),
-        _Field('transport', 'Transport', 'choice', choices: const [('', 'Default'), ('TCP', 'TCP'), ('UDP', 'UDP')]),
+        _Field(
+          'transport',
+          'Transport',
+          'choice',
+          choices: const [('', 'Default'), ('TCP', 'TCP'), ('UDP', 'UDP')],
+        ),
         _Field('username', 'Username', 'text'),
         _Field('password', 'Password', 'password'),
-        _Field('multiplexing', 'Multiplexing', 'choice', choices: const [
-          ('', 'Default'), ('MULTIPLEXING_OFF', 'Off'), ('MULTIPLEXING_LOW', 'Low'),
-          ('MULTIPLEXING_MIDDLE', 'Middle'), ('MULTIPLEXING_HIGH', 'High'),
-        ]),
+        _Field(
+          'multiplexing',
+          'Multiplexing',
+          'choice',
+          choices: const [
+            ('', 'Default'),
+            ('MULTIPLEXING_OFF', 'Off'),
+            ('MULTIPLEXING_LOW', 'Low'),
+            ('MULTIPLEXING_MIDDLE', 'Middle'),
+            ('MULTIPLEXING_HIGH', 'High'),
+          ],
+        ),
         _Field('traffic_pattern', 'Traffic pattern', 'text'),
       ]),
     ],
@@ -423,8 +787,17 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
         _Field('username', 'Username', 'text'),
         _Field('password', 'Password', 'password'),
         _Field('quic', 'QUIC', 'bool'),
-        _Field('congestion_control', 'Congestion control', 'choice',
-            choices: const [('', 'Default'), ('cubic', 'cubic'), ('new_reno', 'new_reno'), ('bbr', 'bbr')]),
+        _Field(
+          'congestion_control',
+          'Congestion control',
+          'choice',
+          choices: const [
+            ('', 'Default'),
+            ('cubic', 'cubic'),
+            ('new_reno', 'new_reno'),
+            ('bbr', 'bbr'),
+          ],
+        ),
         _Field('custom_sni', 'Custom SNI', 'text'),
         _Field('client_random', 'Client random', 'text'),
         _Field('health_check', 'Health check', 'bool'),
@@ -477,40 +850,161 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
 
   /// The Xray `streamSettings` block: one network plus the per-network fields. `raw` is plain TCP.
   List<_Field> _xrayTransportBlock() => [
-    _Field('streamSettings.network', 'Transport', 'choice', choices: const [
-      ('raw', 'TCP'), ('ws', 'WebSocket'), ('httpupgrade', 'HTTPUpgrade'),
-      ('grpc', 'gRPC'), ('xhttp', 'XHTTP'), ('xdrive', 'XDrive'),
-    ]),
-    _Field('streamSettings.wsSettings.path', 'Path', 'text', showIf: ('streamSettings.network', 'ws')),
-    _Field('streamSettings.wsSettings.host', 'Host', 'text', showIf: ('streamSettings.network', 'ws')),
-    _Field('streamSettings.wsSettings.headers', 'Headers', 'headers', showIf: ('streamSettings.network', 'ws')),
-    _Field('streamSettings.httpupgradeSettings.path', 'Path', 'text', showIf: ('streamSettings.network', 'httpupgrade')),
-    _Field('streamSettings.httpupgradeSettings.host', 'Host', 'text', showIf: ('streamSettings.network', 'httpupgrade')),
-    _Field('streamSettings.grpcSettings.serviceName', 'Service name', 'text', showIf: ('streamSettings.network', 'grpc')),
-    _Field('streamSettings.grpcSettings.authority', 'Authority', 'text', showIf: ('streamSettings.network', 'grpc')),
-    _Field('streamSettings.xhttpSettings.path', 'Path', 'text', showIf: ('streamSettings.network', 'xhttp')),
-    _Field('streamSettings.xhttpSettings.host', 'Host', 'text', showIf: ('streamSettings.network', 'xhttp')),
-    _Field('streamSettings.xhttpSettings.mode', 'Mode', 'choice', choices: const [
-      ('auto', 'auto'), ('packet-up', 'packet-up'), ('stream-up', 'stream-up'), ('stream-one', 'stream-one'),
-    ], showIf: ('streamSettings.network', 'xhttp')),
+    _Field(
+      'streamSettings.network',
+      'Transport',
+      'choice',
+      choices: const [
+        ('raw', 'TCP'),
+        ('ws', 'WebSocket'),
+        ('httpupgrade', 'HTTPUpgrade'),
+        ('grpc', 'gRPC'),
+        ('xhttp', 'XHTTP'),
+        ('xdrive', 'XDrive'),
+      ],
+    ),
+    _Field(
+      'streamSettings.wsSettings.path',
+      'Path',
+      'text',
+      showIf: ('streamSettings.network', 'ws'),
+    ),
+    _Field(
+      'streamSettings.wsSettings.host',
+      'Host',
+      'text',
+      showIf: ('streamSettings.network', 'ws'),
+    ),
+    _Field(
+      'streamSettings.wsSettings.headers',
+      'Headers',
+      'headers',
+      showIf: ('streamSettings.network', 'ws'),
+    ),
+    _Field(
+      'streamSettings.httpupgradeSettings.path',
+      'Path',
+      'text',
+      showIf: ('streamSettings.network', 'httpupgrade'),
+    ),
+    _Field(
+      'streamSettings.httpupgradeSettings.host',
+      'Host',
+      'text',
+      showIf: ('streamSettings.network', 'httpupgrade'),
+    ),
+    _Field(
+      'streamSettings.grpcSettings.serviceName',
+      'Service name',
+      'text',
+      showIf: ('streamSettings.network', 'grpc'),
+    ),
+    _Field(
+      'streamSettings.grpcSettings.authority',
+      'Authority',
+      'text',
+      showIf: ('streamSettings.network', 'grpc'),
+    ),
+    _Field(
+      'streamSettings.xhttpSettings.path',
+      'Path',
+      'text',
+      showIf: ('streamSettings.network', 'xhttp'),
+    ),
+    _Field(
+      'streamSettings.xhttpSettings.host',
+      'Host',
+      'text',
+      showIf: ('streamSettings.network', 'xhttp'),
+    ),
+    _Field(
+      'streamSettings.xhttpSettings.mode',
+      'Mode',
+      'choice',
+      choices: const [
+        ('auto', 'auto'),
+        ('packet-up', 'packet-up'),
+        ('stream-up', 'stream-up'),
+        ('stream-one', 'stream-one'),
+      ],
+      showIf: ('streamSettings.network', 'xhttp'),
+    ),
   ];
 
   /// The Xray `streamSettings.security` switch and its TLS / Reality fields.
   List<_Field> _xrayTlsBlock() => [
-    _Field('streamSettings.security', 'Security', 'choice', choices: const [
-      ('none', 'none'), ('tls', 'tls'), ('reality', 'reality'),
-    ]),
-    _Field('streamSettings.tlsSettings.serverName', 'Server name', 'text', showIf: ('streamSettings.security', 'tls')),
-    _Field('streamSettings.tlsSettings.fingerprint', 'Fingerprint', 'text', showIf: ('streamSettings.security', 'tls')),
-    _Field('streamSettings.tlsSettings.alpn', 'ALPN', 'list', showIf: ('streamSettings.security', 'tls')),
-    _Field('streamSettings.tlsSettings.useSystemCA', 'Use system CA', 'bool', showIf: ('streamSettings.security', 'tls')),
-    _Field('streamSettings.tlsSettings.pinnedPeerCertSha256', 'Pinned cert SHA256', 'text', showIf: ('streamSettings.security', 'tls')),
-    _Field('streamSettings.tlsSettings.echConfigList', 'ECH config', 'text', showIf: ('streamSettings.security', 'tls')),
-    _Field('streamSettings.realitySettings.serverName', 'Server name', 'text', showIf: ('streamSettings.security', 'reality')),
-    _Field('streamSettings.realitySettings.fingerprint', 'Fingerprint', 'text', showIf: ('streamSettings.security', 'reality')),
-    _Field('streamSettings.realitySettings.password', 'Public key', 'password', showIf: ('streamSettings.security', 'reality')),
-    _Field('streamSettings.realitySettings.shortId', 'Short ID', 'text', showIf: ('streamSettings.security', 'reality')),
-    _Field('streamSettings.realitySettings.spiderX', 'SpiderX', 'text', showIf: ('streamSettings.security', 'reality')),
+    _Field(
+      'streamSettings.security',
+      'Security',
+      'choice',
+      choices: const [('none', 'none'), ('tls', 'tls'), ('reality', 'reality')],
+    ),
+    _Field(
+      'streamSettings.tlsSettings.serverName',
+      'Server name',
+      'text',
+      showIf: ('streamSettings.security', 'tls'),
+    ),
+    _Field(
+      'streamSettings.tlsSettings.fingerprint',
+      'Fingerprint',
+      'text',
+      showIf: ('streamSettings.security', 'tls'),
+    ),
+    _Field(
+      'streamSettings.tlsSettings.alpn',
+      'ALPN',
+      'list',
+      showIf: ('streamSettings.security', 'tls'),
+    ),
+    _Field(
+      'streamSettings.tlsSettings.useSystemCA',
+      'Use system CA',
+      'bool',
+      showIf: ('streamSettings.security', 'tls'),
+    ),
+    _Field(
+      'streamSettings.tlsSettings.pinnedPeerCertSha256',
+      'Pinned cert SHA256',
+      'text',
+      showIf: ('streamSettings.security', 'tls'),
+    ),
+    _Field(
+      'streamSettings.tlsSettings.echConfigList',
+      'ECH config',
+      'text',
+      showIf: ('streamSettings.security', 'tls'),
+    ),
+    _Field(
+      'streamSettings.realitySettings.serverName',
+      'Server name',
+      'text',
+      showIf: ('streamSettings.security', 'reality'),
+    ),
+    _Field(
+      'streamSettings.realitySettings.fingerprint',
+      'Fingerprint',
+      'text',
+      showIf: ('streamSettings.security', 'reality'),
+    ),
+    _Field(
+      'streamSettings.realitySettings.password',
+      'Public key',
+      'password',
+      showIf: ('streamSettings.security', 'reality'),
+    ),
+    _Field(
+      'streamSettings.realitySettings.shortId',
+      'Short ID',
+      'text',
+      showIf: ('streamSettings.security', 'reality'),
+    ),
+    _Field(
+      'streamSettings.realitySettings.spiderX',
+      'SpiderX',
+      'text',
+      showIf: ('streamSettings.security', 'reality'),
+    ),
   ];
 
   // ------------------------------------------------------------------------------------------------ validation
@@ -518,7 +1012,7 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
   ({String path, String message})? get _issue {
     for (final section in _schemas()) {
       for (final field in section.fields) {
-        if (field.kind == 'name') continue;
+        if (field.kind == 'name' || field.kind == 'chain') continue;
         final visible = _visible(field);
         if (!visible) continue;
         if (field.required) {
@@ -528,11 +1022,22 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
             'muxState' => _muxState.isEmpty,
             _ => _text(field.path).trim().isEmpty,
           };
-          if (empty) return (path: field.path, message: '${context.tr(field.label)}: ${context.tr('Required')}');
+          if (empty) {
+            return (
+              path: field.path,
+              message: '${context.tr(field.label)}: ${context.tr('Required')}',
+            );
+          }
         }
-        if (field.kind == 'int' && (field.path == 'server_port' || field.path == 'settings.port')) {
+        if (field.kind == 'int' &&
+            (field.path == 'server_port' || field.path == 'settings.port')) {
           final port = _int(field.path);
-          if (port < 1 || port > 65535) return (path: field.path, message: context.tr('Must be a port number'));
+          if (port < 1 || port > 65535) {
+            return (
+              path: field.path,
+              message: context.tr('Must be a port number'),
+            );
+          }
         }
       }
     }
@@ -546,37 +1051,68 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
     final current = switch (path) {
       'multiplex.__state' => _muxState,
       'multiplex.__mode' => _muxMode,
-      'multiplex.__brutal' => _bool('multiplex.brutal.enabled') ? 'true' : 'false',
+      'multiplex.__brutal' =>
+        _bool('multiplex.brutal.enabled') ? 'true' : 'false',
       _ => _get(path)?.toString() ?? '',
     };
     return values.split(',').contains(current);
   }
 
-  void _changed(String _) { if (_attempted) setState(() {}); }
+  void _changed(String _) {
+    if (_attempted) setState(() {});
+  }
 
   // ------------------------------------------------------------------------------------------------ save
 
   Future<void> _save() async {
     if (_saving || _loading) return;
-    if (_issue != null) { setState(() => _attempted = true); return; }
+    if (_issue != null) {
+      setState(() => _attempted = true);
+      return;
+    }
     final root = _root;
     if (root == null) return;
     final box = context.box;
+    final draft = widget.draft;
     setState(() => _saving = true);
     try {
       // The must-TLS protocols keep the block on; the synthetic keys never reach storage.
-      if (const ['trojan', 'tuic', 'hysteria'].contains(_type)) _set('tls.enabled', true);
+      if (const ['trojan', 'tuic', 'hysteria'].contains(_type)) {
+        _set('tls.enabled', true);
+      }
       void strip(Json node) {
         for (final key in node.keys.toList()) {
-          if (key.startsWith('__')) { node.remove(key); continue; }
+          if (key.startsWith('__')) {
+            node.remove(key);
+            continue;
+          }
           if (node[key] is Json) strip(node[key] as Json);
         }
       }
+
       strip(root);
-      await box.profileNodeUpdate(widget.id, _name.text.trim(), convert.jsonEncode(root));
+      if (draft != null) {
+        await box.profileNodeCreate({
+          'groupId': draft['groupId'],
+          'name': _name.text.trim(),
+          'content': convert.jsonEncode(root),
+        });
+      } else {
+        await box.profileNodeUpdate(
+          widget.id,
+          _name.text.trim(),
+          convert.jsonEncode(root),
+        );
+      }
       if (mounted) context.safeNestedPop();
     } catch (error) {
-      if (mounted) setState(() { _saving = false; _attempted = true; _error = BoxController.describe(error); });
+      if (mounted) {
+        setState(() {
+          _saving = false;
+          _attempted = true;
+          _error = BoxController.describe(error);
+        });
+      }
     }
   }
 
@@ -586,11 +1122,26 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
     final invalid = _attempted && _issue?.path == field.path;
     switch (field.kind) {
       case 'name':
-        return FormRow(title: context.tr(field.label), invalid: invalid,
-          trailing: FormRowTextField(controller: _name, onChanged: _changed));
+        return FormRow(
+          title: context.tr(field.label),
+          invalid: invalid,
+          trailing: FormRowTextField(controller: _name, onChanged: _changed),
+        );
       case 'bool':
-        return FormRow(title: context.tr(field.label), onPressed: () { _set(field.path, !_bool(field.path)); _changed(''); },
-          trailing: Switch(value: _bool(field.path), onChanged: (value) { _set(field.path, value); _changed(''); }));
+        return FormRow(
+          title: context.tr(field.label),
+          onPressed: () {
+            _set(field.path, !_bool(field.path));
+            _changed('');
+          },
+          trailing: Switch(
+            value: _bool(field.path),
+            onChanged: (value) {
+              _set(field.path, value);
+              _changed('');
+            },
+          ),
+        );
       case 'choice':
         final choices = field.choices ?? const <(String, String)>[];
         final current = switch (field.path) {
@@ -598,18 +1149,34 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
           'multiplex.__mode' => _muxMode,
           _ => _text(field.path),
         };
-        final label = choices.firstWhere((choice) => choice.$1 == current,
-            orElse: () => (current, current)).$2;
-        return ListItem(title: Text(context.tr(field.label)), trailing: Text(label,
-          maxLines: 1, overflow: TextOverflow.ellipsis, style: context.listValueStyle),
+        final label = choices
+            .firstWhere(
+              (choice) => choice.$1 == current,
+              orElse: () => (current, current),
+            )
+            .$2;
+        return ListItem(
+          title: Text(context.tr(field.label)),
+          trailing: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: context.listValueStyle,
+          ),
           onTap: () async {
-            final picked = await showDialog<String>(context: context, builder: (context) => SimpleDialog(
-              title: Text(context.tr(field.label)),
-              children: [
-                for (final (value, label) in choices) SimpleDialogOption(
-                  onPressed: () => Navigator.pop(context, value), child: Text(label)),
-              ],
-            ));
+            final picked = await showDialog<String>(
+              context: context,
+              builder: (context) => SimpleDialog(
+                title: Text(context.tr(field.label)),
+                children: [
+                  for (final (value, label) in choices)
+                    SimpleDialogOption(
+                      onPressed: () => Navigator.pop(context, value),
+                      child: Text(label),
+                    ),
+                ],
+              ),
+            );
             if (picked == null || !mounted) return;
             setState(() {
               switch (field.path) {
@@ -625,56 +1192,208 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
               }
               _changed('');
             });
-          });
+          },
+        );
       case 'int':
-        final controller = TextEditingController(text: _int(field.path) > 0 ? '${_int(field.path)}' : '');
-        return FormRow(title: context.tr(field.label), invalid: invalid,
-          trailing: Row(mainAxisSize: MainAxisSize.min, spacing: 4, children: [
-            Flexible(child: FormRowTextField(
-              controller: controller,
-              keyboardType: TextInputType.number, textInputAction: TextInputAction.next,
-              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              onChanged: (value) { _set(field.path, int.tryParse(value.trim()) ?? 0); _changed(value); })),
-          ]));
+        final controller = _controller(
+          field.path,
+          text: _int(field.path) > 0 ? '${_int(field.path)}' : '',
+        );
+        return FormRow(
+          title: context.tr(field.label),
+          invalid: invalid,
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            spacing: 4,
+            children: [
+              Flexible(
+                child: FormRowTextField(
+                  controller: controller,
+                  keyboardType: TextInputType.number,
+                  textInputAction: TextInputAction.next,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  onChanged: (value) {
+                    _set(field.path, int.tryParse(value.trim()) ?? 0);
+                    _changed(value);
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
       case 'lines':
-        final controller = TextEditingController(text: _lines(field.path).join('\n'));
-        return FormRow(title: context.tr(field.label), invalid: invalid,
-          trailing: FormRowTextField(controller: controller, hintText: field.hint,
+        final controller = _controller(
+          field.path,
+          text: _lines(field.path).join('\n'),
+        );
+        return FormRow(
+          title: context.tr(field.label),
+          invalid: invalid,
+          trailing: FormRowTextField(
+            controller: controller,
+            hintText: field.hint,
             onChanged: (value) {
-              _set(field.path, value.split('\n').map((line) => line.trim()).where((line) => line.isNotEmpty).toList());
+              _set(
+                field.path,
+                value
+                    .split('\n')
+                    .map((line) => line.trim())
+                    .where((line) => line.isNotEmpty)
+                    .toList(),
+              );
               _changed(value);
-            }));
+            },
+          ),
+        );
       case 'list':
-        final controller = TextEditingController(text: _lines(field.path).join(','));
-        return FormRow(title: context.tr(field.label), invalid: invalid,
-          trailing: FormRowTextField(controller: controller,
+        final controller = _controller(
+          field.path,
+          text: _lines(field.path).join(','),
+        );
+        return FormRow(
+          title: context.tr(field.label),
+          invalid: invalid,
+          trailing: FormRowTextField(
+            controller: controller,
             onChanged: (value) {
-              _set(field.path, value.split(',').map((item) => item.trim()).where((item) => item.isNotEmpty).toList());
+              _set(
+                field.path,
+                value
+                    .split(',')
+                    .map((item) => item.trim())
+                    .where((item) => item.isNotEmpty)
+                    .toList(),
+              );
               _changed(value);
-            }));
+            },
+          ),
+        );
+      case 'chain':
+        return ListItem(
+          title: Text(context.tr(field.label)),
+          subtitle: Text(
+            context.tr('Choose proxy hops from the current group'),
+          ),
+          onTap: () async {
+            List<Json> nodes;
+            try {
+              nodes = await context.box.groupNodes();
+            } catch (error) {
+              if (mounted) context.box.report(error);
+              return;
+            }
+            if (!mounted) return;
+            final selected = <int>[
+              for (final value in (_get(field.path) as List? ?? const []))
+                if (value is num) value.toInt(),
+            ];
+            final picked = await showDialog<List<int>>(
+              context: context,
+              builder: (dialogContext) => StatefulBuilder(
+                builder: (context, setDialogState) => AlertDialog(
+                  title: context.tr('Proxy chain'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(context.tr('Cancel')),
+                    ),
+                    TextButton(
+                      onPressed: () =>
+                          Navigator.pop(context, List<int>.of(selected)),
+                      child: Text(context.tr('Save')),
+                    ),
+                  ],
+                  child: SizedBox(
+                    width: double.maxFinite,
+                    child: ListView(
+                      shrinkWrap: true,
+                      children: [
+                        if (nodes
+                            .where(
+                              (node) =>
+                                  node['isSelector'] != true &&
+                                  (node['id'] as num?)?.toInt() != widget.id,
+                            )
+                            .isEmpty)
+                          ListItem(title: Text(context.tr('No results'))),
+                        for (final node in nodes)
+                          if (node['isSelector'] != true &&
+                              (node['id'] as num?)?.toInt() != widget.id)
+                            CheckboxListTile(
+                              value: selected.contains(
+                                (node['id'] as num?)?.toInt(),
+                              ),
+                              title: Text(node['tag'].toString()),
+                              subtitle:
+                                  selected.contains(
+                                    (node['id'] as num?)?.toInt(),
+                                  )
+                                  ? Text(
+                                      '#${selected.indexOf((node['id'] as num).toInt()) + 1}',
+                                    )
+                                  : null,
+                              onChanged: (value) => setDialogState(() {
+                                final id = (node['id'] as num).toInt();
+                                selected.remove(id);
+                                if (value == true) selected.add(id);
+                              }),
+                            ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+            if (picked == null || !mounted) return;
+            setState(() {
+              _set(field.path, picked);
+              _changed('');
+            });
+          },
+        );
       case 'headers':
         final map = _get(field.path);
-        final text = map is Json ? map.entries.map((e) => '${e.key}: ${e.value}').join('\n') : '';
-        final controller = TextEditingController(text: text);
-        return FormRow(title: context.tr(field.label), invalid: invalid,
-          trailing: FormRowTextField(controller: controller,
+        final text = map is Json
+            ? map.entries.map((e) => '${e.key}: ${e.value}').join('\n')
+            : '';
+        final controller = _controller(field.path, text: text);
+        return FormRow(
+          title: context.tr(field.label),
+          invalid: invalid,
+          trailing: FormRowTextField(
+            controller: controller,
             onChanged: (value) {
               final headers = <String, dynamic>{};
               for (final line in value.split('\n')) {
                 final separator = line.indexOf(':');
                 if (separator <= 0) continue;
-                headers[line.substring(0, separator).trim()] = line.substring(separator + 1).trim();
+                headers[line.substring(0, separator).trim()] = line
+                    .substring(separator + 1)
+                    .trim();
               }
               _set(field.path, headers.isEmpty ? null : headers);
               _changed(value);
-            }));
+            },
+          ),
+        );
       default:
         final isPassword = field.kind == 'password';
-        final controller = TextEditingController(text: _text(field.path));
-        return FormRow(title: context.tr(field.label), invalid: invalid,
-          trailing: FormRowTextField(controller: controller, hintText: field.hint,
-            obscureText: isPassword, autocorrect: false, enableSuggestions: !isPassword,
-            onChanged: (value) { _set(field.path, value.trim().isEmpty ? null : value); _changed(value); }));
+        final controller = _controller(field.path, text: _text(field.path));
+        return FormRow(
+          title: context.tr(field.label),
+          invalid: invalid,
+          trailing: FormRowTextField(
+            controller: controller,
+            hintText: field.hint,
+            obscureText: isPassword,
+            autocorrect: false,
+            enableSuggestions: !isPassword,
+            onChanged: (value) {
+              _set(field.path, value.trim().isEmpty ? null : value);
+              _changed(value);
+            },
+          ),
+        );
     }
   }
 
@@ -683,14 +1402,20 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
   void _applyMuxState(String state) {
     switch (state) {
       case '' || 'on':
-        _set('multiplex', state == 'on' ? <String, dynamic>{'enabled': true} : null);
+        _set(
+          'multiplex',
+          state == 'on' ? <String, dynamic>{'enabled': true} : null,
+        );
       case 'off':
         _set('multiplex', <String, dynamic>{'enabled': false});
       case 'custom':
         _set('multiplex', {
           'enabled': true,
-          'protocol': _text('multiplex.protocol').isEmpty ? 'h2mux' : _text('multiplex.protocol'),
-          if (_muxMode == 'connections') 'max_connections': _int('multiplex.max_connections'),
+          'protocol': _text('multiplex.protocol').isEmpty
+              ? 'h2mux'
+              : _text('multiplex.protocol'),
+          if (_muxMode == 'connections')
+            'max_connections': _int('multiplex.max_connections'),
           'min_streams': _int('multiplex.min_streams'),
           'padding': _bool('multiplex.padding'),
           'brutal': {
@@ -704,26 +1429,44 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
     }
   }
 
-  @override Widget build(BuildContext context) {
-    if (_loading) return Scaffold(title: context.tr('Edit settings'), isLoading: true, body: const SizedBox.shrink());
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return Scaffold(
+        title: context.tr('Edit settings'),
+        isLoading: true,
+        body: const SizedBox.shrink(),
+      );
+    }
     if (!_supported) {
-      return Scaffold(title: context.tr('Edit settings'), body: NullStatus(
-      label: context.tr('No typed form for this protocol'),
-      description: context.tr('Use the node editor to change the configuration text.'),
-      illustration: NullStatusIllustration.rules,
-    ));
+      return Scaffold(
+        title: context.tr('Edit settings'),
+        body: NullStatus(
+          label: context.tr('No typed form for this protocol'),
+          description: context.tr(
+            'Use the node editor to change the configuration text.',
+          ),
+          illustration: NullStatusIllustration.rules,
+        ),
+      );
     }
     final issue = _attempted ? _issue : null;
     final schemas = _schemas();
     return FormPage(
-      title: 'Edit settings', saving: _saving, onSave: _save,
+      title: _draft ? 'New node' : 'Edit settings',
+      saving: _saving,
+      onSave: _save,
       error: _error ?? issue?.message,
       children: [
         for (final section in schemas) ...[
-          if (section.fields.any(_visible)) generateSection(
-            title: section.title == null ? null : context.tr(section.title!),
-            items: [for (final field in section.fields) if (_visible(field)) _fieldRow(field)],
-          ),
+          if (section.fields.any(_visible))
+            generateSection(
+              title: section.title == null ? null : context.tr(section.title!),
+              items: [
+                for (final field in section.fields)
+                  if (_visible(field)) _fieldRow(field),
+              ],
+            ),
         ],
       ],
     );
@@ -733,7 +1476,15 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
 /// One typed field at a sing-box JSON [path]; [showIf] keeps the row for the listed values of
 /// another path (comma separated), mirroring the native screens' visibility wiring.
 class _Field {
-  const _Field(this.path, this.label, this.kind, {this.choices, this.required = false, this.hint, this.showIf});
+  const _Field(
+    this.path,
+    this.label,
+    this.kind, {
+    this.choices,
+    this.required = false,
+    this.hint,
+    this.showIf,
+  });
   final String path;
   final String label;
   final String kind;

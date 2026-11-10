@@ -112,7 +112,8 @@ jobs:
         if: ${{ needs.changes.outputs.code == 'true' }}
         run: |
           python3 tools/diagnostics/prism_drift.py check --json prism_drift.json \
-            --fail-on removed --max-diverged 1 --expect-diverged banner.dart
+            --fail-on removed --max-diverged 4 \
+            --expect-diverged banner.dart,card.dart,card_surface.dart,press_surface.dart
       - name: Upload Prism UI drift report
         if: ${{ always() && needs.changes.outputs.code == 'true' && (github.event_name == 'push' || failure()) }}
         uses: actions/upload-artifact@v7

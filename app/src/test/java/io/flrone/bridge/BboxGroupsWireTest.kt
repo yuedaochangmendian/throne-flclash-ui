@@ -20,7 +20,7 @@ class BboxGroupsWireTest {
         ProxyNode(id = 3, tag = "Auto", type = "Auto Selector", testedAt = 0, isSelector = true),
     )
     private val groups = listOf(
-        ProxyGroup(id = 7, tag = "Primary", type = "group", selected = "🇭🇰 香港 01", nodes = nodes),
+        ProxyGroup(id = 7, tag = "Primary", type = "group", selected = "🇭🇰 香港 01", selectedId = 1, nodes = nodes),
         ProxyGroup(id = 8, tag = "Empty", type = "subscription", nodes = emptyList()),
     )
 
@@ -33,6 +33,7 @@ class BboxGroupsWireTest {
         assertEquals(0, wire[1]["nodeCount"])
         assertEquals(emptyList<Map<String, Any?>>(), wire[0]["items"])
         assertTrue(wire[0].containsKey("items"))
+        assertEquals(1, wire[0]["selectedId"])
     }
 
     @Test

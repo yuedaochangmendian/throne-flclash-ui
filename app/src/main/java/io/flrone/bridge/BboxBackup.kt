@@ -14,6 +14,9 @@ import io.nekohasekai.sagernet.database.backup.WebDavBackup
 import io.nekohasekai.sagernet.ktx.Logs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import io.nekohasekai.sagernet.outbound.json.JsonArray
+import io.nekohasekai.sagernet.outbound.json.JsonNull
+import io.nekohasekai.sagernet.outbound.json.JsonObject
 import org.json.JSONObject
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -49,12 +52,14 @@ object BboxBackup {
     }
 
     /** Builds a Throne backup and wraps it in the envelope the UI expects. */
-    suspend fun create(scope: String = "all"): Map<String, Any?> = withContext(Dispatchers.IO) {
+    suspend fun create(scope: String = "all", ui: Map<String, Any?> = emptyMap()): Map<String, Any?> = withContext(Dispatchers.IO) {
         val bytes = ByteArrayOutputStream().use { out ->
-            BackupExport.write(selection(scope), out)
+            // Embed the UI payload in the container meta too, so a raw .thrbackup
+            // (or a shared file) restores preferences just like the JSON envelope.
+            BackupExport.write(selection(scope), out, extraMeta = ui)
             out.toByteArray()
         }
-        val groups = GroupRepo.all().map { group ->
+        val groups = GroupRepo.rawGroups().map { group ->
             mapOf(
                 "name" to group.displayName(),
                 "type" to if (group.isSubscription) "subscription" else "local",
@@ -68,6 +73,7 @@ object BboxBackup {
             "scope" to scope,
             "profiles" to groups,
             KEY to Base64.encodeToString(bytes, Base64.DEFAULT),
+            "ui" to ui,
         )
         lastPayload = payload
         holder = Holder(payload)
@@ -100,18 +106,44 @@ object BboxBackup {
         val encoded = root.optString(KEY).takeIf { it.isNotBlank() } ?: return@withContext null
         val bytes = runCatching { Base64.decode(encoded, Base64.DEFAULT) }.getOrNull()
             ?: return@withContext null
-        stage(bytes)
+        val ui = runCatching { jsonToWire(root.optJSONObject("ui") ?: JSONObject()) }.getOrNull() as? Map<*, *>
+        stage(bytes, ui?.entries?.associate { it.key.toString() to it.value } ?: emptyMap())
+    }
+
+    private fun jsonToWire(value: Any?): Any? = when (value) {
+        null, JSONObject.NULL -> null
+        is JSONObject -> value.keys().asSequence().associateWith { jsonToWire(value.get(it)) }
+        is org.json.JSONArray -> (0 until value.length()).map { jsonToWire(value.get(it)) }
+        else -> value
+    }
+
+    private fun metaToWire(value: Any?): Any? = when (value) {
+        null, JsonNull -> null
+        is JsonObject -> value.associate { (key, item) -> key to metaToWire(item) }
+        is JsonArray -> value.map(::metaToWire)
+        else -> value
+    }
+
+    private fun uiFromMeta(meta: JsonObject): Map<String, Any?> {
+        var ui = meta.obj("flrone_ui")
+        // Backups written by the first version of this branch nested the UI object twice.
+        if (ui.contains("flrone_ui") && !ui.contains("preferences") && !ui.contains("settings") && !ui.contains("quality")) {
+            ui = ui.obj("flrone_ui")
+        }
+        return ui.associate { (key, value) -> key to metaToWire(value) }
     }
 
     /** Loads a container into the holder [restore] reads, and returns the envelope the UI previews. */
-    private fun stage(bytes: ByteArray): Map<String, Any?> {
+    private fun stage(bytes: ByteArray, ui: Map<String, Any?> = emptyMap()): Map<String, Any?> {
         val loaded = runCatching { BackupRestore.load(ByteArrayInputStream(bytes)) }
             .onFailure { Logs.w(it) }.getOrNull() ?: error("This backup cannot be read")
+        val restoredUi = ui.ifEmpty { uiFromMeta(loaded.contents.meta) }
         val payload = mapOf(
             "format" to loaded.contents.formatVersion,
             "createdAt" to loaded.contents.createdAt,
             "profiles" to profileNames(loaded.database),
             KEY to Base64.encodeToString(bytes, Base64.DEFAULT),
+            "ui" to restoredUi,
         )
         // The envelope is what travels to the UI and what [restore] decodes, so the staged database goes back.
         loaded.discard()
@@ -121,8 +153,9 @@ object BboxBackup {
 
     /**
      * Restores an envelope. [strategy] is B-box's merge-vs-replace choice, which Throne's restore does not have — it
-     * replaces a part's rows keeping ids, so `Compatible` narrows the selection to profiles rather than pretending to
-     * merge. `Override` additionally takes the routes and settings.
+     * replaces a part's rows keeping ids. A full-scope restore always brings back the application settings (per-app
+     * selection, proxy apps, HTTP proxy options and the rest of the settings table), because those were exported but
+     * silently dropped under the old "Compatible" default; `Override` additionally replaces the route tables.
      */
     suspend fun restore(payload: Map<String, Any?>?, scope: String, strategy: String): List<String> =
         withContext(Dispatchers.IO) {
@@ -134,11 +167,12 @@ object BboxBackup {
                     ?: error("Nothing has been read yet: choose a backup to restore from")
             }
             val available = BackupRestore.available(loaded.contents)
-            val everything = strategy == "Override" && scope != "profiles"
+            val allParts = scope != "profiles"
+            val override = strategy == "Override"
             val choice = BackupRestore.Choice(
                 profiles = available.profiles,
-                routes = available.routes && everything,
-                settings = available.settings && everything,
+                routes = available.routes && allParts && override,
+                settings = available.settings && allParts,
             )
             if (!choice.any()) error("This backup holds nothing Throne can restore")
             val warnings = try {
@@ -193,19 +227,19 @@ object BboxBackup {
         runCatching { configured.check(); true }.onFailure { Logs.w(it) }.getOrDefault(false)
     }
 
-    /** Uploads a fresh backup, ignoring [scope] beyond what it decides to include. */
-    suspend fun uploadWebdav(scope: String = "all"): Boolean = withContext(Dispatchers.IO) {
+    /** Uploads a valid Throne container; UI documents are stored inside its metadata. */
+    suspend fun uploadWebdav(scope: String = "all", ui: Map<String, Any?> = emptyMap()): Boolean = withContext(Dispatchers.IO) {
         val configured = WebDavBackup.configured() ?: return@withContext false
-        val parts = selection(scope).parts()
         val file = runCatching { File.createTempFile("thrbackup-", ".container") }.getOrNull() ?: return@withContext false
         try {
-            file.outputStream().use { out -> BackupExport.write(selection(scope), out) }
-            runCatching { configured.upload(file, parts); true }.onFailure { Logs.w(it) }.getOrDefault(false)
+            val selection = selection(scope)
+            file.outputStream().use { out -> BackupExport.write(selection, out, extraMeta = ui) }
+            runCatching { configured.upload(file, selection.parts()); true }
+                .onFailure { Logs.w(it) }.getOrDefault(false)
         } finally {
             runCatching { file.delete() }
         }
     }
-
     /** Reads the newest remote backup, keeping its container so the following restore has something to restore. */
     suspend fun readWebdav(): Map<String, Any?>? = withContext(Dispatchers.IO) {
         val configured = WebDavBackup.configured() ?: return@withContext null
@@ -219,6 +253,7 @@ object BboxBackup {
             "format" to loaded.contents.formatVersion,
             "createdAt" to loaded.contents.createdAt,
             "profiles" to profileNames(loaded.database),
+            "ui" to uiFromMeta(loaded.contents.meta),
         )
         holder = Holder(payload, loaded)
         payload
