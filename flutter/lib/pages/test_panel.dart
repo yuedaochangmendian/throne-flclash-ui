@@ -10,8 +10,12 @@ import '../components/speed_gauge.dart';
 /// speed test's live curve, and the finished-session actions (sort, remove unavailable, connect).
 class TestPanelPage extends StatefulWidget {
   const TestPanelPage({super.key, this.speedOnly = false, this.profileIds = const [], this.initialSpeedMode});
-  /// The proxy card opens this panel for one node's speed test; hide the
-  /// latency/IP/session controls that belong to the general test panel.
+
+  /// Narrows the panel to one speed run: the latency/IP/session controls that
+  /// belong to the general panel are hidden. The node card's speed entries used
+  /// to pass it; they now open the kernel speed screen, so nothing sets it at
+  /// the moment — kept because the panel's own layout still branches on it and
+  /// the batch speed flow is reachable from Testing settings.
   final bool speedOnly;
   final List<int> profileIds;
   final int? initialSpeedMode;
