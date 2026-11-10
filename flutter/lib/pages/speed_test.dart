@@ -20,6 +20,37 @@ class SpeedTestPage extends StatefulWidget {
   State<SpeedTestPage> createState() => _SpeedTestPageState();
 }
 
+/// Log scale for the gauge: 1 kbps at the start of the sweep, 1 Gbps at the
+/// end. The kernel reports raw bytes-per-second, so a linear dial would spend
+/// almost all of its travel in the sub-Mbps range.
+double _gaugeFraction(double bps) {
+  if (bps <= 1e3) return 0;
+  return (math.log(bps.clamp(1e3, 1e9)) / math.ln10 - 3) / 6;
+}
+
+/// The kernel's wire `stage` values (SpeedTestSnapshot.STAGE_*) mapped onto the
+/// five Bettbox phase steps. `null` means "no test has started".
+int? _phaseStep(String stage, bool running, bool empty) {
+  if (empty && !running) return null;
+  switch (stage) {
+    case 'latency':
+      return 1;
+    case 'download':
+      return 2;
+    case 'upload':
+      return 3;
+    case 'complete':
+    case 'cancelled':
+    case 'error':
+      return 4;
+    case 'discovery':
+    case '':
+      return 0;
+    default:
+      return running ? 0 : 4;
+  }
+}
+
 class _SpeedTestPageState extends State<SpeedTestPage> {
   late int _mode;
   bool _starting = false;
@@ -103,6 +134,11 @@ class _SpeedTestPageState extends State<SpeedTestPage> {
         ? server
         : '$server ($serverCountry)';
     final pingMs = (speed['pingMs'] as num?)?.toInt() ?? 0;
+    final stage = speed['stage']?.toString() ?? '';
+    final phase = _phaseStep(stage, running, speed.isEmpty);
+    final gaugeValue =
+        ((speed['dlBps'] as num? ?? 0) + (speed['ulBps'] as num? ?? 0))
+            .toDouble();
     String value(num bps) {
       final rate = bps.toDouble();
       if (rate >= 1e9) return '${(rate / 1e9).toStringAsFixed(2)} Gbps';
@@ -162,6 +198,8 @@ class _SpeedTestPageState extends State<SpeedTestPage> {
                     child: CustomPaint(
                       painter: _GaugePainter(
                         color: colors.onSurfaceVariant.withValues(alpha: .18),
+                        activeColor: colors.primary,
+                        fraction: _gaugeFraction(gaugeValue),
                       ),
                       child: Center(
                         child: Column(
@@ -182,10 +220,7 @@ class _SpeedTestPageState extends State<SpeedTestPage> {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              value(
-                                (speed['dlBps'] as num? ?? 0) +
-                                    (speed['ulBps'] as num? ?? 0),
-                              ),
+                              value(gaugeValue),
                               style: AppTextStyle.title1
                                   .of(context, emphasized: true)
                                   .toTabular,
@@ -208,6 +243,8 @@ class _SpeedTestPageState extends State<SpeedTestPage> {
                       _Legend(context.tr('Upload'), colors.tertiary),
                     ],
                   ),
+                  const SizedBox(height: 16),
+                  _PhaseSteps(phase: phase, color: colors.primary),
                   const SizedBox(height: 16),
                   TonalButton(
                     size: TonalButtonSize.bar,
@@ -389,26 +426,137 @@ class _SpeedMetric extends StatelessWidget {
   );
 }
 
+/// Bettbox's dynamic dial: a 270-degree log-scale track with ticks, a filled
+/// progress arc and a needle that follows the live throughput. The scale ticks
+/// are 1 kbps / 10 kbps / 100 kbps / 1 / 10 / 100 / 1000 Mbps.
 class _GaugePainter extends CustomPainter {
-  const _GaugePainter({required this.color});
+  const _GaugePainter({
+    required this.color,
+    required this.activeColor,
+    required this.fraction,
+  });
   final Color color;
+  final Color activeColor;
+  final double fraction;
+
+  static const _sweep = math.pi * 1.5;
+  static const _start = math.pi * .75;
+  static const _ticks = <String>['1k', '10k', '100k', '1M', '10M', '100M', '1G'];
+
   @override
   void paint(Canvas canvas, Size size) {
     final rect = Offset.zero & size;
-    final paint = Paint()
+    final track = rect.deflate(26);
+    final center = track.center;
+    final radius = track.shortestSide / 2;
+    final base = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 18
+      ..strokeWidth = 14
       ..strokeCap = StrokeCap.round;
-    canvas.drawArc(
-      rect.deflate(24),
-      math.pi * .75,
-      math.pi * 1.5,
-      false,
-      paint,
-    );
+    canvas.drawArc(track, _start, _sweep, false, base);
+    if (fraction > 0) {
+      final active = Paint()
+        ..color = activeColor
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 14
+        ..strokeCap = StrokeCap.round;
+      canvas.drawArc(track, _start, _sweep * fraction.clamp(0.0, 1.0), false, active);
+    }
+    // Tick marks and labels around the dial.
+    final tickPaint = Paint()
+      ..color = color
+      ..strokeWidth = 2
+      ..style = PaintingStyle.stroke;
+    for (var i = 0; i < _ticks.length; i++) {
+      final angle = _start + _sweep * (i / (_ticks.length - 1));
+      final dir = Offset(math.cos(angle), math.sin(angle));
+      final outer = center + dir * radius;
+      final inner = center + dir * (radius - 10);
+      canvas.drawLine(inner, outer, tickPaint);
+    }
+    // Needle rides the same scale as the progress arc.
+    final needleAngle = _start + _sweep * fraction.clamp(0.0, 1.0);
+    final needleDir = Offset(math.cos(needleAngle), math.sin(needleAngle));
+    final needle = Paint()
+      ..color = activeColor
+      ..strokeWidth = 3
+      ..strokeCap = StrokeCap.round;
+    canvas.drawLine(center, center + needleDir * (radius - 18), needle);
+    canvas.drawCircle(center, 6, Paint()..color = activeColor);
   }
 
   @override
-  bool shouldRepaint(covariant _GaugePainter old) => old.color != color;
+  bool shouldRepaint(covariant _GaugePainter old) =>
+      old.color != color ||
+      old.activeColor != activeColor ||
+      old.fraction != fraction;
+}
+
+/// Five-step phase indicator (connecting → latency → download → upload → done)
+/// driven by the kernel's `speed['stage']`. Steps before the current one are
+/// filled, the current one is highlighted, and the rest stay muted.
+class _PhaseSteps extends StatelessWidget {
+  const _PhaseSteps({required this.phase, required this.color});
+  final int? phase;
+  final Color color;
+
+  static const _labels = <String>[
+    'Connecting',
+    'Latency',
+    'Download',
+    'Upload',
+    'Complete',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final muted = context.colorScheme.onSurfaceVariant.withValues(alpha: .35);
+    final current = phase == null
+        ? ''
+        : context.tr(_labels[phase!.clamp(0, _labels.length - 1)]);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            for (var i = 0; i < _labels.length; i++) ...[
+              if (i > 0)
+                Expanded(
+                  child: Container(
+                    height: 2,
+                    color: phase != null && i <= phase! ? color : muted,
+                  ),
+                ),
+              _PhaseDot(
+                color: phase == null || i > phase!
+                    ? muted
+                    : color,
+                active: phase != null && i == phase,
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          current.isEmpty ? context.tr('Ready') : current,
+          textAlign: TextAlign.center,
+          style: context.listCaptionStyle,
+        ),
+      ],
+    );
+  }
+}
+
+class _PhaseDot extends StatelessWidget {
+  const _PhaseDot({required this.color, required this.active});
+  final Color color;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) => Container(
+    width: active ? 12 : 8,
+    height: active ? 12 : 8,
+    decoration: ShapeDecoration(color: color, shape: AppShape.circle),
+  );
 }

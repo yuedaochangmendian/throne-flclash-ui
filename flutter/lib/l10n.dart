@@ -13,6 +13,8 @@ const _zh = <String, String>{
   'Speed test server': '测速服务器',
   'Start speed test': '开始测速',
   'Ready': '准备就绪',
+  'Connecting': '连接中',
+  'Cancelled': '已取消',
   'Complete': '完成',
   'History': '历史记录',
   'Jitter': '抖动',
