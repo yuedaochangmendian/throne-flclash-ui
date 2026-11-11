@@ -8,10 +8,13 @@ import '../components/form.dart';
 /// One route rule as a form: the match attributes on top, the action fields below, exactly the
 /// members the stored [RouteRule] carries. Values of list members are comma-separated text here.
 class RuleEditorPage extends StatefulWidget {
-  const RuleEditorPage({super.key, required this.profileId, required this.index, required this.rule, required this.rules});
+  const RuleEditorPage({super.key, required this.profileId, required this.index, required this.rule, required this.rules, this.pool = false});
   final int profileId, index;
   final Json rule;
   final List<Json> rules;
+  /// When true the rule is one of the shared global pool, saved with
+  /// [BoxController.routeSaveGlobalRules] instead of a profile's own rules.
+  final bool pool;
   @override
   State<RuleEditorPage> createState() => _RuleEditorPageState();
 }
@@ -65,6 +68,19 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
       final usesWifi = _listOf('wifi_ssid').any((v) => v.trim().isNotEmpty)
           || _listOf('wifi_bssid').any((v) => v.trim().isNotEmpty);
       if (usesWifi && !box.remote) await box.wifiPermissionsEnsure();
+      if (widget.pool) {
+        // The global pool is edited as a whole list; re-emit it with this rule
+        // in place so the host replaces the pool in list order.
+        final rules = [...widget.rules];
+        if (widget.index < 0) {
+          rules.add(_rule);
+        } else {
+          rules[widget.index] = _rule;
+        }
+        final saved = json(await box.routeSaveGlobalRules(rules));
+        if (mounted) context.safeNestedPop(saved);
+        return;
+      }
       final rules = [...widget.rules];
       if (widget.index < 0) {
         rules.add(_rule);
@@ -80,6 +96,29 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
   }
 
   Future<void> _delete() async {
+    if (widget.pool) {
+      // The pool rule has a stable id; drop it directly rather than rewriting
+      // the whole pool, which would renumber every other rule's id.
+      final id = (widget.rule['id'] as num?)?.toInt();
+      if (id == null) { context.safeNestedPop(false); return; }
+      final confirmed = await showDialog<bool>(context: context, builder: (context) => material.AlertDialog(
+        title: Text(context.tr('Delete rule?')),
+        content: Text(_rule['name']?.toString() ?? '#${widget.index + 1}'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(context.tr('Cancel'))),
+          TextButton(onPressed: () => Navigator.pop(context, true), child: Text(context.tr('Delete'))),
+        ],
+      ));
+      if (confirmed != true || !mounted) return;
+      final box = context.box;
+      try {
+        await box.routeDeleteGlobalRule(id);
+        if (mounted) context.safeNestedPop(true);
+      } catch (error) {
+        if (mounted) box.report(error);
+      }
+      return;
+    }
     if (widget.index < 0) { context.safeNestedPop(false); return; }
     final confirmed = await showDialog<bool>(context: context, builder: (context) => material.AlertDialog(
       title: Text(context.tr('Delete rule?')),

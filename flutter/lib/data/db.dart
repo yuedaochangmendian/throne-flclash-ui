@@ -26,7 +26,7 @@ import 'sqlite.dart';
 /// refuses to write rather than reading columns that moved.
 ///
 /// `tools/diagnostics/schema_audit.py` compares the two on every push.
-const roomSchemaVersion = 19;
+const roomSchemaVersion = 20;
 
 /// Room's file name (`Key.DB_PROFILE`).
 const databaseFileName = 'sager_net.db';

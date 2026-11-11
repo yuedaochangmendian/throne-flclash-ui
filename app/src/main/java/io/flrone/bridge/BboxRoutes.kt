@@ -320,6 +320,41 @@ object BboxRoutes {
         mapOf("rules" to p.rules.map(::ruleToMap))
     }
 
+    /** The global added-rules pool; [profileId] > 0 also answers which entries it keeps off. */
+    suspend fun globalRules(profileId: Long): Map<String, Any?> = withContext(Dispatchers.IO) {
+        val disabled = if (profileId > 0L) RouteManager.disabledGlobalRules(profileId) else emptySet()
+        mapOf(
+            "rules" to RouteManager.globalRules().map { (id, rule) ->
+                ruleToMap(rule) + mapOf("id" to id, "enabled" to (id !in disabled))
+            },
+        )
+    }
+
+    /** Replaces the pool in list order; the previous ids do not survive, so the per-profile disables
+     *  of dropped ids fade out on their own. */
+    suspend fun saveGlobalRules(rules: List<Map<String, Any?>>): Map<String, Any?> = withContext(Dispatchers.IO) {
+        RouteManager.saveGlobalRules(rules.mapTo(ArrayList()) { ruleFromMap(it) })
+        reloadCurrentRoute(RouteManager.activeRouteId())
+        BboxBridge.scheduleRefresh(immediate = true)
+        globalRules(0)
+    }
+
+    /** Persists [profileId]'s disabled pool ids, then rebuilds the running config if it uses the profile. */
+    suspend fun setGlobalRuleDisabled(profileId: Long, ids: List<Long>) = withContext(Dispatchers.IO) {
+        RouteManager.setDisabledGlobalRules(profileId, ids)
+        reloadCurrentRoute(profileId)
+        BboxBridge.scheduleRefresh(immediate = true)
+        null
+    }
+
+    /** Drops one pool rule by its stable id; the build's global rules shift to the next pool state. */
+    suspend fun deleteGlobalRule(id: Long) = withContext(Dispatchers.IO) {
+        RouteManager.deleteGlobalRule(id)
+        reloadCurrentRoute(RouteManager.activeRouteId())
+        BboxBridge.scheduleRefresh(immediate = true)
+        null
+    }
+
     /**
      * Replaces the profile's whole rules list — [RouteManager.save] stores rules in list order anyway,
      * so the editor sends the list it shows and an empty list is a profile with no rules.

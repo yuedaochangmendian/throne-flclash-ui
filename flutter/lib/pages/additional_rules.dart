@@ -41,6 +41,11 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
   String _query = '';
   String? _error;
 
+  /// Selection mode: rows turn into checkboxes and the app bar swaps to a
+  /// select-all / delete-selected pair (FlClash's multi-delete).
+  bool _selecting = false;
+  final Set<int> _selected = {};
+
   @override
   void initState() {
     super.initState();
@@ -227,6 +232,36 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
         _RuleRef(profileId: entry.key, index: index, rule: rule),
   ];
 
+  /// Deletes every selected rule, rebuilding each affected profile's list. The
+  /// selection is cleared afterwards; an empty selection is a no-op.
+  Future<void> _deleteSelected() async {
+    final refs = _filtered.where((ref) => _selected.contains(ref.index)).toList();
+    if (refs.isEmpty) return;
+    final ok = await confirm(
+      context,
+      'Delete selected',
+      message: '${refs.length} ${context.tr('Selected')}',
+      action: 'Delete',
+    );
+    if (ok != true || !mounted) return;
+    final box = context.box;
+    try {
+      final byProfile = <int, List<Json>>{};
+      for (final ref in refs) {
+        final ordered = List<Json>.of(_byProfile[ref.profileId] ?? const [])
+          ..removeAt(ref.index);
+        byProfile[ref.profileId] = ordered;
+      }
+      for (final entry in byProfile.entries) {
+        await box.routeSaveRules(entry.key, entry.value);
+      }
+      setState(() => _selected.clear());
+      if (mounted) await _load();
+    } catch (error) {
+      if (mounted) box.report(error);
+    }
+  }
+
   Future<void> _delete(_RuleRef ref) async {
     final ok = await confirm(
       context,
@@ -249,6 +284,7 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
   @override
   Widget build(BuildContext context) {
     final filtered = _filtered;
+    final selectionActive = _selecting && _selected.isNotEmpty;
     return Scaffold(
       title: context.tr('Additional rules'),
       searchState: AppBarSearchState(
@@ -256,16 +292,47 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
         query: _query,
       ),
       iconActions: [
-        IconButtonData(
-          glyph: AppGlyphs.rules,
-          tooltip: context.tr('Import rules from JSON'),
-          onPressed: _loading ? null : _import,
-        ),
-        IconButtonData(
-          glyph: AppGlyphs.add,
-          tooltip: context.tr('Add rule'),
-          onPressed: _loading ? null : _add,
-        ),
+        if (_selecting) ...[
+          IconButtonData(
+            glyph: AppGlyphs.selectAll,
+            tooltip: context.tr('Select all'),
+            onPressed: _loading ? null : () => setState(() {
+              _selected.clear();
+              for (final ref in _filtered) {
+                _selected.add(ref.index);
+              }
+            }),
+          ),
+          IconButtonData(
+            glyph: AppGlyphs.delete,
+            tooltip: context.tr('Delete selected'),
+            onPressed: selectionActive ? _deleteSelected : null,
+          ),
+          IconButtonData(
+            glyph: AppGlyphs.close,
+            tooltip: context.tr('Cancel'),
+            onPressed: () => setState(() {
+              _selecting = false;
+              _selected.clear();
+            }),
+          ),
+        ] else ...[
+          IconButtonData(
+            glyph: AppGlyphs.checkCircle,
+            tooltip: context.tr('Select'),
+            onPressed: _loading ? null : () => setState(() => _selecting = true),
+          ),
+          IconButtonData(
+            glyph: AppGlyphs.rules,
+            tooltip: context.tr('Import rules from JSON'),
+            onPressed: _loading ? null : _import,
+          ),
+          IconButtonData(
+            glyph: AppGlyphs.add,
+            tooltip: context.tr('Add rule'),
+            onPressed: _loading ? null : _add,
+          ),
+        ],
       ],
       body: NullStatusSwitcher(
         isLoading: _loading,
@@ -299,7 +366,7 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
                   24 + context.bottomInset,
                 ),
                 itemCount: filtered.length,
-                onReorderItem: _reorder,
+                onReorderItem: _selecting ? (a, b) {} : _reorder,
                 itemBuilder: (context, index) {
                   final ref = filtered[index];
                   // A built-in profile's rules are view-only: the save endpoint
@@ -310,11 +377,27 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
                     contentPadding: const EdgeInsets.only(left: 16),
                     title: Text(ruleName(ref.rule, ref.index)),
                     subtitle: ruleRowSubtitle(context, ref.rule),
-                    leading: const GlyphIcon(AppGlyphs.rules),
-                    trailing: readOnly ? null : SortHandle(index: index),
-                    onPressed: readOnly ? null : () => _edit(ref),
+                    leading: _selecting
+                        ? GlyphIcon(_selected.contains(ref.index)
+                            ? AppGlyphs.checkCircle
+                            : AppGlyphs.rules)
+                        : const GlyphIcon(AppGlyphs.rules),
+                    trailing: _selecting ? null : (readOnly ? null : SortHandle(index: index)),
+                    onPressed: () {
+                      if (_selecting) {
+                        setState(() {
+                          if (_selected.contains(ref.index)) {
+                            _selected.remove(ref.index);
+                          } else {
+                            _selected.add(ref.index);
+                          }
+                        });
+                        return;
+                      }
+                      if (!readOnly) _edit(ref);
+                    },
                   );
-                  if (readOnly) {
+                  if (_selecting || readOnly) {
                     return KeyedSubtree(key: ObjectKey(ref.rule), child: row);
                   }
                   return ReorderableDelayedDragStartListener(

@@ -1,13 +1,13 @@
 // Route profiles: the list of named rule sets and which one builds every
 // configuration without a group override.
+//
+// FlClash keeps a profile's own rules on their own screen and offers the global
+// controls on the profile card; the list here jumps to that override screen, and
+// the shared global rule pool has its own entry at the top of the list.
 
 import '../widgets.dart';
 
 /// Route profiles: the named rule sets a configuration is built with, one of them the global choice.
-///
-/// The list shows every profile and which one is current; the editor holds the name, the default
-/// outbound, the remote subscription and the simple address rules as `prefix:value -> outbound`
-/// lines — the same shape the native importer accepts.
 class RouteProfilesPage extends StatefulWidget {
   const RouteProfilesPage({super.key});
   @override
@@ -44,7 +44,18 @@ class _RouteProfilesPageState extends State<RouteProfilesPage> {
   }
 
   Future<void> _open(Json profile) async {
-    await openPage(context, RouteEditorPage(id: (profile['id'] as num?)?.toInt() ?? 0));
+    await openPage(
+      context,
+      RouteOverridePage(
+        id: (profile['id'] as num?)?.toInt() ?? 0,
+        name: profile['name']?.toString() ?? '',
+      ),
+    );
+    if (mounted) await _load();
+  }
+
+  Future<void> _add() async {
+    await openPage(context, const RouteOverridePage(id: 0));
     if (mounted) await _load();
   }
 
@@ -94,6 +105,17 @@ class _RouteProfilesPageState extends State<RouteProfilesPage> {
       if (_loading)
         generateSection(items: [ListItem(title: Text(context.tr('Loading')))])
       else ...[
+        generateSection(title: context.tr('Global rules'), items: [
+          ListItem(
+            leading: const GlyphIcon(AppGlyphs.rules),
+            title: Text(context.tr('Global rules')),
+            subtitle: Text(context.tr('Manage the shared rule pool applied to every profile.')),
+            onTap: () async {
+              await openPage(context, const GlobalRulesPage());
+              if (mounted) await _load();
+            },
+          ),
+        ]),
         generateSection(items: [
           for (final profile in _profiles)
             ListItem(
@@ -108,24 +130,13 @@ class _RouteProfilesPageState extends State<RouteProfilesPage> {
         generateSection(items: [
           ListItem(
             leading: const GlyphIcon(AppGlyphs.add),
-            title: Text(context.tr('Add route profile')),
-            onTap: () => _open(const {'id': 0}),
+            title: Text(context.tr('Add profile')),
+            onTap: _add,
           ),
           ListItem(
             leading: const GlyphIcon(AppGlyphs.cloudDownload),
             title: Text(context.tr('Throne official profiles')),
             onTap: _addPresets,
-          ),
-          // The rules of every profile on one screen, as FlClash keeps the rules
-          // a user adds apart from the profile that pulls them.
-          ListItem(
-            leading: const GlyphIcon(AppGlyphs.rules),
-            title: Text(context.tr('Additional rules')),
-            subtitle: Text(context.tr("Every profile's rules in one list")),
-            onTap: () async {
-              await openPage(context, const AdditionalRulesPage(profileId: 0));
-              if (mounted) await _load();
-            },
           ),
         ], footer: context.tr('The official profiles are remote route profiles of the routeprofiles repository.')),
       ],

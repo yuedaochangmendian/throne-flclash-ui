@@ -18,10 +18,13 @@ import 'package:material_ui/material_ui.dart' as material;
 /// Opens as the same multiline editor dialog as the rule fields, so importing a
 /// JSON fragment and editing a rule value share one visual treatment.
 class RuleImportPage extends StatefulWidget {
-  const RuleImportPage({super.key, this.profileId});
+  const RuleImportPage({super.key, this.profileId, this.intoPool = false});
 
   /// The route profile the route rules join; null is the DNS page's own sheet.
   final int? profileId;
+
+  /// When true route rules join the shared global pool instead of a profile.
+  final bool intoPool;
 
   @override State<RuleImportPage> createState() => _RuleImportPageState();
 }
@@ -32,9 +35,13 @@ class RuleImportRequest {
   final RuleImportResult result;
 }
 
-Future<void> applyRuleImport(BoxController box, RuleImportRequest request, {int? profileId}) async {
+Future<void> applyRuleImport(BoxController box, RuleImportRequest request, {int? profileId, bool intoPool = false}) async {
   final result = request.result;
-  if (profileId != null && result.routeRules.isNotEmpty) {
+  if (intoPool && result.routeRules.isNotEmpty) {
+    final existing = json(await box.routeGlobalRules(0));
+    final rules = [...rows(existing['rules']), ...result.routeRules];
+    await box.routeSaveGlobalRules(rules);
+  } else if (profileId != null && result.routeRules.isNotEmpty) {
     final existing = json(await box.routeRules(profileId));
     final rules = [...rows(existing['rules']), ...result.routeRules];
     await box.routeSaveRules(profileId, rules);

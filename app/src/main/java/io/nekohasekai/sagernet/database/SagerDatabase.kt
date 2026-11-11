@@ -20,9 +20,10 @@ import kotlinx.coroutines.launch
 @Database(
     entities = [
         ProxyGroup::class, ProxyEntity::class, RouteProfileEntity::class, RouteRuleEntity::class,
+        GlobalRouteRuleEntity::class,
         SettingEntry::class, MarkerEntity::class,
     ],
-    version = 19,
+    version = 20,
     autoMigrations = [
         AutoMigration(from = 8, to = 9),
         AutoMigration(from = 12, to = 13),
@@ -32,6 +33,8 @@ import kotlinx.coroutines.launch
         AutoMigration(from = 15, to = 16),
         // route_rules.disabled (23b5bfcb), route_profiles.dns_json / custom_dns (67261f7d)
         AutoMigration(from = 16, to = 17),
+        // the global added-rules pool, and the per-profile disables on route_profiles (FlClash's global rules)
+        AutoMigration(from = 19, to = 20),
     ]
 )
 @TypeConverters(value = [SubscriptionOptions.Converter::class, SubUserInfo.Converter::class])

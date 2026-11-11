@@ -179,7 +179,7 @@ void main() {
         () {
       // Bumping SagerDatabase's @Database(version = …) without this constant is
       // the one mistake that would make every query read the wrong column.
-      expect(roomSchemaVersion, 19);
+      expect(roomSchemaVersion, 20);
       expect(databaseFileName, 'sager_net.db');
     });
   });
