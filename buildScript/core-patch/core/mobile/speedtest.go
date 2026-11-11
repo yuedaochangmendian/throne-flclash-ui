@@ -83,6 +83,7 @@ var (
 	speedtestNetScheme     = "https"
 
 	errSpeedTestBlocked       = errors.New("speed test blocked")
+	errSpeedTestUnavailable   = errors.New("speed test endpoint unavailable")
 	errSpeedTestProxyNotFound = errors.New("speed test outbound not found")
 )
 
@@ -502,6 +503,13 @@ func (t *speedTester) classify(ctx context.Context, err error) string {
 	if errors.Is(err, errSpeedTestBlocked) {
 		return speedTestErrorBlocked
 	}
+	// An explicitly unavailable endpoint keeps that verdict even when it
+	// arrived wrapped: the classifier's default branch means the same thing,
+	// but naming it here keeps a wrapped HTTP/transport error from being read
+	// as a timeout.
+	if errors.Is(err, errSpeedTestUnavailable) {
+		return speedTestErrorUnavailable
+	}
 	var netErr net.Error
 	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &netErr) && netErr.Timeout()) {
 		return speedTestErrorTimeout
@@ -558,7 +566,17 @@ func (t *speedTester) execute(ctx context.Context) error {
 		return ctx.Err()
 	}
 	if len(samples) == 0 {
-		return errSpeedTestBlocked
+		// No latency sample at all means the endpoint never answered: every
+		// attempt errored or exceeded `latencyOnce`'s 3 s bound. That is a dead
+		// or unreachable provider, not a firewalled one. Reporting `blocked`
+		// here is what made a slow/blocked-elsewhere provider read as "the
+		// test endpoint is blocking you", sending users after a firewall that
+		// was never there. Let the classifier derive timeout/unavailable from
+		// the real request error instead.
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
+		return errSpeedTestUnavailable
 	}
 	latency, jitter := latencyStats(samples)
 	t.update(func(state *SpeedTestState) {
@@ -574,7 +592,11 @@ func (t *speedTester) execute(ctx context.Context) error {
 			return ctx.Err()
 		}
 		if download <= 0 {
-			return errSpeedTestBlocked
+			// Bytes never flowed. The workers only give up early when the
+			// endpoint answers with a non-200 (that path already returns
+			// errSpeedTestBlocked), so reaching here with nothing counted means
+			// the streams were refused or stalled — unavailable, not blocked.
+			return errSpeedTestUnavailable
 		}
 		downloadLoaded = loaded
 		t.update(func(state *SpeedTestState) {
@@ -677,7 +699,14 @@ func prepareCloudflareSpeedTest(ctx context.Context, t *speedTester) (*speedTest
 		return nil, err
 	}
 	trace := parseCloudflareTrace(string(body))
-	if resp.StatusCode != http.StatusOK || resp.Header.Get("cf-ray") == "" || trace["ip"] == "" {
+	// The trace's own `ip` is the only thing the target needs from this call:
+	// it is what the run measures through and what the card shows. Demanding
+	// `cf-ray` as well rejected every path where something in front of
+	// Cloudflare (a CDN mirror, a corporate gateway, this box's own HTTP
+	// stack rewriting headers) stripped it, and the rejection surfaced as
+	// "blocked" even though the endpoint had just answered 200 with a
+	// perfectly good exit IP.
+	if resp.StatusCode != http.StatusOK || trace["ip"] == "" {
 		return nil, errSpeedTestBlocked
 	}
 	return &speedTestTarget{
@@ -720,8 +749,22 @@ func prepareAppleSpeedTest(ctx context.Context, t *speedTester) (*speedTestTarge
 			Upload string `json:"https_upload_url"`
 		} `json:"urls"`
 	}
-	if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &config) != nil ||
-		config.Urls.Large == "" || config.Urls.Upload == "" {
+	if resp.StatusCode != http.StatusOK || json.Unmarshal(body, &config) != nil {
+		return nil, errSpeedTestBlocked
+	}
+	// The config only has to name the directions this run measures: a
+	// download-only test needs a large-download URL, an upload-only one needs
+	// the upload URL, and a both-directions test needs both. Demanding every
+	// field regardless of the run is how a config that simply omitted one URL
+	// turned into a "blocked" verdict for a test that would have worked. A
+	// latency URL is always required, but either download URL can serve it.
+	if config.Urls.Small == "" && config.Urls.Large == "" {
+		return nil, errSpeedTestBlocked
+	}
+	if t.params.downloadEnabled() && config.Urls.Large == "" {
+		return nil, errSpeedTestBlocked
+	}
+	if t.params.uploadEnabled() && config.Urls.Upload == "" {
 		return nil, errSpeedTestBlocked
 	}
 	latencyURL := config.Urls.Small
@@ -780,7 +823,11 @@ func prepareSpeedtestNetOnce(ctx context.Context, t *speedTester) (*speedTestTar
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
-		return nil, errSpeedTestBlocked
+		// The server list answered but no server's latency probe succeeded.
+		// That is every candidate being unreachable from this exit, not the
+		// list itself being blocked — the endpoint just proved reachable
+		// enough to hand us the list.
+		return nil, errSpeedTestUnavailable
 	}
 	return speedtestNetTarget(server), nil
 }
@@ -821,7 +868,10 @@ func (t *speedTester) fetchSpeedtestNetServers(ctx context.Context, search strin
 	}
 	servers = kept
 	if len(servers) == 0 && search == "" {
-		return nil, errSpeedTestBlocked
+		// An empty list is the provider having no candidate from this exit.
+		// "Blocked" claims the endpoint refused us, but it answered 200 with
+		// JSON — say unavailable so the card stops pointing at a firewall.
+		return nil, errSpeedTestUnavailable
 	}
 	return servers, nil
 }

@@ -1,10 +1,11 @@
 // The shared global added-rules pool (FlClash's 控制全局附加规则 source).
 //
 // One authored rule set applied in front of every usable route profile's own
-// rules, minus the ids a profile keeps off. This is that pool: edit, add,
-// reorder, delete and import rules into it. The per-profile switches that turn a
-// pool rule off for one profile live on each rule's sheet and on the profile's
-// override screen.
+// rules, minus the ids a profile keeps off. This file holds the pool body as a
+// reusable section so the Routing page can be the pool (the user's ask: the
+// routing screen shows nothing but the global rules, and every other control
+// moves into the menu), and [GlobalRulesPage] keeps a standalone page for the
+// places that still open one.
 
 import '../widgets.dart';
 
@@ -16,23 +17,68 @@ class _PoolRef {
   final Json rule;
 }
 
-class GlobalRulesPage extends StatefulWidget {
-  const GlobalRulesPage({super.key});
+/// What the pool body needs from whoever hosts it: the toolbar actions live on
+/// the host (the Routing page's app bar or the standalone page's), while the
+/// list itself is shared.
+class GlobalRulesBody extends StatefulWidget {
+  const GlobalRulesBody({super.key, this.controller});
+
+  /// The host hands its toolbar here so "add" and "import" stay in the app bar
+  /// where every other page puts its primary actions.
+  final GlobalRulesController? controller;
 
   @override
-  State<GlobalRulesPage> createState() => _GlobalRulesPageState();
+  State<GlobalRulesBody> createState() => GlobalRulesBodyState();
 }
 
-class _GlobalRulesPageState extends State<GlobalRulesPage> {
+/// The toolbar surface a host drives: the pool body owns the data, the host
+/// owns the buttons, and this is the handle between them.
+class GlobalRulesController extends ChangeNotifier {
+  GlobalRulesBodyState? _state;
+
+  void _attach(GlobalRulesBodyState state) => _state = state;
+  void _detach(GlobalRulesBodyState state) {
+    if (identical(_state, state)) _state = null;
+  }
+
+  /// The body pushes state changes here; the host listens.
+  /// Called by the body whenever its state changes.
+  void bodyChanged() => notifyListeners();
+
+  bool get ready => _state != null;
+  bool get loading => _state?.loading ?? true;
+  bool get selectionActive => _state?.selectionActive ?? false;
+
+  Future<void> reload() async => _state?.load();
+  Future<void> add() async => _state?.addRule();
+  Future<void> importRules() async => _state?.importRules();
+  Future<void> deleteSelected() async => _state?.deleteSelected();
+}
+
+class GlobalRulesBodyState extends State<GlobalRulesBody> {
   List<_PoolRef> _rules = const [];
   bool _loading = true;
   String? _error;
   final Set<int> _selected = {};
 
+  bool get loading => _loading;
+  bool get selectionActive => _selected.isNotEmpty;
+  Future<void> load() => _load();
+  Future<void> addRule() => _add();
+  Future<void> importRules() => _import();
+  Future<void> deleteSelected() => _deleteSelected();
+
   @override
   void initState() {
     super.initState();
+    widget.controller?._attach(this);
     WidgetsBinding.instance.addPostFrameCallback((_) => _load());
+  }
+
+  @override
+  void dispose() {
+    widget.controller?._detach(this);
+    super.dispose();
   }
 
   Future<void> _load() async {
@@ -52,12 +98,14 @@ class _GlobalRulesPageState extends State<GlobalRulesPage> {
         _rules = rules;
         _loading = false;
       });
+      widget.controller?.bodyChanged();
     } catch (error) {
       if (!mounted) return;
       setState(() {
         _error = BoxController.describe(error);
         _loading = false;
       });
+      widget.controller?.bodyChanged();
     }
   }
 
@@ -155,114 +203,177 @@ class _GlobalRulesPageState extends State<GlobalRulesPage> {
         await box.routeDeleteGlobalRule(id);
       }
       setState(() => _selected.clear());
+      widget.controller?.bodyChanged();
       if (mounted) await _load();
     } catch (error) {
       if (mounted) box.report(error);
     }
   }
 
+  void _toggleSelected(_PoolRef ref) {
+    setState(() {
+      if (!_selected.remove(ref.id)) _selected.add(ref.id);
+    });
+    widget.controller?.bodyChanged();
+  }
+
+  /// The list on its own, sized for a host that supplies its own scroll view
+  /// (the Routing page's ListView). The standalone page stretches it.
+  Widget _list({required bool shrinkWrap}) {
+    final selectionActive = _selected.isNotEmpty;
+    return ReorderableListView.builder(
+      shrinkWrap: shrinkWrap,
+      physics: shrinkWrap ? const NeverScrollableScrollPhysics() : null,
+      buildDefaultDragHandles: false,
+      padding: shrinkWrap
+          ? EdgeInsets.zero
+          : EdgeInsets.fromLTRB(
+              16,
+              context.sectionsTopPadding,
+              16,
+              24 + context.bottomInset,
+            ),
+      itemCount: _rules.length,
+      onReorderItem: _reorder,
+      itemBuilder: (context, index) {
+        final ref = _rules[index];
+        final Widget row = DecorationListItem(
+          contentPadding: const EdgeInsets.only(left: 16),
+          title: Text(ruleName(ref.rule, index)),
+          subtitle: ruleRowSubtitle(context, ref.rule),
+          leading: GlyphIcon(
+            selectionActive
+                ? (_selected.contains(ref.id) ? AppGlyphs.checkCircle : AppGlyphs.rules)
+                : AppGlyphs.rules,
+          ),
+          trailing: selectionActive ? null : SortHandle(index: index),
+          onPressed: () {
+            if (selectionActive) {
+              _toggleSelected(ref);
+              return;
+            }
+            _edit(ref);
+          },
+        );
+        if (selectionActive) {
+          return KeyedSubtree(key: ObjectKey(ref.id), child: row);
+        }
+        return ReorderableDelayedDragStartListener(
+          key: ObjectKey(ref.id),
+          index: index,
+          child: ContextMenuRegion(
+            menuItems: [
+              PopupMenuItem(
+                glyph: AppGlyphs.edit,
+                label: context.tr('Edit'),
+                onPressed: () => _edit(ref),
+              ),
+              PopupMenuItem(
+                glyph: AppGlyphs.delete,
+                label: context.tr('Delete'),
+                onPressed: () => _deleteOne(ref),
+              ),
+            ],
+            child: row,
+          ),
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final selectionActive = _selected.isNotEmpty;
-    return Scaffold(
-      title: context.tr('Global rules'),
-      iconActions: [
-        if (selectionActive)
-          IconButtonData(
-            glyph: AppGlyphs.delete,
-            tooltip: context.tr('Delete selected'),
-            onPressed: _deleteSelected,
-          )
-        else ...[
-          IconButtonData(
-            glyph: AppGlyphs.code,
-            tooltip: context.tr('Import rules from JSON'),
-            onPressed: _loading ? null : _import,
-          ),
-          IconButtonData(
-            glyph: AppGlyphs.add,
-            tooltip: context.tr('Add rule'),
-            onPressed: _loading ? null : _add,
+    // The body is always hosted inside a scroll view (the Routing page's own
+    // ListView, or the standalone page's), so NullStatusSwitcher — which asks
+    // for an unbounded expand — cannot size the empty state here. The states
+    // are inlined instead, with a flat empty card that fits a sliver.
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 24),
+        child: Center(child: ActivityIndicator()),
+      );
+    }
+    if (_error != null) {
+      return Padding(
+        padding: const EdgeInsets.all(16),
+        child: Text(
+          _error!,
+          style: context.listCaptionStyle.copyWith(color: context.colorScheme.error),
+        ),
+      );
+    }
+    if (_rules.isEmpty) {
+      return generateSection(
+        items: [
+          ListItem(
+            leading: const GlyphIcon(AppGlyphs.rules),
+            title: Text(context.tr('No global rules yet')),
+            subtitle: Text(context.tr('Manage the shared rule pool applied to every profile.')),
           ),
         ],
-      ],
-      body: NullStatusSwitcher(
-        isLoading: _loading,
-        isEmpty: !_loading && _rules.isEmpty,
-        nullStatus: NullStatus(
-          label: context.tr('No global rules yet'),
-          description: context.tr('Manage the shared rule pool applied to every profile.'),
-          illustration: NullStatusIllustration.rules,
-        ),
-        child: _error != null
-            ? Padding(
-                padding: const EdgeInsets.all(16),
-                child: Text(
-                  _error!,
-                  style: context.listCaptionStyle.copyWith(color: context.colorScheme.error),
-                ),
+      );
+    }
+    return _list(shrinkWrap: true);
+  }
+}
+
+class GlobalRulesPage extends StatefulWidget {
+  const GlobalRulesPage({super.key});
+
+  @override
+  State<GlobalRulesPage> createState() => _GlobalRulesPageState();
+}
+
+class _GlobalRulesPageState extends State<GlobalRulesPage> {
+  final _controller = GlobalRulesController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: _controller,
+      builder: (context, _) {
+        final selectionActive = _controller.selectionActive;
+        return Scaffold(
+          title: context.tr('Global rules'),
+          iconActions: [
+            if (selectionActive)
+              IconButtonData(
+                glyph: AppGlyphs.delete,
+                tooltip: context.tr('Delete selected'),
+                onPressed: _controller.deleteSelected,
               )
-            : ReorderableListView.builder(
-                buildDefaultDragHandles: false,
-                padding: EdgeInsets.fromLTRB(
-                  16,
-                  context.sectionsTopPadding,
-                  16,
-                  24 + context.bottomInset,
-                ),
-                itemCount: _rules.length,
-                onReorderItem: _reorder,
-                itemBuilder: (context, index) {
-                  final ref = _rules[index];
-                  final Widget row = DecorationListItem(
-                    contentPadding: const EdgeInsets.only(left: 16),
-                    title: Text(ruleName(ref.rule, index)),
-                    subtitle: ruleRowSubtitle(context, ref.rule),
-                    leading: GlyphIcon(
-                      selectionActive
-                          ? (_selected.contains(ref.id) ? AppGlyphs.checkCircle : AppGlyphs.rules)
-                          : AppGlyphs.rules,
-                    ),
-                    trailing: selectionActive ? null : SortHandle(index: index),
-                    onPressed: () {
-                      if (selectionActive) {
-                        setState(() {
-                          if (_selected.contains(ref.id)) {
-                            _selected.remove(ref.id);
-                          } else {
-                            _selected.add(ref.id);
-                          }
-                        });
-                        return;
-                      }
-                      _edit(ref);
-                    },
-                  );
-                  if (selectionActive) {
-                    return KeyedSubtree(key: ObjectKey(ref.id), child: row);
-                  }
-                  return ReorderableDelayedDragStartListener(
-                    key: ObjectKey(ref.id),
-                    index: index,
-                    child: ContextMenuRegion(
-                      menuItems: [
-                        PopupMenuItem(
-                          glyph: AppGlyphs.edit,
-                          label: context.tr('Edit'),
-                          onPressed: () => _edit(ref),
-                        ),
-                        PopupMenuItem(
-                          glyph: AppGlyphs.delete,
-                          label: context.tr('Delete'),
-                          onPressed: () => _deleteOne(ref),
-                        ),
-                      ],
-                      child: row,
-                    ),
-                  );
-                },
+            else ...[
+              IconButtonData(
+                glyph: AppGlyphs.code,
+                tooltip: context.tr('Import rules from JSON'),
+                onPressed: _controller.loading ? null : _controller.importRules,
               ),
-      ),
+              IconButtonData(
+                glyph: AppGlyphs.add,
+                tooltip: context.tr('Add rule'),
+                onPressed: _controller.loading ? null : _controller.add,
+              ),
+            ],
+          ],
+          body: ListView(
+            padding: EdgeInsets.fromLTRB(
+              16,
+              context.sectionsTopPadding,
+              16,
+              24 + context.bottomInset,
+            ),
+            children: [
+              GlobalRulesBody(controller: _controller),
+            ],
+          ),
+        );
+      },
     );
   }
 }

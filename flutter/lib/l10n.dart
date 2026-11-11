@@ -1111,6 +1111,7 @@ const _zh = <String, String>{
   'Test server': '测速服务器',
   'Nearest': '自动（最近）',
   'The test endpoint is blocked': '测速节点被拦截',
+  'The test endpoint refused the request': '测速节点拒绝了请求',
   'The selected outbound rejects traffic': '当前出站会拒绝流量',
   'The test timed out': '测速超时',
   'The test endpoint is unavailable': '测速节点不可用',
@@ -1147,6 +1148,14 @@ const _zh = <String, String>{
   'Edit profile': '编辑配置',
   'Rule presets': '规则预设',
   'Delete selected': '删除所选',
+  'Advanced settings': '高级设置',
+  'Inbound ports, the node templates new nodes are built from, and the subscription profiles.':
+      '入站端口、新建节点所用模板，以及订阅配置。',
+  'Route settings': '路由设置',
+  'Applied in front of every profile': '对所有配置生效',
+  'Drag to reorder; the first match wins. A profile can keep single rules off from its own screen.':
+      '拖动可排序，先匹配先生效；单个配置可在自己的页面里关闭其中某条规则。',
+  'Every routing setting returns to its Throne default.': '此页所有路由设置恢复为 Throne 默认值。',
 };
 
 extension BoxLocalization on BuildContext {
