@@ -601,15 +601,18 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
                         ),
                         const SizedBox(height: 16),
                         Row(
-                          // Run time and city sit close together: at 16 dp the
-                          // gap read as two unrelated columns rather than one
-                          // summary line. The split still gives the clock the
-                          // wider column — `HH:MM:SS` is the one value here that
-                          // grows (to 999:00:00) and clips at large text scales.
-                          spacing: 8,
+                          // The reference layout keeps the clock in a narrow
+                          // column and lets the city take the rest, with the two
+                          // labels a readable distance apart. Run time gets a
+                          // floor wide enough for `HH:MM:SS` at the largest text
+                          // scale the app offers (it grows to 999:00:00 and used
+                          // to ellipsise at 56-62 dp), and the city takes
+                          // whatever is left.
+                          spacing: 16,
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              flex: 2,
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(minWidth: 84),
                               child: _StatusCell(
                                 label: 'Run time',
                                 child: _RuntimeValue(

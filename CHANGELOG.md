@@ -1,3 +1,7 @@
+#### 4.3.2
+
+* **Run time and city follow the reference layout.** The pair keeps the clock in a narrow column and lets the city take the rest, one label-height apart, instead of an even split with a gap that read as two unrelated columns. Run time holds a floor wide enough for `HH:MM:SS` at the app's largest text scale, so a long uptime or a 1.4 scale no longer ellipsises the clock; a layout test pins that width at 1.4
+
 #### 4.3.1
 
 * **A refused speed-test endpoint is reported as refused.** The load workers' errors were counted and thrown away, so a provider answering 403/429 on `/download` read as "unavailable" — the exact mislabel the previous round set out to remove — and an upload-only run whose every attempt was refused finished as a successful test that transferred nothing. The workers now keep their errors and the direction returns a refusal verdict. Zero latency samples also keep the last error, so `timeout` is reachable instead of every dead endpoint reading as unavailable
