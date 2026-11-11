@@ -12,6 +12,7 @@ import 'common/throttle.dart';
 import 'core/kernel_service.dart';
 import 'core/platform_value.dart';
 import 'core/throne_kernel.dart';
+import 'data/document_store.dart';
 import 'data/route_profiles_source.dart';
 
 part 'box_api.dart';
