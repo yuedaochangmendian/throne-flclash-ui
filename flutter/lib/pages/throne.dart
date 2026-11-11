@@ -493,13 +493,15 @@ class RoutingPage extends StatefulWidget {
   @override State<RoutingPage> createState() => _RoutingPageState();
 }
 
-/// The Routing page is the global added-rules pool, and nothing else.
+/// The Routing page is the rule list itself — no profiles, no title card.
 ///
-/// The page used to stack five sections: the profiles entry, the two domain
-/// strategies plus the mirror and ad-blocking switches, the auto-update pair,
-/// and WARP. That read as a settings dump around the one thing the page is for.
-/// The pool now fills the screen, and every other control moved into the ⋮
-/// menu, one tap away and out of the way.
+/// A route profile only ever existed to hold a rule list for the configurations
+/// that had no override, so the pool that applies to *every* configuration is
+/// the whole feature: one list, one default route for whatever a rule does not
+/// name, and nothing else to choose between. The section title went too (the
+/// page is already called Routing), and so did WARP, which is an outbound, not a
+/// rule. What remains below the list is the handful of switches that decide how
+/// the rules are resolved and mirrored.
 class _RoutingPageState extends State<RoutingPage> {
   final _controller = GlobalRulesController();
 
@@ -544,41 +546,29 @@ class _RoutingPageState extends State<RoutingPage> {
             24 + context.bottomInset,
           ),
           children: [
-            generateSection(
-              title: context.tr('Global rules'),
-              items: [
-                ListItem(
-                  leading: const GlyphIcon(AppGlyphs.rules),
-                  title: Text(context.tr('Applied in front of every profile')),
-                  subtitle: Text(context.tr(
-                      'Drag to reorder; the first match wins. A profile can keep single rules off from its own screen.')),
-                ),
-              ],
-            ),
             GlobalRulesBody(controller: _controller),
+            const SizedBox(height: 8),
+            generateSection(items: [
+              ListItem(
+                leading: const GlyphIcon(AppGlyphs.rules),
+                title: Text(context.tr('Applied in front of every profile')),
+                subtitle: Text(context.tr(
+                    'Drag to reorder; the first match wins.')),
+              ),
+            ]),
           ],
         ),
       ),
     );
   }
 
-  /// Everything the page used to stack below the pool, kept one tap deep.
+  /// The switches behind the list. Profiles and WARP are gone: a profile was
+  /// only a holder for a rule list, and WARP is an outbound, not a rule.
   List<PopupMenuItem> _menu(BuildContext context) {
     return [
       PopupMenuItem(
-        glyph: AppGlyphs.rulePresets,
-        label: context.tr('Route profiles'),
-        onPressed: () => openPage(context, const RouteProfilesPage()),
-      ),
-      PopupMenuItem(
-        glyph: AppGlyphs.proxies,
-        label: context.tr('WARP'),
-        onPressed: () => openPage(context, const WarpPage()),
-      ),
-      PopupMenuItem(
         glyph: AppGlyphs.rules,
         label: context.tr('Route settings'),
-        section: const PopupMenuSection(),
         onPressed: () => openPage(context, const _RouteSettingsPage()),
       ),
       PopupMenuItem(

@@ -65,6 +65,12 @@ const (
 	speedTestProtocolH2   = "h2"
 	speedTestProtocolQuic = "h3"
 
+	// The provider ids the params and the snapshot carry, and the names the
+	// fallback order walks.
+	speedTestProviderApple      = "apple"
+	speedTestProviderCloudflare = "cloudflare"
+	speedTestProviderSpeedtest  = "speedtest"
+
 	speedTestErrorRejected    = "rejected"
 	speedTestErrorBlocked     = "blocked"
 	speedTestErrorUnavailable = "unavailable"
@@ -239,9 +245,9 @@ func beginSpeedTest() (context.Context, func()) {
 
 func newSpeedTester(instance *Instance, params SpeedTestParams) (*speedTester, error) {
 	switch params.Provider {
-	case "cloudflare", "speedtest":
+	case speedTestProviderCloudflare, speedTestProviderSpeedtest:
 	default:
-		params.Provider = "apple"
+		params.Provider = speedTestProviderApple
 	}
 	if params.Duration <= 0 {
 		params.Duration = 10
@@ -632,8 +638,69 @@ func (t *speedTester) execute(ctx context.Context) error {
 	return nil
 }
 
+// speedTestFallbacks lists the providers to try, in order, after the requested
+// one failed to produce a target. A provider's discovery endpoint can be
+// unreachable from one exit while the others answer (Apple's mensura CDN and
+// speedtest.net's list sit behind different networks), and reporting the whole
+// run as "unavailable" when a sibling provider would have measured fine is a
+// dead end for the user. Bettbox picks its endpoint once; FlClash retries.
+func speedTestFallbacks(requested string) []string {
+	order := []string{speedTestProviderApple, speedTestProviderCloudflare, speedTestProviderSpeedtest}
+	fallbacks := make([]string, 0, len(order))
+	for _, provider := range order {
+		if provider != requested {
+			fallbacks = append(fallbacks, provider)
+		}
+	}
+	return fallbacks
+}
+
+// prepareFor switches the tester onto another provider and runs its discovery.
+// The clients stay as built: every provider is dialled through the same
+// outbound, so only the target differs.
+func (t *speedTester) prepareFor(ctx context.Context, provider string) (*speedTestTarget, error) {
+	previous := t.prepare
+	t.prepare = prepareForProvider(provider)
+	target, err := t.prepare(ctx, t)
+	if err != nil {
+		t.prepare = previous
+	}
+	return target, err
+}
+
+func prepareForProvider(provider string) func(context.Context, *speedTester) (*speedTestTarget, error) {
+	switch provider {
+	case speedTestProviderCloudflare:
+		return prepareCloudflareSpeedTest
+	case speedTestProviderSpeedtest:
+		return prepareSpeedtestNet
+	default:
+		return prepareAppleSpeedTest
+	}
+}
+
 func (t *speedTester) resolveTarget(ctx context.Context) (*speedTestTarget, error) {
 	target, err := t.prepare(ctx, t)
+	if err != nil && ctx.Err() == nil && t.params.Provider != "" {
+		// Discovery failed on the requested provider. Try the siblings before
+		// giving up: the endpoint the user named is a preference, not a
+		// requirement, and every provider measures the same hop.
+		for _, provider := range speedTestFallbacks(t.params.Provider) {
+			if ctx.Err() != nil {
+				return nil, ctx.Err()
+			}
+			retry, retryErr := t.prepareFor(ctx, provider)
+			if retryErr != nil {
+				continue
+			}
+			target, err = retry, nil
+			t.update(func(state *SpeedTestState) {
+				state.Provider = provider
+				state.Fallback = true
+			})
+			break
+		}
+	}
 	t.update(func(state *SpeedTestState) {
 		if target != nil {
 			state.Server = target.server

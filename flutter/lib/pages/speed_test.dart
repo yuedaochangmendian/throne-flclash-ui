@@ -438,6 +438,22 @@ class _SpeedTestPageState extends State<SpeedTestPage>
                 ),
                 const SizedBox(height: 6),
                 _ServerLine(server: server, server_: _server),
+                // Which provider actually ran. The kernel falls back to a
+                // sibling when the chosen provider's discovery endpoint is
+                // unreachable from this exit, and saying so is the difference
+                // between "the test worked" and "the test silently measured
+                // something else than what the picker says".
+                if (_state['provider']?.toString() case final String actual
+                    when actual.isNotEmpty && actual != _provider)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 2),
+                    child: Text(
+                      '${context.tr('Provider')}: '
+                      '${_providers.firstWhere((p) => p.$1 == actual, orElse: () => (actual, actual)).$2}'
+                      '${_state['fallback'] == true ? ' · ${context.tr('Fell back')}' : ''}',
+                      style: context.listCaptionStyle,
+                    ),
+                  ),
                 const SizedBox(height: 10),
                 Row(
                   spacing: 8,

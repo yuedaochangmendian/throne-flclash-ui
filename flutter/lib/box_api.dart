@@ -128,21 +128,16 @@ extension ProfilesApi on BoxController {
 }
 
 extension RoutesApi on BoxController {
+  // The route-profile surface after the Routing page became the rule list.
+  // `routes.list` survives because the FFI-free fallback in
+  // RouteProfilesSource answers through it, and the per-profile rule screen
+  // still resolves a profile's name from it; the remaining profile CRUD
+  // (presets/addPreset/get/save/delete/setCurrent/resetRules/batchAddRules/
+  // setGlobalRuleDisabled) lost its only caller with the profile screens and is
+  // gone from this side. The host handlers stay: the tables and the default
+  // profile they manage are still what the builder reads.
   Future<dynamic> routeList() => call('routes.list');
-  Future<dynamic> routePresets() => call('routes.presets');
-  Future<dynamic> routeAddPreset(dynamic country) =>
-      call('routes.addPreset', {'country': country, 'autoUpdate': true});
-  Future<dynamic> routeGet(dynamic id) => call('routes.get', {'id': id});
   Future<dynamic> routeRules(dynamic id) => call('routes.rules', {'id': id});
-  Future<dynamic> routeBatchAddRules(dynamic id, String text) =>
-      call('routes.batchAddRules', {'id': id, 'text': text});
-  Future<dynamic> routeResetRules(dynamic id) =>
-      call('routes.resetRules', {'id': id});
-  Future<dynamic> routeSave(Json value) =>
-      call('routes.save', {'value': value});
-  Future<dynamic> routeDelete(dynamic id) => call('routes.delete', {'id': id});
-  Future<dynamic> routeSetCurrent(dynamic id) =>
-      call('routes.setCurrent', {'id': id});
   Future<dynamic> routeSaveRules(dynamic id, dynamic rules) =>
       call('routes.saveRules', {'id': id, 'rules': rules});
   Future<dynamic> routeRuleSets(String query, int limit) =>
@@ -151,8 +146,6 @@ extension RoutesApi on BoxController {
       call('routes.globalRules', {'profileId': profileId});
   Future<dynamic> routeSaveGlobalRules(dynamic rules) =>
       call('routes.saveGlobalRules', {'rules': rules});
-  Future<dynamic> routeSetGlobalRuleDisabled(dynamic profileId, List<dynamic> ids) =>
-      call('routes.setGlobalRuleDisabled', {'profileId': profileId, 'ids': ids});
   Future<dynamic> routeDeleteGlobalRule(dynamic id) =>
       call('routes.deleteGlobalRule', {'id': id});
 }

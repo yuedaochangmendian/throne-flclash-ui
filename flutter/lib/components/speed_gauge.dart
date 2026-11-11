@@ -70,7 +70,14 @@ String speedLoadedText(double downloadLatency, double uploadLatency) {
 
 /// The Bettbox gauge. [fraction] is 0..1 on [speedGaugeMarks]; [spin] is a
 /// 0..1 position for the connecting sweep (null while a value is shown).
-class SpeedGauge extends StatelessWidget {
+///
+/// The needle chases the sample on its own controller rather than through a
+/// [TweenAnimationBuilder]. The kernel pushes a sample every 200 ms while the
+/// chase takes 450 ms, so a builder — which restarts its tween from the current
+/// value on every rebuild — never finished a single segment and the arc
+/// stuttered. A controller that is simply given a new target each time keeps
+/// one continuous motion, which is what the gauge is read as.
+class SpeedGauge extends StatefulWidget {
   const SpeedGauge({
     super.key,
     required this.size,
@@ -97,34 +104,72 @@ class SpeedGauge extends StatelessWidget {
   final TextStyle? labelStyle;
 
   @override
+  State<SpeedGauge> createState() => _SpeedGaugeState();
+}
+
+class _SpeedGaugeState extends State<SpeedGauge>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late Animation<double> _chase;
+  double _target = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _target = speedGaugeFraction(widget.fraction);
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 450),
+      value: 1,
+    );
+    _chase = AlwaysStoppedAnimation(_target);
+  }
+
+  @override
+  void didUpdateWidget(SpeedGauge oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final next = speedGaugeFraction(widget.fraction);
+    if (next == _target) return;
+    // Retarget from wherever the needle is now: one continuous ease, no reset.
+    _chase = Tween(begin: _chase.value, end: next).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+    );
+    _target = next;
+    _controller.forward(from: 0);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
+    final size = widget.size;
     return SizedBox(
       width: size,
       height: size * .92,
-      child: TweenAnimationBuilder<double>(
-        // The needle chases the sample instead of jumping to it: the kernel
-        // pushes every 200 ms, which is faster than the eye tracks.
-        tween: Tween(end: speedGaugeFraction(fraction)),
-        duration: const Duration(milliseconds: 450),
-        curve: Curves.easeOutCubic,
-        builder: (context, shown, _) => CustomPaint(
+      child: AnimatedBuilder(
+        animation: _chase,
+        builder: (context, _) => CustomPaint(
           painter: _SpeedGaugePainter(
-            fraction: shown,
-            color: color,
-            accentColor: accentColor ?? scheme.tertiary,
-            trackColor: trackColor ?? scheme.surfaceContainerHighest,
-            needleColor: needleColor ?? scheme.onSurface,
-            passedLabelColor: passedLabelColor ?? scheme.onSurface,
+            fraction: _chase.value,
+            color: widget.color,
+            accentColor: widget.accentColor ?? scheme.tertiary,
+            trackColor: widget.trackColor ?? scheme.surfaceContainerHighest,
+            needleColor: widget.needleColor ?? scheme.onSurface,
+            passedLabelColor: widget.passedLabelColor ?? scheme.onSurface,
             labelStyle:
-                labelStyle ??
+                widget.labelStyle ??
                 AppTextStyle.caption2.of(context).copyWith(
                   fontSize: size / 20,
                   fontWeight: FontWeight.w700,
                   color: scheme.outline.withValues(alpha: .75),
                 ),
-            spin: spin,
-            showNeedle: showNeedle,
+            spin: widget.spin,
+            showNeedle: widget.showNeedle,
           ),
           child: const SizedBox.shrink(),
         ),

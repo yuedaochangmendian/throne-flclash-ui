@@ -601,10 +601,13 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
                         ),
                         const SizedBox(height: 16),
                         Row(
-                          spacing: 16,
+                          // Run time and city sit close together: at 16 dp the
+                          // gap read as two unrelated columns rather than one
+                          // summary line, and the flex split left a hole in
+                          // the middle on the phone layout.
+                          spacing: 8,
                           children: [
                             Expanded(
-                              flex: 2,
                               child: _StatusCell(
                                 label: 'Run time',
                                 child: _RuntimeValue(
@@ -616,6 +619,7 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
                               ),
                             ),
                             Expanded(
+                              flex: 2,
                               child: _StatusCell(
                                 label: 'City',
                                 child: city.isNotEmpty
