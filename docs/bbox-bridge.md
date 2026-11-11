@@ -176,8 +176,9 @@ reflection and **swallows** on failure — the same reason QR scanning runs in a
 Flutter plugin. A `DynamicLibrary` has no registrant. `flutter/lib/data/sqlite.dart` is the whole binding.
 
 What is live today is one table's **read**: `route_profiles`, joined to `route_rules` for the two counts and to
-`settings` for `current_route_id`, through `RouteProfilesDao`. `RouteProfilesSource` prefers it on the route list and
-the route editor and falls back to `routes.list` over the channel on every failure — no `libsqlite3.so`, no
+`settings` for `current_route_id`, through `RouteProfilesDao`. `RouteProfilesSource` serves the per-configuration rule
+screen and the profile pickers (a configuration's own rules, and "disable for a profile" on a pool rule), and falls
+back to `routes.list` over the channel on every failure — no `libsqlite3.so`, no
 `data.path` answer, an unexpected schema, a SQL error, or an empty table. The empty case is deliberate: on the host
 side `RouteManager.all()` would call `ensureDefault()` and **write** a profile, which a read-only Dart connection
 must never do. The SQL reproduces `BboxRoutes.list()`'s wire shape, so the fallback is invisible to the screen.

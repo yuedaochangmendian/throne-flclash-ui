@@ -493,15 +493,16 @@ class RoutingPage extends StatefulWidget {
   @override State<RoutingPage> createState() => _RoutingPageState();
 }
 
-/// The Routing page is the rule list itself — no profiles, no title card.
+/// The Routing page is the rule list itself — no profile picker, no title card.
 ///
 /// A route profile only ever existed to hold a rule list for the configurations
 /// that had no override, so the pool that applies to *every* configuration is
-/// the whole feature: one list, one default route for whatever a rule does not
-/// name, and nothing else to choose between. The section title went too (the
-/// page is already called Routing), and so did WARP, which is an outbound, not a
-/// rule. What remains below the list is the handful of switches that decide how
-/// the rules are resolved and mirrored.
+/// the page: one list, and one entry to the rules a configuration keeps for
+/// itself. The section title went too (the page is already called Routing), and
+/// so did WARP's entry, which is an outbound rather than a rule. The switches
+/// that decide how rules resolve and mirror sit in the ⋮ menu, and the profile's
+/// own unmatched-traffic action still comes from that profile's stored
+/// `default_outbound_id`, which the builder reads.
 class _RoutingPageState extends State<RoutingPage> {
   final _controller = GlobalRulesController();
 
@@ -562,13 +563,25 @@ class _RoutingPageState extends State<RoutingPage> {
     );
   }
 
-  /// The switches behind the list. Profiles and WARP are gone: a profile was
-  /// only a holder for a rule list, and WARP is an outbound, not a rule.
+  /// The switches behind the list, plus the entry to the per-profile rules.
+  ///
+  /// The profile *list* is gone — this page's shared pool is the default route
+  /// for every configuration — but the rules a configuration keeps for itself
+  /// still exist and are still applied, so the screen that edits them stays
+  /// reachable. Without this entry it had no opener at all and a configuration
+  /// bound to an old profile ran rules nobody could see or edit.
   List<PopupMenuItem> _menu(BuildContext context) {
     return [
       PopupMenuItem(
+        glyph: AppGlyphs.rulePresets,
+        label: context.tr('Per-profile rules'),
+        onPressed: () =>
+            openPage(context, const AdditionalRulesPage(profileId: 0)),
+      ),
+      PopupMenuItem(
         glyph: AppGlyphs.rules,
         label: context.tr('Route settings'),
+        section: const PopupMenuSection(),
         onPressed: () => openPage(context, const _RouteSettingsPage()),
       ),
       PopupMenuItem(

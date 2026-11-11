@@ -1,3 +1,13 @@
+#### 4.3.1
+
+* **A refused speed-test endpoint is reported as refused.** The load workers' errors were counted and thrown away, so a provider answering 403/429 on `/download` read as "unavailable" — the exact mislabel the previous round set out to remove — and an upload-only run whose every attempt was refused finished as a successful test that transferred nothing. The workers now keep their errors and the direction returns a refusal verdict. Zero latency samples also keep the last error, so `timeout` is reachable instead of every dead endpoint reading as unavailable
+* **A group delay test animates per node again.** The batch marks every id of the group in one set so the action can be awaited once, and the card read that set as "this node is running" — so every node spun for the whole batch and the session's queued/testing rows were unreachable. A group run now defers to those rows: the node under test spins, the ones still waiting show the clock
+* **Provider fallback has its own flag.** It shared `Fallback` with the transport downgrade, whose write ran later and erased it, so a successful h2/h3 run dropped the "Fell back" note while still naming the substitute provider
+* **The rule list's drag order matches what you see.** The pool's reorder handler subtracted one from the drop index a second time; `onReorderItem` already accounts for the removed row, so every downward drag persisted one slot short
+* **The per-configuration opt-out is reachable again.** Deleting the profile screens removed the only switch that turned a pool rule off for one configuration; the rule sheet now offers it, so a configuration that had a rule off can change its mind
+* **The run-time clock keeps its width.** The row's gap shrank but the flex swap gave the clock the narrower column, so `HH:MM:SS` ellipsised at large text scales
+* **Smaller fixes:** the gauge reuses `drive(CurveTween(...))` instead of leaking a `CurvedAnimation` per sample; the per-profile rule screen has an entry from the Routing menu instead of being orphaned; the gauge row's glyph key is the enum's own spelling, so the tests that name it actually match
+
 #### 4.3.0
 
 * **The speed test falls back to another provider instead of giving up.** When the chosen provider's discovery endpoint is unreachable from the exit (Apple's mensura CDN, Cloudflare's trace and speedtest.net's server list sit behind different networks), the run now tries the siblings before reporting `unavailable`, and the card says which provider actually ran and that it fell back. A provider the picker names is a preference, not a requirement — every one of them measures the same hop

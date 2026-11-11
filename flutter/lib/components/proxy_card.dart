@@ -84,7 +84,13 @@ class ProxyNodeCard extends StatelessWidget {
         // whole transition landed in one frame while a batched run (whose rows
         // change keys as the queue advances) animated — exactly the asymmetry
         // FlClash does not have.
-        key: ValueKey('glyph:${phase.name}'),
+        // The key names the phase so FadeBox cross-fades between them. It is the
+        // enum's own spelling (`ProxyTestPhase.queued`), not `phase.name`, so a
+        // test or a debug dump can name the key without guessing which form was
+        // used — the previous `phase.name` build matched no `ProxyTestPhase.*`
+        // lookup, which is how a `findsNothing` assertion stayed green while the
+        // clock icon was on screen.
+        key: ValueKey('glyph:$phase'),
         height: h,
         width: width,
         child: Semantics(
