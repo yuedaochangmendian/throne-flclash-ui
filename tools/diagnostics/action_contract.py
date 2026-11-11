@@ -31,8 +31,14 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 GO_ACTION = ROOT / "buildScript" / "core-patch" / "core" / "mobile" / "action.go"
-GO_BRIDGE = ROOT / "buildScript" / "core-patch" / "core" / "mobile" / "action_bridge.go"
+# The C entry point lives in the generated runtime (bindgen.py's
+# emit_go_runtime), not in a hand-written bridge file.
+GO_BRIDGE = ROOT / "buildScript" / "core-patch" / "core" / "mobile" / "bridge_runtime.go"
 DART_ACTION = ROOT / "flutter" / "lib" / "core" / "action.dart"
+
+# A push event's method tag. It is posted without an id and has no handler;
+# requiring one would be a false positive.
+PUSH_ONLY_METHODS = {"messageMethod"}
 
 # A Go constant inside the Method const block. Two legal spellings:
 #   `startSpeedTestMethod Method = "startSpeedTest"` (explicit type)
@@ -94,8 +100,11 @@ def main() -> int:
         read(DART_ACTION),
     )
     constants = go_constants(go_text)
+    requests = {
+        k: v for k, v in constants.items() if k not in PUSH_ONLY_METHODS
+    }
     registered = set(GO_REGISTER_RE.findall(go_text))
-    # The bridge file may hold the registry instead of action.go.
+    # The generated runtime may hold the registry instead of action.go.
     registered |= set(GO_REGISTER_RE.findall(bridge_text))
     dart = dart_enum(dart_text)
 
@@ -106,11 +115,11 @@ def main() -> int:
             failures.append(message)
 
     print(
-        f"Go constants: {len(constants)}   registered handlers: {len(registered)}   "
-        f"Dart enum: {len(dart)}"
+        f"Go constants: {len(constants)} ({len(requests)} requests)   "
+        f"registered handlers: {len(registered)}   Dart enum: {len(dart)}"
     )
 
-    check(bool(constants), "no Method constants found in action.go")
+    check(bool(requests), "no request Method constants found in action.go")
     check(bool(dart), "no ActionMethod enum members found in action.dart")
     check(
         bool(registered),
@@ -119,15 +128,16 @@ def main() -> int:
     )
 
     # Wire strings, not Go identifier names, are what crosses the C ABI.
-    wires = set(constants.values())
-    for label, actual in (("Dart enum", dart),):
-        for key in sorted(wires - actual):
-            failures.append(f"{label} is missing the Go wire value {key!r}")
-        for key in sorted(actual - wires):
-            failures.append(f"{label} declares {key!r} with no Go Method constant")
+    # Push-only tags (message) are excluded: Dart receives them as events,
+    # never as an ActionMethod it can invoke.
+    wires = set(requests.values())
+    for key in sorted(wires - dart):
+        failures.append(f"Dart enum is missing the Go wire value {key!r}")
+    for key in sorted(dart - wires):
+        failures.append(f"Dart enum declares {key!r} with no Go Method constant")
 
-    # Every declared method must have a handler registered.
-    identifiers = set(constants)
+    # Every declared request method must have a handler registered.
+    identifiers = set(requests)
     for key in sorted(identifiers - registered):
         failures.append(f"Go constant {key!r} has no registered handler")
     for key in sorted(registered - identifiers):
@@ -135,7 +145,7 @@ def main() -> int:
 
     # The Bettbox drift this audit exists to prevent: a wire name that differs
     # from its enum name by accident (both sides must use the identical string).
-    for ident, wire in sorted(constants.items()):
+    for ident, wire in sorted(requests.items()):
         expected = ident[:-6] if ident.endswith("Method") else ident
         if wire != expected:
             failures.append(

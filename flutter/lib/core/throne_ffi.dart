@@ -2105,6 +2105,11 @@ class ThroneFFI {
   Pointer<Utf8> throne_status_snapshot(int handle) =>
       _throne_status_snapshot(handle);
 
+  late final _throne_invoke_action =
+      _lookup<NativeFunction<Void Function(Pointer<Utf8>, Int64)>>('throne_invoke_action').asFunction<void Function(Pointer<Utf8> actionJson, int replyPort)>();
+  void throne_invoke_action(Pointer<Utf8> actionJson, int replyPort) =>
+      _throne_invoke_action(actionJson, replyPort);
+
   late final _throne_start_tun =
       _lookup<NativeFunction<Int32 Function(Int32, Pointer<Void>)>>('throne_start_tun').asFunction<int Function(int fd, Pointer<Void> tun)>();
   int throne_start_tun(int fd, Pointer<Void> tun) =>

@@ -46,6 +46,7 @@ import "C"
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"sync"
 	"time"
 	"unsafe"
@@ -123,7 +124,9 @@ func bridgeTun() unsafe.Pointer {
 //export throne_init_dart_api
 func throne_init_dart_api(api unsafe.Pointer) {
 	defer guardExport("throne_init_dart_api")
-	if err := initDartApi(api); err != nil { setErr(err) }
+	if err := initDartApi(api); err != nil {
+		setErr(err)
+	}
 }
 
 //export throne_attach_message_port
@@ -132,6 +135,70 @@ func throne_attach_message_port(port C.int64_t) {
 	bridgeMu.Lock()
 	messagePort = int64(port)
 	bridgeMu.Unlock()
+}
+
+//export throne_invoke_action
+func throne_invoke_action(actionJson *C.char, replyPort C.int64_t) {
+	defer guardExport("throne_invoke_action")
+	raw := C.GoString(actionJson)
+	port := int64(replyPort)
+	var action Action
+	if err := json.Unmarshal([]byte(raw), &action); err != nil {
+		// A malformed action has no id to echo, so answer on the port with a
+		// zero id and let the Dart side time out its pending correlation.
+		postActionResult(ActionResult{Code: actionCodeError, Data: err.Error()}, port)
+		return
+	}
+	result := ActionResult{Id: action.Id, Method: action.Method, Port: port}
+	go dispatchAction(action, result)
+}
+
+// postActionResult marshals one ActionResult and posts it to its reply port.
+func postActionResult(result ActionResult, port int64) {
+	msg, err := result.JSON()
+	if err != nil {
+		return
+	}
+	postRaw(port, string(msg))
+}
+
+// postRaw sends an already-marshalled result without re-encoding it. The
+// message-port event envelope is {"method","data"}; action results are their
+// own shape, so they bypass sendEvent's fixed method field.
+func postRaw(port int64, msg string) {
+	if port < 0 {
+		return
+	}
+	sendToPort(port, msg)
+}
+
+// dispatchAction runs one Action with the same panic fence that every other Go
+// handler uses: a panic on a goroutine must become a result, never a dead
+// Completer on the Dart side.
+func dispatchAction(action Action, result ActionResult) {
+	defer func() {
+		if r := recover(); r != nil {
+			result.Code = actionCodeError
+			result.Data = fmt.Sprintf("panic: %v", r)
+			postActionResult(result, result.Port)
+		}
+	}()
+	handler, ok := actionHandlers[action.Method]
+	if !ok {
+		result.Code = actionCodeError
+		result.Data = "unknown action method: " + string(action.Method)
+		postActionResult(result, result.Port)
+		return
+	}
+	data, err := handler(action.Data)
+	if err != nil {
+		result.Code = actionCodeError
+		result.Data = err.Error()
+	} else {
+		result.Code = actionCodeSuccess
+		result.Data = data
+	}
+	postActionResult(result, result.Port)
 }
 
 // sendEvent posts one JSON event to the attached message port (logs, ...).
@@ -176,14 +243,14 @@ func throne_status_snapshot(handle C.int64_t) (out *C.char) {
 		return out
 	}
 	snap := map[string]int64{
-		"memory": st.Memory,
-		"goroutines": int64(st.Goroutines),
-		"connectionsIn": int64(st.ConnectionsIn),
+		"memory":         st.Memory,
+		"goroutines":     int64(st.Goroutines),
+		"connectionsIn":  int64(st.ConnectionsIn),
 		"connectionsOut": int64(st.ConnectionsOut),
-		"uplink": st.Uplink,
-		"downlink": st.Downlink,
-		"uplinkTotal": st.UplinkTotal,
-		"downlinkTotal": st.DownlinkTotal,
+		"uplink":         st.Uplink,
+		"downlink":       st.Downlink,
+		"uplinkTotal":    st.UplinkTotal,
+		"downlinkTotal":  st.DownlinkTotal,
 	}
 	// The UI consumes the pushed event; the return value is the heartbeat.
 	sendEvent("status", snap)
@@ -270,10 +337,12 @@ func (bridgePlatformImpl) OpenTun(options TunOptions) (int32, error) {
 	return fd, nil
 }
 
-func (bridgePlatformImpl) LocalDNSTransport() LocalDNSTransport        { return bridgeDNS{} }
-func (bridgePlatformImpl) UsePlatformAutoDetectInterfaceControl() bool { return C.call_use_platform_auto_detect_interface_control(bridgeTun()) != 0 }
-func (bridgePlatformImpl) UseProcFS() bool                            { return C.call_use_proc_fs(bridgeTun()) != 0 }
-func (bridgePlatformImpl) ClearDNSCache()                             { C.call_clear_dns_cache(bridgeTun()) }
+func (bridgePlatformImpl) LocalDNSTransport() LocalDNSTransport { return bridgeDNS{} }
+func (bridgePlatformImpl) UsePlatformAutoDetectInterfaceControl() bool {
+	return C.call_use_platform_auto_detect_interface_control(bridgeTun()) != 0
+}
+func (bridgePlatformImpl) UseProcFS() bool { return C.call_use_proc_fs(bridgeTun()) != 0 }
+func (bridgePlatformImpl) ClearDNSCache()  { C.call_clear_dns_cache(bridgeTun()) }
 
 func (bridgePlatformImpl) AutoDetectInterfaceControl(fd int32) error {
 	return strErr(goStr(C.call_auto_detect_interface_control(bridgeTun(), C.int32_t(fd))))
