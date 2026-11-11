@@ -20,7 +20,6 @@ class _ProxiesPageState extends State<ProxiesPage> {
   // the one under test a spinner, and finished groups their delays.
   final _queued = <String>{};
   Json _session = const {};
-  int _sessionRequestedAt = 0;
   final _scrolls = <String, ScrollController>{};
   final _selectedOffsets = <String, double>{};
   String? _currentGroup;
@@ -106,7 +105,6 @@ class _ProxiesPageState extends State<ProxiesPage> {
       milliseconds: (perNode > 0 ? perNode : 8000) * ids.length + 15000,
     );
     setState(() {
-      _sessionRequestedAt = DateTime.now().millisecondsSinceEpoch;
       _testing.addAll(ids);
       if (testingGroup) _testLabels.add(tag);
     });
@@ -200,25 +198,34 @@ class _ProxiesPageState extends State<ProxiesPage> {
   Widget _card(BuildContext context, Json group, Json node) {
     final groupTag = group['tag'].toString(), nodeTag = node['tag'].toString();
     final id = (node['id'] as num?)?.toInt();
-    final startedAt = (_session['startedAt'] as num?)?.toInt() ?? 0;
     final individualTest = id != null && _testing.contains(id);
     final groupTest =
         _testLabels.contains(groupTag) || _queued.contains(groupTag);
-    // A node tap owns its own spinner. Do not let a stale/global session row
-    // keep that node spinning after groups.test returns; rows are only used
-    // while a group action is driving the shared session.
-    final row =
-        groupTest &&
-            !individualTest &&
-            _session['running'] == true &&
-            startedAt >= _sessionRequestedAt
+    // FlClash's per-node animation, from whichever signal knows the node is
+    // being measured right now:
+    //   * a node tap marks exactly that id in `_testing` (running) and owns the
+    //     card until `groups.test` returns;
+    //   * a group run pushes the shared session's rows, and the row's own phase
+    //     decides (TESTING spins, QUEUED shows the clock, DONE clears);
+    //   * a group run whose rows have not arrived yet is all queued.
+    //
+    // The session feed is only consulted while a group run is actually in
+    // flight. A single-node run leaves a TESTING row behind in the session for
+    // a moment after `groups.test` returns — reading it unconditionally kept
+    // that one card spinning after its test had finished, which is the same
+    // stale-row bug the old `!individualTest` guard was papering over. Keying on
+    // "a group action is pending" fixes both directions: a group run shows its
+    // rows regardless of who started the session, and a finished one-node run
+    // clears immediately.
+    final sessionRow =
+        groupTest && !individualTest && _session['running'] == true
         ? rows(_session['rows'])
               .where((row) => (row['id'] as num?)?.toInt() == id)
               .firstOrNull
         : null;
     final phase = individualTest
         ? ProxyTestPhase.running
-        : switch (row?['phase']) {
+        : switch (sessionRow?['phase']) {
             'TESTING' => ProxyTestPhase.running,
             'QUEUED' => ProxyTestPhase.queued,
             'DONE' => ProxyTestPhase.idle,

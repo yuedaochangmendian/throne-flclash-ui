@@ -259,26 +259,6 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets(
-    'the route list falls back to the channel when data.path is unavailable',
-    (tester) async {
-      reportFlutterErrors();
-      rules = [];
-      await mount(tester);
-      openPage(
-        tester.element(find.byType(HomePage)),
-        const RouteProfilesPage(),
-      );
-      await tester.pumpAndSettle();
-
-      // data.path was asked once, answered null, and the list still rendered from
-      // routes.list — the screen must not see the difference.
-      expect(dataPathCalls, isNotEmpty);
-      expect(find.text('Default'), findsWidgets);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
   // The scalar rule fields are fixed menus with the legal values Throne for
   // Android ships in arrays.xml, not free-text rows. These are pure helpers,
   // so the value contract is asserted without pumping a widget.
@@ -489,38 +469,7 @@ void main() {
     },
   );
 
-  testWidgets('the route override screen keeps only the core fields', (tester) async {
-    reportFlutterErrors();
-    rules = [];
-    await mount(tester);
-    openPage(
-      tester.element(find.byType(HomePage)),
-      const RouteOverridePage(id: 1),
-    );
-    await tester.pumpAndSettle();
-
-    // Core profile fields survive the simplification; the rules themselves live
-    // on their own screen, reached through the "Additional rules" row.
-    expect(find.text('Name'), findsOneWidget);
-    expect(find.text('Default outbound'), findsOneWidget);
-    expect(find.text('Remote'), findsWidgets);
-    // "Additional rules" also appears on the route-profiles list behind this page.
-    expect(find.text('Additional rules'), findsWidgets);
-    expect(find.text('Global rules'), findsOneWidget);
-    expect(find.text('Use this profile'), findsOneWidget);
-
-    // The batch-add text box, default-rules reset and endpoint ids stay out of
-    // the override screen; those live on the rules screen and the profile list.
-    expect(find.text('Batch add simple rules'), findsNothing);
-    expect(find.text('Restore default rules'), findsNothing);
-    expect(find.text('Endpoint ids'), findsNothing);
-    expect(find.text('Remote profile'), findsWidgets);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets('the routing page is the global pool, and the rest moved to the menu', (
-    tester,
-  ) async {
+  testWidgets('the routing page is the rule list itself', (tester) async {
     reportFlutterErrors();
     rules = [];
     await mount(tester);
@@ -530,11 +479,13 @@ void main() {
     // The pool is the page: its rules render inline, and the add/import
     // actions sit in the app bar like every other page's primary actions.
     expect(find.text('Pool A'), findsOneWidget);
-    expect(find.text('Global rules'), findsWidgets);
     expect(find.byTooltip('Add rule'), findsOneWidget);
     expect(find.byTooltip('Import rules from JSON'), findsOneWidget);
 
-    // Nothing that used to be stacked below the pool is still on the page.
+    // No section title: the page is already called Routing.
+    expect(find.text('Global rules'), findsNothing);
+
+    // Route profiles, WARP and the technical switches are gone from the page.
     expect(find.text('Route profiles'), findsNothing);
     expect(find.text('WARP'), findsNothing);
     expect(find.text('Outbound domain strategy'), findsNothing);
@@ -542,13 +493,13 @@ void main() {
     expect(find.text('Ad blocking'), findsNothing);
     expect(find.text('Update rule sets'), findsNothing);
 
-    // The old controls are one tap deep, in the ⋮ menu.
+    // What remains is one tap deep, and profiles/WARP are gone for good.
     await tester.tap(find.byTooltip('More'));
     await tester.pumpAndSettle();
-    expect(find.text('Route profiles'), findsOneWidget);
-    expect(find.text('WARP'), findsOneWidget);
     expect(find.text('Route settings'), findsOneWidget);
     expect(find.text('Automatic updates'), findsOneWidget);
+    expect(find.text('Route profiles'), findsNothing);
+    expect(find.text('WARP'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 

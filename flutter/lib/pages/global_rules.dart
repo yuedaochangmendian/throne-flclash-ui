@@ -237,23 +237,31 @@ class GlobalRulesBodyState extends State<GlobalRulesBody> {
       onReorderItem: _reorder,
       itemBuilder: (context, index) {
         final ref = _rules[index];
-        final Widget row = DecorationListItem(
-          contentPadding: const EdgeInsets.only(left: 16),
-          title: Text(ruleName(ref.rule, index)),
-          subtitle: ruleRowSubtitle(context, ref.rule),
-          leading: GlyphIcon(
-            selectionActive
-                ? (_selected.contains(ref.id) ? AppGlyphs.checkCircle : AppGlyphs.rules)
-                : AppGlyphs.rules,
+        // DecorationListItem rounds its own corners from the row's position in
+        // the group; a reorderable list is not built through generateGroup, so
+        // without this the rows came out square while every other list on every
+        // other page is a rounded card.
+        final position = ItemPosition.get(index, _rules.length);
+        final Widget row = ItemPositionProvider(
+          position: position,
+          child: DecorationListItem(
+            contentPadding: const EdgeInsets.only(left: 16),
+            title: Text(ruleName(ref.rule, index)),
+            subtitle: ruleRowSubtitle(context, ref.rule),
+            leading: GlyphIcon(
+              selectionActive
+                  ? (_selected.contains(ref.id) ? AppGlyphs.checkCircle : AppGlyphs.rules)
+                  : AppGlyphs.rules,
+            ),
+            trailing: selectionActive ? null : SortHandle(index: index),
+            onPressed: () {
+              if (selectionActive) {
+                _toggleSelected(ref);
+                return;
+              }
+              _edit(ref);
+            },
           ),
-          trailing: selectionActive ? null : SortHandle(index: index),
-          onPressed: () {
-            if (selectionActive) {
-              _toggleSelected(ref);
-              return;
-            }
-            _edit(ref);
-          },
         );
         if (selectionActive) {
           return KeyedSubtree(key: ObjectKey(ref.id), child: row);
