@@ -35,6 +35,7 @@ import io.nekohasekai.sagernet.ui.json.engine.JsonFormatter
 import io.nekohasekai.sagernet.update.UpdateChecker
 import moe.matsuri.nb4a.utils.LogRedactor
 import moe.matsuri.nb4a.utils.CoreLog
+import io.flrone.bridge.BboxActions
 import io.flrone.bridge.BboxApi
 import io.flrone.bridge.BboxApps
 import io.flrone.bridge.BboxBackup
@@ -392,6 +393,16 @@ class ThroneBoxBridge(
 
     override fun onMethodCall(call: MethodCall, result: MethodChannel.Result) {
         try {
+            // ADR 0002 phase 3b-2: BboxActions owns the migrated domains (routes.*
+            // today). Anything it does not answer falls through to the arms below,
+            // so a domain can move one at a time and the two tables cannot drift.
+            if (call.method in BboxActions.methods) {
+                val args = (call.arguments as? Map<*, *>).orEmpty()
+                @Suppress("UNCHECKED_CAST")
+                val arguments = args as Map<String, Any?>
+                result.respond { BboxActions.invoke(call.method, arguments) }
+                return
+            }
             when (call.method) {
                 "ready" -> result.success(serveReady())
                 "service.start" -> result.respond {
@@ -591,74 +602,6 @@ class ThroneBoxBridge(
                 }
                 "profiles.clearTraffic" -> result.respond {
                     BboxProfiles.clearGroupTraffic(call.argument<Int>("id")?.toLong() ?: -1L); null
-                }
-                "routes.list" -> result.respond { BboxRoutes.list() }
-                "routes.get" -> result.respond { BboxRoutes.get(call.argument<Int>("id")?.toLong() ?: -1L) }
-                "routes.save" -> {
-                    @Suppress("UNCHECKED_CAST")
-                    val values = call.argument<Map<String, Any?>>("value") ?: call.arguments as? Map<String, Any?>
-                    result.respond { BboxRoutes.save(values.orEmpty()) }
-                }
-                "routes.delete" -> result.respond {
-                    BboxRoutes.delete(call.argument<Int>("id")?.toLong() ?: -1L); null
-                }
-                "routes.setCurrent" -> result.respond {
-                    BboxRoutes.setCurrent(call.argument<Int>("id")?.toLong() ?: -1L)
-                }
-                "routes.presets" -> result.respond { BboxRoutes.presets() }
-                "routes.addPreset" -> result.respond {
-                    BboxRoutes.addPreset(
-                        call.argument<String>("country").orEmpty(),
-                        call.argument<Boolean>("autoUpdate") != false,
-                    )
-                }
-                "routes.rules" -> result.respond {
-                    BboxRoutes.rules(call.argument<Int>("id")?.toLong() ?: -1L)
-                }
-                "routes.saveRules" -> {
-                    @Suppress("UNCHECKED_CAST")
-                    val rules = call.argument<List<Any>>("rules").orEmpty()
-                        .mapNotNull { it as? Map<String, Any?> }
-                    result.respond { BboxRoutes.saveRules(call.argument<Int>("id")?.toLong() ?: -1L, rules) }
-                }
-                "routes.globalRules" -> result.respond {
-                    BboxRoutes.globalRules(call.argument<Int>("profileId")?.toLong() ?: 0L)
-                }
-                "routes.saveGlobalRules" -> {
-                    @Suppress("UNCHECKED_CAST")
-                    val rules = call.argument<List<Any>>("rules").orEmpty()
-                        .mapNotNull { it as? Map<String, Any?> }
-                    result.respond { BboxRoutes.saveGlobalRules(rules) }
-                }
-                "routes.setGlobalRuleDisabled" -> result.respond {
-                    BboxRoutes.setGlobalRuleDisabled(
-                        call.argument<Int>("profileId")?.toLong() ?: -1L,
-                        (call.argument<List<*>>("ids") ?: emptyList<Any?>()).mapNotNull { (it as? Number)?.toLong() },
-                    )
-                }
-                "routes.deleteGlobalRule" -> result.respond {
-                    BboxRoutes.deleteGlobalRule(call.argument<Int>("id")?.toLong() ?: -1L); null
-                }
-                "routes.batchAddRules" -> result.respond {
-                    BboxRoutes.batchAddRules(
-                        call.argument<Int>("id")?.toLong() ?: -1L,
-                        call.argument<String>("text").orEmpty(),
-                    )
-                }
-                "routes.resetRules" -> result.respond {
-                    BboxRoutes.resetRules(call.argument<Int>("id")?.toLong() ?: -1L)
-                }
-                // The rule-set catalog (the routeprofiles srslist) behind the native rule-set picker.
-                "routes.ruleSets" -> result.respond {
-                    val query = call.argument<String>("query").orEmpty().trim()
-                    val limit = call.argument<Int>("limit") ?: 100
-                    val catalog = withContext(Dispatchers.IO) { RouteManager.catalog() }
-                    mapOf(
-                        "total" to catalog.size,
-                        "entries" to catalog.search(query, limit).map { (name, url) ->
-                            mapOf("name" to name, "url" to url)
-                        },
-                    )
                 }
                 "profiles.autoSelectorCreate" -> result.respond {
                     BboxProfiles.createAutoSelector(
