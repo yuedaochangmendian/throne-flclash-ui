@@ -20,7 +20,14 @@ object RouteManager {
 
     private val dao get() = SagerDatabase.routeDao
 
-    /** Every profile in id order; an empty table is given the Default profile first. */
+    /**
+     * Every profile in id order; an empty table is given the Default profile first.
+     *
+     * ADR 0002 phase 3b: when [RouteJsonStore] has a readable document set it is the source;
+     * Room remains the fallback and the initial seed. The switch is a runtime read, not a
+     * build-time choice, so a corrupt or missing document cannot lose a user's routes —
+     * `RouteJsonStore.allProfiles()` answers null and this falls straight back.
+     */
     fun all(): List<RouteProfile> {
         val profiles = load()
         if (profiles.isNotEmpty()) return profiles
@@ -28,9 +35,13 @@ object RouteManager {
         return load()
     }
 
-    fun get(id: Long): RouteProfile? = SagerDatabase.instance.runInTransaction(Callable {
-        dao.getProfile(id)?.toModel(dao.rulesOf(id))
-    })
+    fun get(id: Long): RouteProfile? {
+        val fromJson = RouteJsonStore.allProfiles()?.firstOrNull { it.id == id }
+        if (fromJson != null) return fromJson.toModel(RouteJsonStore.rulesOf(id))
+        return SagerDatabase.instance.runInTransaction(Callable {
+            dao.getProfile(id)?.toModel(dao.rulesOf(id))
+        })
+    }
 
     /**
      * GetCustomDns (RoutesRepo.cpp): the profile's ActiveDns without loading its rules; null when it follows the
@@ -52,7 +63,9 @@ object RouteManager {
     /** Every profile but the desktop's raw ones, which Android keeps read-only and never uses. */
     fun usable(): List<RouteProfile> = all().filterNot { it.is_raw }
 
-    fun isUsable(id: Long): Boolean = id > 0L && dao.isUsable(id)
+    fun isUsable(id: Long): Boolean = id > 0L &&
+        (RouteJsonStore.allProfiles()?.firstOrNull { it.id == id }?.let { !it.isRaw }
+            ?: dao.isUsable(id))
 
     /**
      * ResolveRouteId (RunningProfiles.cpp): a group override naming a profile Android can use, else the global one.
@@ -131,6 +144,20 @@ object RouteManager {
 
     /** Inserts when [p] has no id (and assigns it), else upserts the row; the rules are replaced in list order. */
     fun save(p: RouteProfile): Long {
+        if (RouteJsonStore.ready) {
+            val entity = RouteProfileEntity.of(p)
+            if (p.id <= 0L) {
+                entity.id = 0L
+                p.id = RouteJsonStore.insertProfile(entity)
+            } else if (RouteJsonStore.updateProfile(entity) == 0) {
+                RouteJsonStore.insertProfile(entity)
+            }
+            RouteJsonStore.deleteRules(p.id)
+            RouteJsonStore.insertRules(
+                p.rules.mapIndexed { index, rule -> RouteRuleEntity.of(p.id, index, rule) },
+            )
+            return p.id
+        }
         SagerDatabase.instance.runInTransaction {
             val entity = RouteProfileEntity.of(p)
             if (p.id <= 0L) {
@@ -152,6 +179,13 @@ object RouteManager {
      * routed by it follow the global profile again, and the group owning it stops importing (RoutesRepo::forgetDeleted).
      */
     fun delete(id: Long): Boolean {
+        if (RouteJsonStore.ready) {
+            val ids = RouteJsonStore.allIds()
+            if (id !in ids || ids.size <= 1) return false
+            RouteJsonStore.deleteProfile(id)
+            if (DataStore.currentRouteId == id) DataStore.currentRouteId = (ids - id).first()
+            return true
+        }
         val remaining = SagerDatabase.instance.runInTransaction(Callable {
             val ids = dao.allIds()
             if (id !in ids || ids.size <= 1) return@Callable null
@@ -165,6 +199,10 @@ object RouteManager {
     }
 
     fun ensureDefault() {
+        if (RouteJsonStore.ready) {
+            if (RouteJsonStore.count() == 0L) save(RouteProfile.defaultProfile())
+            return
+        }
         SagerDatabase.instance.runInTransaction {
             if (dao.count() == 0L) save(RouteProfile.defaultProfile())
         }
@@ -311,10 +349,17 @@ object RouteManager {
             .toList()
     }
 
-    private fun load(): List<RouteProfile> = SagerDatabase.instance.runInTransaction(Callable {
-        val rules = dao.allRules().groupBy { it.routeProfileId }
-        dao.allProfiles().map { it.toModel(rules[it.id].orEmpty()) }
-    })
+    private fun load(): List<RouteProfile> {
+        // Phase 3b: the JSON document set wins when it parses; Room is the fallback.
+        RouteJsonStore.allProfiles()?.let { profiles ->
+            val rules = RouteJsonStore.allRules().orEmpty().groupBy { it.routeProfileId }
+            return profiles.map { it.toModel(rules[it.id].orEmpty()) }
+        }
+        return SagerDatabase.instance.runInTransaction(Callable {
+            val rules = dao.allRules().groupBy { it.routeProfileId }
+            dao.allProfiles().map { it.toModel(rules[it.id].orEmpty()) }
+        })
+    }
 
     private fun observe() {
         synchronized(this) {

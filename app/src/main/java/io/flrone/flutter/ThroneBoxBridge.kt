@@ -18,6 +18,7 @@ import android.os.Build
 import android.os.Debug
 import io.nekohasekai.sagernet.Key
 import io.nekohasekai.sagernet.database.DataStore
+import io.nekohasekai.sagernet.database.RouteJsonStore
 import io.nekohasekai.sagernet.database.SagerDatabase
 import io.nekohasekai.sagernet.utils.CrashStore
 import io.nekohasekai.sagernet.database.DnsServerHistory
@@ -1009,6 +1010,10 @@ class ThroneBoxBridge(
                     result.respondIo {
                         val file = activity.getDatabasePath(Key.DB_PROFILE)
                         val version = SagerDatabase.instance.openHelper.readableDatabase.version
+                        // ADR 0002 phase 3b: the JSON route documents live beside the
+                        // database. Publishing the directory here is what lets
+                        // RouteManager prefer them; without it every read stays on Room.
+                        RouteJsonStore.directory = java.io.File(file.parentFile, "documents")
                         mapOf("path" to file.absolutePath, "version" to version)
                     }
                 }

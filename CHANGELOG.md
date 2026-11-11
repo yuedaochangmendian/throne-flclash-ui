@@ -1,3 +1,11 @@
+#### 4.9.0
+
+* **The first data plane moves onto JSON documents: route profiles and rules (ADR 0002, phase 3b).** `RouteJsonStore` keeps `route_profiles` / `route_rules` as two atomic JSON documents beside the database. It speaks the same row shape as Room — `RouteProfileEntity.of` / `toModel` and `RouteRuleEntity.of` / `toModel` are reused unchanged — so ids, rule order, JSON blobs, booleans and nulls round-trip without a hand-written field mapper. Writes are temp-file + rename
+* **`RouteManager` switches at runtime, and Room stays authoritative until the documents parse.** Only `load` / `get` / `save` / `delete` / `ensureDefault` / `isUsable` gained a branch; every other method and every caller (`BboxRoutes`, `ConfigGenerator`, the group route picker) is untouched. `RouteJsonStore.ready` is false when no document exists, and any read failure answers null, so a missing or corrupt file falls straight back to Room — the switch cannot lose a user's routes, only skip itself
+* **`ready` treats either document as established.** Requiring both files would leave `save()` on Room right after the first profile was written to JSON, splitting the two stores — the exact divergence the switch exists to prevent. A profile set with no rules is a legitimate state (a fresh Default profile)
+* **Diagnostics are injectable.** `RouteJsonStore.logger` defaults to `Logs.w` but the corrupt-file path is exercised by a JVM test, where `android.util.Log` is unmocked; the test swaps the sink instead of the production code avoiding its own logging
+* **Ten JVM tests pin the round-trip**: every profile and rule field survives, rules stay ordered and profile-scoped, ids increase, update reports a miss, delete takes the rules with it, a corrupt document reads as absent (so Room stays authoritative), and `isUsable` follows the raw flag
+
 #### 4.8.0
 
 * **The speed test is the first data-plane domain on the action bus (ADR 0002, phase 3a).** Four actions — `startSpeedTest`, `cancelSpeedTest`, `speedTestServers`, `speedTestOutbounds` — are registered in the Go dispatcher and mirror the typed calls' wire payloads exactly, so the screen does not branch. With the FFI driver up, `SpeedTestApi` goes through `ThroneKernel.invoke`; the gobind/channel path stays for the service-owned core, which has no Dart FFI instance
