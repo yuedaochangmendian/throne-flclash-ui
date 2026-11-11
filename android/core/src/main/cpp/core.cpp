@@ -13,6 +13,7 @@
 #include <cstdlib>
 #include "jni_helper.h"
 #include "bridge_symbols.h"
+#include "speedtest_symbols.h"
 
 static jobject g_platform;   // CorePlatform global ref
 static jmethodID m_platform[16];
@@ -280,6 +281,40 @@ JNIEXPORT void JNICALL
 Java_io_flrone_core_Core_closeInstance(JNIEnv *, jobject, const jlong handle) {
     if (handle == 0) return;
     throne_Instance_close(handle);
+}
+
+// --- Bettbox speed test (see speedtest_symbols.h for the contract) ----------
+
+extern "C"
+JNIEXPORT jint JNICALL
+Java_io_flrone_core_Core_startBettboxSpeedTest(JNIEnv *env, jobject,
+                                               const jlong handle, jstring params) {
+    if (handle == 0) return -1;
+    scoped_string p = get_string(params);
+    return throne_Mobile_startBettboxSpeedTest(handle, p);
+}
+
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_io_flrone_core_Core_bettboxSpeedTestServers(JNIEnv *env, jobject,
+                                                 const jlong handle, jstring outbound, jstring search) {
+    if (handle == 0) return env->NewStringUTF("[]");
+    scoped_string o = get_string(outbound);
+    scoped_string s = get_string(search);
+    const auto json = throne_Mobile_bettboxSpeedTestServers(handle, o, s);
+    const auto out = env->NewStringUTF(json != nullptr ? json : "[]");
+    if (json != nullptr) throne_free(const_cast<char *>(json));
+    return out;
+}
+
+extern "C"
+JNIEXPORT jstring JNICALL
+Java_io_flrone_core_Core_bettboxSpeedTestOutbounds(JNIEnv *env, jobject, const jlong handle) {
+    if (handle == 0) return env->NewStringUTF("[]");
+    const auto json = throne_Mobile_bettboxSpeedTestOutbounds(handle);
+    const auto out = env->NewStringUTF(json != nullptr ? json : "[]");
+    if (json != nullptr) throne_free(const_cast<char *>(json));
+    return out;
 }
 
 extern "C"

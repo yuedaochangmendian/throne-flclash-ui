@@ -225,16 +225,13 @@ extension GroupsApi on BoxController {
 /// The Bettbox speed test, run by the kernel against the running instance's
 /// outbounds. `start` returns at once; `query` is polled while `running`.
 extension SpeedTestApi on BoxController {
-  Future<bool> speedTestStart(Json params) async {
-    try {
-      return await call('speedTest.start', {
+  /// False means the kernel refused because a test is already running. Any
+  /// other failure — the VPN down, the core gone — throws, so the caller can
+  /// show the actual reason instead of dressing it up as "already running".
+  Future<bool> speedTestStart(Json params) async =>
+      await call('speedTest.start', {
         'params': convert.jsonEncode(params),
       }) == true;
-    } catch (error) {
-      report(error);
-      return false;
-    }
-  }
 
   /// `{state, running}`: the kernel snapshot and whether a test is in flight.
   Future<Json> speedTestQuery() async => json(await call('speedTest.query'));
