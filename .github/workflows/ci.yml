@@ -125,6 +125,10 @@ jobs:
         if: ${{ needs.changes.outputs.code == 'true' }}
         run: |
           python3 tools/diagnostics/symbol_audit.py
+          # ADR 0002's action bus: Go Method constants, dispatcher registry and
+          # Dart ActionMethod must agree by wire name. It is a no-op until the
+          # protocol files land in phase 1, then becomes a hard gate.
+          python3 tools/diagnostics/action_contract.py
           python3 tools/diagnostics/settings_audit.py --summary
           python3 tools/diagnostics/ffi_regression_test.py
           python3 tools/diagnostics/generated_models_check.py
