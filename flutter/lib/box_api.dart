@@ -170,6 +170,49 @@ extension RoutesApi on BoxController {
 
   Future<dynamic> routeDeleteGlobalRule(dynamic id) =>
       _routeKernel().invoke<Object?>(ActionMethod.deleteGlobalRule, data: {'id': id});
+
+  // --- profile CRUD (ADR 0002 phase 3d, PR-1) --------------------------------
+
+  /// Returns one profile's metadata and its simple-rule text.
+  Future<dynamic> routeGetProfile(dynamic id) =>
+      _routeKernel().invoke<Object?>(ActionMethod.getRouteProfile, data: {'id': id});
+
+  /// Creates or updates a route profile. Absent fields are left untouched.
+  Future<dynamic> routeSaveProfile({
+    dynamic id,
+    String? name,
+    String? defaultOutbound,
+    bool? isRemote,
+    String? remoteUrl,
+    bool? autoUpdate,
+    List<int>? endpointIds,
+    String? rules,
+  }) => _routeKernel().invoke<Object?>(ActionMethod.saveRouteProfile, data: {
+    'id': id,
+    'name': name,
+    'defaultOutbound': defaultOutbound,
+    'isRemote': isRemote,
+    'remoteUrl': remoteUrl,
+    'autoUpdate': autoUpdate,
+    'endpointIds': endpointIds,
+    'rules': rules,
+  });
+
+  /// Deletes a route profile and its rules.
+  Future<dynamic> routeDeleteProfile(dynamic id) =>
+      _routeKernel().invoke<Object?>(ActionMethod.deleteRouteProfile, data: {'id': id});
+
+  /// Marks a profile as the active route.
+  Future<dynamic> routeSetCurrent(dynamic id) =>
+      _routeKernel().invoke<Object?>(ActionMethod.setCurrentRoute, data: {'id': id});
+
+  /// Adds one rule per text line (`prefix:value -> outbound`).
+  Future<dynamic> routeBatchAddRules(dynamic id, String text) =>
+      _routeKernel().invoke<Object?>(ActionMethod.batchAddRules, data: {'id': id, 'text': text});
+
+  /// Resets a profile's rules to the Default chain's.
+  Future<dynamic> routeResetRules(dynamic id) =>
+      _routeKernel().invoke<Object?>(ActionMethod.resetRouteRules, data: {'id': id});
 }
 
 /// The one channel call the data plane still needs: the host answers with the

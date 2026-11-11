@@ -1017,6 +1017,11 @@ const _zh = <String, String>{
       '此规则指定一个优选端点；没有匹配条件。',
   'A remote profile downloads its rules from the URL.': '远程配置从 URL 下载规则。',
   'Batch add simple rules': '批量添加简单规则',
+  'Batch add rules': '批量添加规则',
+  'Reset rules to defaults': '重置规则为默认',
+  'Every rule in this profile is replaced by the Default chain.':
+      '此配置中的所有规则将被默认链替换。',
+  'One rule per line.': '每行一条规则。',
   'Nodes': '节点',
   'App settings': '应用设置',
   'This configuration carries only its node list; membership is edited on the Proxies screen.':
