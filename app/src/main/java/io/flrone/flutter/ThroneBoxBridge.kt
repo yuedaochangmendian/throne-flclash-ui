@@ -52,7 +52,6 @@ import io.flrone.bridge.BboxMode
 import io.flrone.bridge.BboxProbeSession
 import io.flrone.bridge.BboxProfileWire
 import io.flrone.bridge.BboxProfiles
-import io.flrone.bridge.BboxRoutes
 import io.flrone.bridge.BboxScanChunks
 import io.flrone.bridge.BboxSpeedTest
 import io.flrone.bridge.BboxTestSession
@@ -953,18 +952,35 @@ class ThroneBoxBridge(
                     result.respondIo {
                         val file = activity.getDatabasePath(Key.DB_PROFILE)
                         val version = SagerDatabase.instance.openHelper.readableDatabase.version
-                        // ADR 0002 phase 3b: the JSON route documents live beside the
-                        // database. Publishing the directory here is what lets
-                        // RouteManager prefer them; without it every read stays on Room.
-                        RouteJsonStore.directory = java.io.File(file.parentFile, "documents")
+                        // ADR 0002 phase 3c: the kernel owns the route documents and writes
+                        // them under its base path, which the host sets to filesDir in
+                        // CoreRuntime.setup. This side only reads, so the two must name the
+                        // same directory or every read would silently fall back to Room.
+                        RouteJsonStore.directory =
+                            java.io.File(activity.filesDir, "documents")
                         mapOf("path" to file.absolutePath, "version" to version)
                     }
                 }
                 // ADR 0002 phase 2: the one-time Room -> JSON export. Read-only
                 // and idempotent; Dart writes the documents atomically and keeps
                 // Room as its fallback until all seven files parse.
+                // ADR 0002 phase 3c: seed the kernel's route documents from Room.
+                //
+                // The kernel is the ONLY writer once the documents exist, so this runs at
+                // most once: if either file is already there the answer is a plain "no",
+                // and the kernel's copy wins. Old-version compatibility is deliberately
+                // dropped here — the seed copies Room's own columns, so a fresh install
+                // and an upgrade produce the same document set.
                 "data.documents" -> result.respondIo {
-                    mapOf("json" to RoomToJsonMigration.export())
+                    val dir = java.io.File(activity.filesDir, "documents")
+                    val profiles = java.io.File(dir, "route_profiles.json")
+                    val rules = java.io.File(dir, "route_rules.json")
+                    if (profiles.isFile || rules.isFile) {
+                        mapOf("seeded" to false)
+                    } else {
+                        RoomToJsonMigration.seed(dir)
+                        mapOf("seeded" to true)
+                    }
                 }
                 "ffi.mode" -> {
                     val enabled = call.argument<Boolean>("enabled") == true

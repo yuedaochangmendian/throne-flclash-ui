@@ -13,7 +13,6 @@ import 'core/action.dart';
 import 'core/kernel_service.dart';
 import 'core/platform_value.dart';
 import 'core/throne_kernel.dart';
-import 'data/document_store.dart';
 import 'data/route_profiles_source.dart';
 
 part 'box_api.dart';
@@ -438,6 +437,16 @@ class BoxController extends ChangeNotifier {
       // An AppRestart-level write or reset from before this attach; a reload does not clear it.
       applyRequired = result['applyRequired'] as String?;
       ready = true;
+      // ADR 0002 phase 3c: hand the route documents to the kernel once. The host no-ops
+      // when they already exist, so this is safe on every attach; it runs before the first
+      // route read because that read now goes to Go, which needs a document to answer from.
+      try {
+        await dataSeedDocuments();
+      } catch (error) {
+        // A failed seed is not fatal: the kernel answers an empty set and the routing
+        // screen shows the Default profile it creates.
+        report(error);
+      }
       for (final data in _dataOwners.keys) { _syncData(data); }
     } catch (error) {
       startupError = describe(error);

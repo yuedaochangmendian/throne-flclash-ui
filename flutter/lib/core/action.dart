@@ -23,6 +23,21 @@ enum ActionMethod {
   cancelSpeedTest,
   speedTestServers,
   speedTestOutbounds,
+
+  // Phase 3c: routing. Go owns the route documents; Kotlin keeps a read-only view.
+  getRouteProfiles,
+  getRouteProfile,
+  saveRouteProfile,
+  deleteRouteProfile,
+  setCurrentRoute,
+  getRouteRules,
+  saveRouteRules,
+  batchAddRules,
+  resetRouteRules,
+  getGlobalRules,
+  saveGlobalRules,
+  setGlobalRuleDisabled,
+  deleteGlobalRule,
 }
 
 /// `message` is the tag of an unsolicited Go->Dart push. It never appears in

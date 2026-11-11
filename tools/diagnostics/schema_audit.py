@@ -44,7 +44,8 @@ ROOT = Path(__file__).resolve().parents[2]
 DATABASE_KT = ROOT / "app/src/main/java/io/nekohasekai/sagernet/database/SagerDatabase.kt"
 CONSTANTS_KT = ROOT / "app/src/main/java/io/nekohasekai/sagernet/Constants.kt"
 DB_DART = ROOT / "flutter/lib/data/db.dart"
-DOCUMENT_STORE_DART = ROOT / "flutter/lib/data/document_store.dart"
+ROUTE_STORE_GO = ROOT / "buildScript/core-patch/core/mobile/route_store.go"
+ROUTE_ACTIONS_GO = ROOT / "buildScript/core-patch/core/mobile/route_actions.go"
 MIGRATION_KT = ROOT / "app/src/main/java/io/flrone/bridge/RoomToJsonMigration.kt"
 SCHEMAS_ROOT = ROOT / "app/schemas"
 DAO_DIR = ROOT / "flutter/lib/data"
@@ -324,10 +325,15 @@ def audit_dao_sql(
 def audit_document_migration(tables: dict[str, set[str]], problems: list[str]) -> None:
     """ADR 0002 phase 2: the Room -> JSON export must cover every table.
 
-    A missed table is invisible at compile time and only shows up as a user's
-    vanished profiles after an upgrade. The migration lists tables in Kotlin,
-    the store lists documents in Dart, and Room's exported schema is the third
-    (authoritative) list. All three must agree.
+    A missed table used to be invisible at compile time and only showed up as a user's
+    vanished profiles after an upgrade. The migration lists tables in Kotlin, the store
+    lists documents in Dart, and Room's exported schema is the authoritative list.
+
+    Since ADR 0002 phase 3c only the ROUTE tables are kernel-owned; profiles, groups,
+    settings and markers stay Kotlin's, so this check no longer demands a full migration.
+    What it does demand: the Kotlin seed and the Dart document list name the SAME tables,
+    those tables exist in Room, and every table the Go patch reads or writes is among them
+    — a table the kernel opens but the seed never writes would be a silently empty document.
     """
     room_tables = set(tables)
     # Internal Room bookkeeping is not user data.
@@ -340,18 +346,31 @@ def audit_document_migration(tables: dict[str, set[str]], problems: list[str]) -
         return
     kotlin_tables = set(re.findall(r'"([a-z_]+)"', block.group(1)))
 
-    store = read(DOCUMENT_STORE_DART)
-    block = re.search(r"const documentNames\s*=\s*<String>\[(.*?)\]", store, re.S)
+    # Both patch files declare document names: route_store.go the two tables it owns, and
+    # route_actions.go the global pool. Read them together.
+    store = read(ROUTE_STORE_GO) + read(ROUTE_ACTIONS_GO)
+    block = re.search(r"const \((.*?)^\)", store, re.M | re.S)
     if not block:
-        problems.append("document_store.dart has no `const documentNames` list")
+        problems.append("route_store.go has no document-name const block")
         return
-    dart_tables = set(re.findall(r"'([a-z_]+)'", block.group(1)))
+    dart_tables = set(re.findall(r'route(?:Profiles|Rules)Doc\s*=\s*"([a-z_]+)"', block.group(1)))
+    dart_tables |= set(re.findall(r'"(global_route_rules)"', store))
 
-    for label, actual in (("Kotlin migration", kotlin_tables), ("Dart documents", dart_tables)):
-        for name in sorted(room_tables - actual):
-            problems.append(f"{label} is missing Room table {name!r} — the upgrade would lose it")
-        for name in sorted(actual - room_tables):
-            problems.append(f"{label} names {name!r}, which Room's schema does not have")
+    # The two hand-written lists must agree with each other …
+    if kotlin_tables != dart_tables:
+        for name in sorted(kotlin_tables - dart_tables):
+            problems.append(f"route_store.go does not read {name!r}, which the seed writes")
+        for name in sorted(dart_tables - kotlin_tables):
+            problems.append(f"route_store.go reads {name!r}, which the seed never writes")
+    # … and both must be real Room tables.
+    for name in sorted((kotlin_tables | dart_tables) - room_tables):
+        problems.append(f"the route documents name {name!r}, which Room's schema does not have")
+    # The kernel's own table names must be covered by the seed.
+    go_tables = {"route_profiles", "route_rules", "global_route_rules"}
+    for name in sorted(go_tables - kotlin_tables):
+        problems.append(
+            f"the Go route store reads {name!r} but the Kotlin seed never writes it"
+        )
 
 
 def main() -> int:

@@ -94,6 +94,13 @@ class KernelService {
   /// True once the FFI path is engaged (the channel handlers step aside).
   bool get ffiMode => _kernel != null;
 
+  /// The attached kernel, for callers that speak the action bus directly.
+  ///
+  /// Null when no driver is attached — the same condition as `ffiMode`. Callers ask for this
+  /// rather than `ThroneKernel.ensure()`, so a test that substitutes a fake through
+  /// [debugAttach] exercises the same code path as the app.
+  ThroneKernel? get attached => _kernel;
+
   // --- lifecycle ----------------------------------------------------------
 
   /// Test-only: reaches the state [initialize] would leave after a successful

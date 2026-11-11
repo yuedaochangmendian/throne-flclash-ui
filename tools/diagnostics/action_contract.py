@@ -31,6 +31,10 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 GO_ACTION = ROOT / "buildScript" / "core-patch" / "core" / "mobile" / "action.go"
+# Method constants live next to their domain: action.go (bus core), route_actions.go
+# (routing), speedtest in action.go. Every hand-written Go file in the patch is scanned so
+# a new domain does not have to remember to register itself here.
+GO_ACTION_DIR = ROOT / "buildScript" / "core-patch" / "core" / "mobile"
 # The C entry point lives in the generated runtime (bindgen.py's
 # emit_go_runtime), not in a hand-written bridge file.
 GO_BRIDGE = ROOT / "buildScript" / "core-patch" / "core" / "mobile" / "bridge_runtime.go"
@@ -40,11 +44,18 @@ DART_ACTION = ROOT / "flutter" / "lib" / "core" / "action.dart"
 # requiring one would be a false positive.
 PUSH_ONLY_METHODS = {"messageMethod"}
 
-# A Go constant inside the Method const block. Two legal spellings:
-#   `startSpeedTestMethod Method = "startSpeedTest"` (explicit type)
-#   `startSpeedTestMethod      = "startSpeedTest"`  (type inherited, iota-free)
+# Only a constant DECLARED as a Method is an action:
+#   `startSpeedTestMethod Method = "startSpeedTest"`
+# The patch is full of other string constants (speedTestPhaseLatency = "latency",
+# speedTestProviderApple = "apple", …) whose name is not the wire value, so matching every
+# string constant in a const block produced false drift reports the moment the scan widened
+# beyond action.go. Requiring the explicit type is the only reliable discriminator.
 GO_CONST_RE = re.compile(
-    r"""^\s*(\w+)\s*(?:Method\b)?\s*=\s*"([^"]+)"\s*,?\s*(?://.*)?$""", re.M
+    r"""^\s*(\w+)\s+Method\s*=\s*"([^"]+)"\s*,?\s*(?://.*)?$""", re.M
+)
+# A block whose members inherit the type from the first line.
+GO_CONST_INHERIT_RE = re.compile(
+    r"""^\s*(\w+)\s*=\s*"([^"]+)"\s*,?\s*(?://.*)?$""", re.M
 )
 # Standalone `const fooMethod Method = "wire"`.
 GO_STANDALONE_RE = re.compile(
@@ -62,21 +73,27 @@ def read(path: Path) -> str:
 
 
 def go_constants(text: str) -> dict[str, str]:
-    """Map the Go identifier to the wire string it declares."""
-    # Only the const block that declares Method values; other string constants in
-    # the file (phase names, error codes) must not be treated as actions.
-    block = re.search(r"const\s*\((.*?)^\)", text, re.M | re.S)
-    if not block:
-        return {}
-    out: dict[str, str] = {}
-    for name, wire in GO_CONST_RE.findall(block.group(1)):
-        # Skip non-action constants that happen to live in the same block.
-        if name.startswith(("action", "message")) and not name.endswith("Method"):
-            continue
-        out[name] = wire
-    out.update(
-        (name, wire) for name, wire in GO_STANDALONE_RE.findall(text)
-    )
+    """Map each `X Method = "wire"` identifier to the wire string it declares.
+
+    Every const block in the file is scanned, not just the first: a domain keeps its
+    Method constants beside its handlers, and `route_actions.go` opens with the
+    outbound-id block before the method block. Only constants with the explicit
+    `Method` type count — the patch also holds speedTestPhaseLatency = "latency",
+    speedTestProviderApple = "apple" and similar, whose names are not wire values.
+    """
+    out: dict[str, str] = dict(GO_STANDALONE_RE.findall(text))
+    for block in re.findall(r"const\s*\((.*?)^\)", text, re.M | re.S):
+        out.update(dict(GO_CONST_RE.findall(block)))
+        # A block that starts typed may continue with the type inherited.
+        typed = False
+        for entry in block.split("\n"):
+            if re.search(r"\w+\s+Method\s*=", entry):
+                typed = True
+                continue
+            if typed:
+                match = GO_CONST_INHERIT_RE.match(entry)
+                if match:
+                    out[match.group(1)] = match.group(2)
     return out
 
 
@@ -99,13 +116,23 @@ def main() -> int:
         read(GO_BRIDGE),
         read(DART_ACTION),
     )
-    constants = go_constants(go_text)
+    # Scan every hand-written Go file in the patch: a domain keeps its Method constants
+    # beside its handlers, so `route_actions.go` must count as much as `action.go`.
+    domain_texts = [
+        read(path)
+        for path in sorted(GO_ACTION_DIR.glob("*.go"))
+        if "DO NOT EDIT" not in read(path)[:200]
+    ]
+    constants: dict[str, str] = {}
+    registered: set[str] = set()
+    for text in domain_texts:
+        constants.update(go_constants(text))
+        registered |= set(GO_REGISTER_RE.findall(text))
+    # The generated runtime may hold the registry instead of action.go.
+    registered |= set(GO_REGISTER_RE.findall(bridge_text))
     requests = {
         k: v for k, v in constants.items() if k not in PUSH_ONLY_METHODS
     }
-    registered = set(GO_REGISTER_RE.findall(go_text))
-    # The generated runtime may hold the registry instead of action.go.
-    registered |= set(GO_REGISTER_RE.findall(bridge_text))
     dart = dart_enum(dart_text)
 
     failures: list[str] = []

@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:flrone/core/action.dart';
 import 'package:flrone/main.dart';
 import 'package:flrone/widgets.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'support/errors.dart';
+import 'support/fake_route_kernel.dart';
 
 /// A rule as BboxRoutes.ruleToMap emits it: metadata, the string fields, every list field and the booleans.
 Map<String, Object?> rule({
@@ -71,6 +73,72 @@ void main() {
   late List<String> dataPathCalls;
   late List<Map<String, Object?>> savedRules;
 
+  /// The route shapes BboxRoutes returned, keyed by action.
+  Map<String, Object?>? routeFixtures(ActionMethod method, Object? data) {
+    switch (method) {
+      case ActionMethod.getRouteProfile:
+        return {
+          'id': 1,
+          'name': 'Default',
+          'defaultOutbound': 'direct',
+          'isRemote': false,
+          'remoteUrl': '',
+          'autoUpdate': false,
+          'isRaw': false,
+          'endpointIds': <int>[],
+          'rules': '',
+          'ruleCount': rules.length,
+        };
+      case ActionMethod.getRouteProfiles:
+        return {
+          'currentId': 1,
+          'profiles': [
+            {
+              'id': 1,
+              'name': 'Default',
+              'current': true,
+              'isRemote': false,
+              'isRaw': false,
+              'ruleCount': rules.length,
+              'simpleRuleCount': 0,
+            },
+          ],
+        };
+      case ActionMethod.getRouteRules:
+        return {'rules': rules};
+      case ActionMethod.getGlobalRules:
+        return {
+          'rules': [
+            {
+              'id': 1,
+              'name': 'Pool A',
+              'type': 'route',
+              'outbound_id': -1,
+              'disabled': false,
+            },
+          ],
+        };
+      case ActionMethod.saveGlobalRules:
+        return {'rules': <Object?>[]};
+      case ActionMethod.setGlobalRuleDisabled:
+        return null;
+      case ActionMethod.deleteGlobalRule:
+        return null;
+      case ActionMethod.saveRouteRules:
+        final payload = data is Map ? data['rules'] : null;
+        savedRules = [
+          for (final rule in payload as List? ?? const [])
+            Map<String, Object?>.from(rule as Map),
+        ];
+        rules = savedRules;
+        return {'rules': savedRules};
+      case ActionMethod.setCurrentRoute:
+        return {'currentId': 1};
+      default:
+        return null;
+    }
+  }
+
   Future<void> mount(WidgetTester tester) async {
     tester.binding.platformDispatcher.localesTestValue = const [Locale('en')];
     addTearDown(tester.binding.platformDispatcher.clearLocalesTestValue);
@@ -98,65 +166,14 @@ void main() {
             'preferences': {'locale': 'en'},
             'dashboard': {'status': 'Stopped'},
           };
-        case 'routes.get':
-          return {
-            'id': 1,
-            'name': 'Default',
-            'defaultOutbound': 'direct',
-            'isRemote': false,
-            'remoteUrl': '',
-            'autoUpdate': false,
-            'isRaw': false,
-            'endpointIds': <int>[],
-            'rules': '',
-            'ruleCount': rules.length,
-          };
-        case 'routes.list':
-          return {
-            'currentId': 1,
-            'profiles': [
-              {
-                'id': 1,
-                'name': 'Default',
-                'current': true,
-                'isRemote': false,
-                'isRaw': false,
-                'ruleCount': rules.length,
-                'simpleRuleCount': 0,
-              },
-            ],
-          };
-        case 'routes.rules':
-          return {'rules': rules};
-        // The global pool renders on the Routing page itself now, so the page
-        // asks the channel directly where the standalone page used to.
-        case 'routes.globalRules':
-          return {
-            'rules': [
-              {
-                'id': 1,
-                'name': 'Pool A',
-                'type': 'route',
-                'outbound_id': -1,
-                'disabled': false,
-              },
-            ],
-          };
-        case 'routes.saveGlobalRules':
-          return {'rules': <Object?>[]};
-        case 'routes.deleteGlobalRule':
-          return null;
-        case 'routes.saveRules':
-          savedRules = [
-            for (final rule in (call.arguments as Map)['rules'] as List)
-              Map<String, Object?>.from(rule as Map),
-          ];
-          rules = savedRules;
-          return {'rules': savedRules};
       }
       return null;
     });
     final box = BoxController(channel: channel, events: events.stream);
+    // ADR 0002 phase 3c: the route surface goes through the action bus, so the
+    // screens need an attached kernel. debugAttach is the same seam the
+    // hand-over tests use.
+    box.kernel.debugAttach(FakeRouteKernel(routeFixtures), NoopKernelWorker());
     await tester.pumpWidget(BoxApp(controller: box));
     await tester.pumpAndSettle();
     addTearDown(() async {

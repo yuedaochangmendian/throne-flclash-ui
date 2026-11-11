@@ -6,62 +6,63 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 import io.nekohasekai.sagernet.database.SagerDatabase
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 
 /**
- * One-time Room v20 -> JSON document export (ADR 0002, phase 2).
+ * One-time seed of the kernel's route documents from Room (ADR 0002, phase 3c).
  *
- * The data plane is moving to Go/Dart, which cannot open an Android Room
- * database. Rather than hand-map seven entities field by field (a missed column
- * would silently lose user data on upgrade), this dumps each table by column
- * name: ids, JSON blobs, nulls and future columns all survive verbatim.
+ * From phase 3c the Go kernel is the only writer of `route_profiles.json` and
+ * `route_rules.json`; Android keeps a read-only view (`RouteJsonStore`) because
+ * `ConfigGenerator` needs a synchronous answer and cannot call into Go.
  *
- * Room is NEVER written or deleted here. The export is read-only and idempotent
- * — the caller may run it again after a failed write. `data.documents` hands the
- * result to Dart, which writes the files atomically via `DocumentStore`.
+ * This is the hand-over, not a sync: it runs once, only when the documents do not exist, and
+ * it copies each table by column name so ids, rule order, JSON blobs and nulls survive
+ * verbatim. Old-version compatibility is deliberately dropped — there is no round-trip back
+ * into Room, and no merge on later launches.
  */
 object RoomToJsonMigration {
 
-    /** The seven tables of schema v20, in a stable order. */
-    val tables = listOf(
-        "profiles",
-        "groups",
-        "route_profiles",
-        "route_rules",
-        "global_route_rules",
-        "settings",
-        "markers",
-    )
+    /** The route tables the kernel owns. Other Room tables stay Kotlin's. */
+    private val tables = listOf("route_profiles", "route_rules", "global_route_rules")
 
     /**
-     * Reads every table into a JSON string keyed by table name.
-     *
-     * Opening the database through Room first (rather than SQLiteDatabase
-     * directly) forces any pending migration to run, so the columns we see are
-     * the ones the compiled entities expect.
+     * Writes [tables] into [dir] when it is empty. Returns false when the seed had already
+     * run, so a caller cannot accidentally overwrite the kernel's live documents.
      */
-    fun export(): String {
-        // Force Room to open/migrate before we touch the raw handle.
+    fun seed(dir: File): Boolean {
+        val marker = File(dir, "route_profiles.json")
+        if (marker.isFile) return false
+        // Opening through Room first (rather than the raw handle) forces any pending
+        // migration to run, so the columns read here are the ones the entities expect.
         val db = SagerDatabase.instance.openHelper.readableDatabase
-        val root = JSONObject()
+        if (!dir.isDirectory && !dir.mkdirs()) return false
         for (table in tables) {
-            root.put(table, dumpTable(db, table))
+            val file = File(dir, "$table.json")
+            if (file.isFile) continue
+            val payload = JSONObject().apply {
+                put("version", 1)
+                put("name", table)
+                put("rows", dumpTable(db, table))
+            }.toString()
+            val temp = File(dir, "$table.json.${System.nanoTime()}.tmp")
+            temp.writeText(payload)
+            if (!temp.renameTo(file)) {
+                file.writeText(payload)
+                temp.delete()
+            }
         }
-        return root.toString()
+        return true
     }
 
     private fun dumpTable(db: SupportSQLiteDatabase, table: String): JSONArray {
         val out = JSONArray()
-        // The table names are compile-time constants in this object, never user
-        // input, so an interpolated name is safe here.
+        // The table names are compile-time constants in this object, never user input.
         val cursor = db.query("SELECT * FROM `$table`")
         cursor.use { c ->
             val columns = c.columnNames
             while (c.moveToNext()) {
                 val row = JSONObject()
                 for (i in columns.indices) {
-                    // put() with null removes the key; putOpt keeps nulls, which
-                    // matters: a null column and a missing column are different
-                    // to the DAO that will read this document back.
                     row.put(columns[i], valueOf(c, i))
                 }
                 out.put(row)
@@ -74,6 +75,8 @@ object RoomToJsonMigration {
         Cursor.FIELD_TYPE_NULL -> JSONObject.NULL
         Cursor.FIELD_TYPE_INTEGER -> cursor.getLong(index)
         Cursor.FIELD_TYPE_FLOAT -> cursor.getDouble(index)
+        // Blobs are base64: room's route tables have none today, but a future column must not
+        // make the seed fail silently.
         Cursor.FIELD_TYPE_BLOB -> cursor.getBlob(index)?.let {
             Base64.encodeToString(it, Base64.NO_WRAP)
         }
