@@ -40,6 +40,12 @@ class FakeKernel implements ThroneKernel {
   }) => throw UnimplementedError('the hand-over path never invokes an action');
 
   @override
+  Map<String, dynamic> get lastSpeedTestState => const {};
+
+  @override
+  Stream<Map<String, dynamic>> get speedTestStates => const Stream.empty();
+
+  @override
   void dispose() {}
 
   void emitStatus(Map<String, int> data) {

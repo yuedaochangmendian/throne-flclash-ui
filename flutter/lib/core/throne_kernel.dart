@@ -28,7 +28,16 @@ class ThroneKernel {
     ffi.throne_attach_message_port(_port.sendPort.nativePort);
     _port.listen((raw) {
       final event = decodeBridgeEvent(raw);
-      if (event != null) _events.add(event);
+      if (event == null) return;
+      _events.add(event);
+      // Phase 3a: the kernel pushes speed-test progress every 200 ms instead of
+      // answering a poll. Keep the last frame so a screen opened mid-run can
+      // paint immediately, and expose the stream for the live updates.
+      if (event['method'] == 'speedTest' && event['data'] is Map) {
+        final frame = Map<String, dynamic>.from(event['data'] as Map);
+        _lastSpeedTestState = frame;
+        _speedTestStates.add(frame);
+      }
     });
     // Action results arrive on a dedicated port: the C ABI takes a reply port
     // per call, and keeping one long-lived reply port avoids allocating an
@@ -51,6 +60,15 @@ class ThroneKernel {
   int _nextId = 0;
   final Map<String, Completer<Object?>> _pending = {};
   final ReceivePort _replyPort;
+  final _speedTestStates = StreamController<Map<String, dynamic>>.broadcast();
+  Map<String, dynamic> _lastSpeedTestState = const {};
+
+  /// The newest pushed speed-test frame, `{}` before any run. A screen that
+  /// opens mid-test paints from this instead of issuing a query.
+  Map<String, dynamic> get lastSpeedTestState => _lastSpeedTestState;
+
+  /// Every pushed speed-test frame (`{"method":"speedTest","data":{...}}`).
+  Stream<Map<String, dynamic>> get speedTestStates => _speedTestStates.stream;
 
   /// Invoke one kernel action and wait for the result correlated by id.
   ///
@@ -129,6 +147,7 @@ class ThroneKernel {
     _pending.clear();
     _port.close();
     _replyPort.close();
+    _speedTestStates.close();
     _events.close();
     _instance = null;
   }

@@ -1,3 +1,10 @@
+#### 4.8.0
+
+* **The speed test is the first data-plane domain on the action bus (ADR 0002, phase 3a).** Four actions — `startSpeedTest`, `cancelSpeedTest`, `speedTestServers`, `speedTestOutbounds` — are registered in the Go dispatcher and mirror the typed calls' wire payloads exactly, so the screen does not branch. With the FFI driver up, `SpeedTestApi` goes through `ThroneKernel.invoke`; the gobind/channel path stays for the service-owned core, which has no Dart FFI instance
+* **Progress is pushed, not polled.** `StartBettboxSpeedTest`'s 200 ms push callback now also posts `{"method":"speedTest","data":…}` to the Dart message port, so the screen subscribes to `ThroneKernel.speedTestStates` instead of issuing a `speedTest.query` every 250 ms. `lastSpeedTestState` lets a screen opened mid-run paint immediately. The Kotlin-side snapshot is untouched, so the typed callers keep working
+* **A run's end is decided by the kernel, not inferred.** `phase == "done"` or a non-empty `error` finishes the run; `cancelled` stops following but is deliberately not written to history. The polling path is kept for the service-owned core, and both paths share one `_finishSession`
+* **Eight unit tests pin the frame contract** — a push is never mistaken for an action result (no id, no code, so `ActionResult.decode` returns null), non-`speedTest` events are ignored, a non-map `data` is dropped, and the four termination cases (done / error / in-flight / cancelled) are distinguished
+
 #### 4.7.0
 
 * **The data plane has a file/JSON source (ADR 0002, phase 2).** `flutter/lib/data/document_store.dart` keeps seven versioned documents — the seven Room v20 tables — under an app-private `documents/` directory, with atomic writes (temp file + rename), a version guard that refuses newer shapes, and read paths that return null rather than throwing on corrupt files. Bettbox's `SpeedTestStore` pattern, without a new dependency
