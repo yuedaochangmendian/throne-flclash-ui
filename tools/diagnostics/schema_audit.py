@@ -44,6 +44,8 @@ ROOT = Path(__file__).resolve().parents[2]
 DATABASE_KT = ROOT / "app/src/main/java/io/nekohasekai/sagernet/database/SagerDatabase.kt"
 CONSTANTS_KT = ROOT / "app/src/main/java/io/nekohasekai/sagernet/Constants.kt"
 DB_DART = ROOT / "flutter/lib/data/db.dart"
+DOCUMENT_STORE_DART = ROOT / "flutter/lib/data/document_store.dart"
+MIGRATION_KT = ROOT / "app/src/main/java/io/flrone/bridge/RoomToJsonMigration.kt"
 SCHEMAS_ROOT = ROOT / "app/schemas"
 DAO_DIR = ROOT / "flutter/lib/data"
 
@@ -319,6 +321,39 @@ def audit_dao_sql(
     return checked
 
 
+def audit_document_migration(tables: dict[str, set[str]], problems: list[str]) -> None:
+    """ADR 0002 phase 2: the Room -> JSON export must cover every table.
+
+    A missed table is invisible at compile time and only shows up as a user's
+    vanished profiles after an upgrade. The migration lists tables in Kotlin,
+    the store lists documents in Dart, and Room's exported schema is the third
+    (authoritative) list. All three must agree.
+    """
+    room_tables = set(tables)
+    # Internal Room bookkeeping is not user data.
+    room_tables.discard("room_master_table")
+
+    migration = read(MIGRATION_KT)
+    block = re.search(r"val tables\s*=\s*listOf\((.*?)\)", migration, re.S)
+    if not block:
+        problems.append("RoomToJsonMigration.kt has no `val tables = listOf(...)`")
+        return
+    kotlin_tables = set(re.findall(r'"([a-z_]+)"', block.group(1)))
+
+    store = read(DOCUMENT_STORE_DART)
+    block = re.search(r"const documentNames\s*=\s*<String>\[(.*?)\]", store, re.S)
+    if not block:
+        problems.append("document_store.dart has no `const documentNames` list")
+        return
+    dart_tables = set(re.findall(r"'([a-z_]+)'", block.group(1)))
+
+    for label, actual in (("Kotlin migration", kotlin_tables), ("Dart documents", dart_tables)):
+        for name in sorted(room_tables - actual):
+            problems.append(f"{label} is missing Room table {name!r} — the upgrade would lose it")
+        for name in sorted(actual - room_tables):
+            problems.append(f"{label} names {name!r}, which Room's schema does not have")
+
+
 def main() -> int:
     problems = []
 
@@ -377,6 +412,7 @@ def main() -> int:
             )
         else:
             audit_dao_sql(tables, room_version, problems)
+            audit_document_migration(tables, problems)
 
     if problems:
         for problem in problems:

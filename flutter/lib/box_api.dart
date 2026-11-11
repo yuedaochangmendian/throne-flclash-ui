@@ -160,6 +160,22 @@ extension RoutesApi on BoxController {
 /// after that is a `dart:ffi` read — see `lib/data/route_profiles_source.dart`.
 extension DataApi on BoxController {
   Future<dynamic> dataPath() => call('data.path');
+
+  /// The one-time Room -> JSON export (ADR 0002, phase 2). Read-only on the
+  /// host; safe to call on every start because the store is idempotent.
+  Future<dynamic> dataDocuments() => call('data.documents');
+
+  /// Builds the document store from the `data.path` answer and migrates if the
+  /// snapshot is missing. Returns null when the host has not answered yet, so
+  /// callers keep the channel fallback instead of guessing a database path.
+  Future<DocumentStore?> ensureDocumentStore() async {
+    final raw = normalizePlatformValue(await dataPath());
+    final path = raw is Map ? raw['path'] : null;
+    if (path is! String || path.isEmpty) return null;
+    final store = DocumentStore(documentDirectoryOf(path));
+    await store.migrateFromRoom(this);
+    return store;
+  }
 }
 
 extension TerminalApi on BoxController {

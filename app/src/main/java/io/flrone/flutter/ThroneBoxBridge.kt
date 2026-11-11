@@ -39,6 +39,7 @@ import io.flrone.bridge.BboxApps
 import io.flrone.bridge.BboxBackup
 import io.flrone.bridge.BboxBridge
 import io.flrone.bridge.BboxCommands
+import io.flrone.bridge.RoomToJsonMigration
 import io.flrone.bridge.BboxEgress
 import io.flrone.bridge.BboxGroupsWire
 import io.flrone.bridge.BboxKernel
@@ -1010,6 +1011,12 @@ class ThroneBoxBridge(
                         val version = SagerDatabase.instance.openHelper.readableDatabase.version
                         mapOf("path" to file.absolutePath, "version" to version)
                     }
+                }
+                // ADR 0002 phase 2: the one-time Room -> JSON export. Read-only
+                // and idempotent; Dart writes the documents atomically and keeps
+                // Room as its fallback until all seven files parse.
+                "data.documents" -> result.respondIo {
+                    mapOf("json" to RoomToJsonMigration.export())
                 }
                 "ffi.mode" -> {
                     val enabled = call.argument<Boolean>("enabled") == true
