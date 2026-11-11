@@ -16,6 +16,13 @@ import 'dart:convert';
 /// member has a Go Method constant and a registered handler.
 enum ActionMethod {
   actionVersion,
+
+  // Phase 3a: the speed test. There is no `query` member on purpose — progress
+  // arrives as a `speedTest` push on the kernel's message port.
+  startSpeedTest,
+  cancelSpeedTest,
+  speedTestServers,
+  speedTestOutbounds,
 }
 
 /// `message` is the tag of an unsolicited Go->Dart push. It never appears in

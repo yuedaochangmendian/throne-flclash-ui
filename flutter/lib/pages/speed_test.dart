@@ -5,6 +5,7 @@ import '../widgets.dart';
 import '../components/speed_gauge.dart';
 import '../components/speed_outbound_card.dart';
 import '../components/speed_test_settings.dart';
+import '../core/throne_kernel.dart';
 import '../services/speed_test_history.dart';
 
 /// The kernel's speed test, laid out the way Bettbox's screen lays it out: the
@@ -62,6 +63,7 @@ class _SpeedTestPageState extends State<SpeedTestPage>
   bool _starting = false;
   String? _error;
   Timer? _poll;
+  StreamSubscription<Map<String, dynamic>>? _pushSub;
   late final AnimationController _spin = AnimationController(
     vsync: this,
     duration: const Duration(milliseconds: 1100),
@@ -76,6 +78,7 @@ class _SpeedTestPageState extends State<SpeedTestPage>
   @override
   void dispose() {
     _poll?.cancel();
+    _pushSub?.cancel();
     _spin.dispose();
     super.dispose();
   }
@@ -145,10 +148,23 @@ class _SpeedTestPageState extends State<SpeedTestPage>
     }
   }
 
-  /// Samples the kernel every 250 ms: the kernel pushes to its own listener at
-  /// 200 ms, and the UI only needs to redraw faster than the eye.
+  /// Follows the run. Under the FFI driver the kernel pushes a frame every
+  /// 200 ms (ADR 0002 phase 3a), so this subscribes instead of polling; with the
+  /// service-owned core there is no push channel and the 250 ms poll stays.
   void _pollSession() {
     _poll?.cancel();
+    _poll = null;
+    _pushSub?.cancel();
+    _pushSub = null;
+    final kernel = context.box.kernel.ffiMode ? ThroneKernel.ensure() : null;
+    if (kernel != null) {
+      _applyFrame(kernel.lastSpeedTestState, running: true);
+      _pushSub = kernel.speedTestStates.listen(
+        (frame) => _applyFrame(frame, running: false),
+        onError: _failSession,
+      );
+      return;
+    }
     _poll = Timer.periodic(const Duration(milliseconds: 250), (_) async {
       if (!mounted) return;
       try {
@@ -159,29 +175,54 @@ class _SpeedTestPageState extends State<SpeedTestPage>
           _state = json(snapshot['state']);
           _running = running;
         });
-        if (!running) {
-          _poll?.cancel();
-          _poll = null;
-          _spin.stop();
-          // A finished run is a record. Cancelled ones are not: a stopped test
-          // measured nothing worth keeping, and Bettbox's history has no entry
-          // for it either.
-          final verdict = '${_state['error'] ?? ''}';
-          if (!_savedRecord && verdict != 'cancelled') {
-            _savedRecord = true;
-            _recordRun();
-          }
-        }
+        if (!running) _finishSession();
       } catch (error) {
-        if (!mounted) return;
-        _poll?.cancel();
-        _poll = null;
-        _spin.stop();
-        setState(() {
-          _running = false;
-          _error = BoxController.describe(error);
-        });
+        _failSession(error);
       }
+    });
+  }
+
+  /// Applies one pushed frame. The kernel's own `phase` says whether the run is
+  /// still going, so `running` only seeds the first frame.
+  void _applyFrame(Map<String, dynamic> frame, {required bool running}) {
+    if (!mounted || frame.isEmpty) return;
+    final phase = '${frame['phase'] ?? ''}';
+    final done = phase == 'done' || '${frame['error'] ?? ''}'.isNotEmpty;
+    setState(() {
+      _state = frame;
+      _running = done ? false : (_running || running || phase.isNotEmpty);
+    });
+    if (done) _finishSession();
+  }
+
+  /// Stops following and records the run once.
+  void _finishSession() {
+    _poll?.cancel();
+    _poll = null;
+    _pushSub?.cancel();
+    _pushSub = null;
+    _spin.stop();
+    if (!mounted) return;
+    setState(() => _running = false);
+    // A finished run is a record. Cancelled ones are not: a stopped test
+    // measured nothing worth keeping, and Bettbox's history has no entry for it.
+    final verdict = '${_state['error'] ?? ''}';
+    if (!_savedRecord && verdict != 'cancelled') {
+      _savedRecord = true;
+      _recordRun();
+    }
+  }
+
+  void _failSession(Object error) {
+    _poll?.cancel();
+    _poll = null;
+    _pushSub?.cancel();
+    _pushSub = null;
+    _spin.stop();
+    if (!mounted) return;
+    setState(() {
+      _running = false;
+      _error = BoxController.describe(error);
     });
   }
 
@@ -208,6 +249,8 @@ class _SpeedTestPageState extends State<SpeedTestPage>
     await context.box.speedTestCancel();
     _poll?.cancel();
     _poll = null;
+    _pushSub?.cancel();
+    _pushSub = null;
     _spin.stop();
     if (mounted) setState(() => _running = false);
   }

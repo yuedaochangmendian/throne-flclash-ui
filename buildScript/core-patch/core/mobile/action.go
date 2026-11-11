@@ -28,8 +28,14 @@ type Method string
 const (
 	// actionVersionMethod is the phase-1 smoke test: it proves the bus can
 	// round-trip an id, a handler and a result without touching a real config.
-	// Phase 3 adds the data-plane methods here, one domain at a time.
 	actionVersionMethod Method = "actionVersion"
+
+	// Phase 3a: the speed test. Query is deliberately absent — progress is
+	// pushed from the tester (speedTestPush) instead of polled from Dart.
+	startSpeedTestMethod   Method = "startSpeedTest"
+	cancelSpeedTestMethod  Method = "cancelSpeedTest"
+	speedTestServersMethod Method = "speedTestServers"
+	speedTestOutboundsMethod Method = "speedTestOutbounds"
 
 	// messageMethod is the tag of an unsolicited Go->Dart push. It is not a
 	// registered handler: pushes are posted with no id and never correlate.
@@ -84,6 +90,10 @@ func register(method Method, handler actionHandler) {
 
 func init() {
 	register(actionVersionMethod, handleActionVersion)
+	register(startSpeedTestMethod, handleStartSpeedTest)
+	register(cancelSpeedTestMethod, handleCancelSpeedTest)
+	register(speedTestServersMethod, handleSpeedTestServers)
+	register(speedTestOutboundsMethod, handleSpeedTestOutbounds)
 }
 
 // handleActionVersion answers the protocol version and the kernel's own
@@ -94,4 +104,85 @@ func handleActionVersion(_ json.RawMessage) (any, error) {
 		"protocol": 1,
 		"core":     Version(),
 	}, nil
+}
+
+// --- phase 3a: the speed test ------------------------------------------------
+
+// currentInstance is the box the actions measure through. The FFI driver builds
+// it in Go, so the handle registry is the authority; the gobind path registers
+// the same object from its constructor.
+func currentInstance() (*Instance, error) {
+	lastInstance.mu.Lock()
+	inst := lastInstance.inst
+	lastInstance.mu.Unlock()
+	if inst == nil || !inst.running() {
+		return nil, errInstanceNotRunning
+	}
+	return inst, nil
+}
+
+// speedTestStartRequest is the start payload. `params` is the SpeedTestParams
+// JSON the typed call also takes, kept as a string so the wire shape is
+// unchanged from `speedTest.start`.
+type speedTestStartRequest struct {
+	Params string `json:"params"`
+}
+
+func handleStartSpeedTest(data json.RawMessage) (any, error) {
+	var request speedTestStartRequest
+	if len(data) > 0 {
+		if err := json.Unmarshal(data, &request); err != nil {
+			return nil, err
+		}
+	}
+	instance, err := currentInstance()
+	if err != nil {
+		return nil, err
+	}
+	// false means "a test is already running", which the screen shows as its own
+	// message rather than an error — same contract as the typed call.
+	return StartBettboxSpeedTest(instance, request.Params), nil
+}
+
+func handleCancelSpeedTest(_ json.RawMessage) (any, error) {
+	return CancelBettboxSpeedTest(), nil
+}
+
+type speedTestServersRequest struct {
+	Outbound string `json:"outbound"`
+	Search   string `json:"search"`
+}
+
+func handleSpeedTestServers(data json.RawMessage) (any, error) {
+	var request speedTestServersRequest
+	if len(data) > 0 {
+		if err := json.Unmarshal(data, &request); err != nil {
+			return nil, err
+		}
+	}
+	instance, err := currentInstance()
+	if err != nil {
+		return nil, err
+	}
+	// The typed call answers a JSON array string; decode it so the action
+	// result is a real list rather than a string the caller has to parse twice.
+	var servers []any
+	raw := BettboxSpeedTestServers(instance, request.Outbound, request.Search)
+	if err := json.Unmarshal([]byte(raw), &servers); err != nil {
+		return nil, err
+	}
+	return map[string]any{"servers": servers}, nil
+}
+
+func handleSpeedTestOutbounds(_ json.RawMessage) (any, error) {
+	instance, err := currentInstance()
+	if err != nil {
+		return nil, err
+	}
+	var outbounds []string
+	raw := BettboxSpeedTestOutbounds(instance)
+	if err := json.Unmarshal([]byte(raw), &outbounds); err != nil {
+		return nil, err
+	}
+	return map[string]any{"outbounds": outbounds}, nil
 }

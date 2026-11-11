@@ -1563,6 +1563,11 @@ func StartBettboxSpeedTest(instance *Instance, params string) bool {
 			bettboxSpeedTestMu.Lock()
 			bettboxSpeedTestState = state
 			bettboxSpeedTestMu.Unlock()
+			// ADR 0002 phase 3a: progress is PUSHED to the Dart message port, the
+			// way Bettbox's toolbox.Notify does, so the speed screen no longer
+			// polls speedTest.query every 250 ms. The snapshot above stays: the
+			// Kotlin-side callers still read it.
+			sendEvent("speedTest", state)
 		})
 		finishSpeedTest(tester.snapshot())
 	}()
