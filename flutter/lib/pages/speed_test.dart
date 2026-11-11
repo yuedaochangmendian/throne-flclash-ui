@@ -2,8 +2,10 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import '../widgets.dart';
-import '../components/form.dart';
 import '../components/speed_gauge.dart';
+import '../components/speed_outbound_card.dart';
+import '../components/speed_test_settings.dart';
+import '../services/speed_test_history.dart';
 
 /// The kernel's speed test, laid out the way Bettbox's screen lays it out: the
 /// outbound card, then the gauge with the start button and the phase steps, the
@@ -49,13 +51,11 @@ const _protocols = <(String, String)>[
 
 class _SpeedTestPageState extends State<SpeedTestPage>
     with SingleTickerProviderStateMixin {
-  String _provider = 'apple';
-  String _protocol = 'h1';
-  int _duration = 10;
-  int _streams = 8;
+  SpeedTestSettings _settings = const SpeedTestSettings();
   String _outbound = '';
   List<String> _outbounds = const [];
-  (String, String, String, String)? _server;
+  bool _coreRunning = false;
+  bool _savedRecord = false;
 
   Json _state = const {};
   bool _running = false;
@@ -84,11 +84,9 @@ class _SpeedTestPageState extends State<SpeedTestPage>
     final box = context.box;
     final stored = box.preferences;
     setState(() {
-      _provider = stored['speedTestProvider']?.toString() ?? _provider;
-      _protocol = stored['speedTestProtocol']?.toString() ?? _protocol;
-      _duration = (stored['speedTestDuration'] as num?)?.toInt() ?? _duration;
-      _streams = (stored['speedTestStreams'] as num?)?.toInt() ?? _streams;
+      _settings = SpeedTestSettings.fromJson(stored);
       _outbound = widget.outbound ?? stored['speedTestOutbound']?.toString() ?? '';
+      _coreRunning = box.running;
     });
     try {
       final outbounds = await box.speedTestOutbounds();
@@ -100,29 +98,17 @@ class _SpeedTestPageState extends State<SpeedTestPage>
 
   void _persist() {
     context.box.setPreferences({
-      'speedTestProvider': _provider,
-      'speedTestProtocol': _protocol,
-      'speedTestDuration': _duration,
-      'speedTestStreams': _streams,
+      ..._settings.toPreferences(),
       'speedTestOutbound': _outbound,
     });
   }
 
   Map<String, dynamic> _params() => {
-    'provider': _provider,
-    'protocol': _protocol,
-    'duration': _duration,
-    'streams': _streams,
+    ..._settings.toJson(),
     'outbound': _outbound,
     // Only sent when narrowed: the kernel treats an absent flag as "run it".
     if (!widget.download) 'testDownload': false,
     if (!widget.upload) 'testUpload': false,
-    if (_server case (final host, final name, final cc, final sponsor)) ...{
-      'serverHost': host,
-      'serverName': name,
-      'serverCc': cc,
-      'serverSponsor': sponsor,
-    },
   };
 
   Future<void> _start() async {
@@ -130,6 +116,7 @@ class _SpeedTestPageState extends State<SpeedTestPage>
     setState(() {
       _starting = true;
       _error = null;
+      _savedRecord = false;
     });
     _spin.repeat();
     try {
@@ -176,6 +163,14 @@ class _SpeedTestPageState extends State<SpeedTestPage>
           _poll?.cancel();
           _poll = null;
           _spin.stop();
+          // A finished run is a record. Cancelled ones are not: a stopped test
+          // measured nothing worth keeping, and Bettbox's history has no entry
+          // for it either.
+          final verdict = '${_state['error'] ?? ''}';
+          if (!_savedRecord && verdict != 'cancelled') {
+            _savedRecord = true;
+            _recordRun();
+          }
         }
       } catch (error) {
         if (!mounted) return;
@@ -190,6 +185,25 @@ class _SpeedTestPageState extends State<SpeedTestPage>
     });
   }
 
+  /// Appends the finished run to the stored history.
+  Future<void> _recordRun() async {
+    final box = context.box;
+    try {
+      await appendSpeedTestRecord(
+        SpeedTestRecord.fromState(
+          _state,
+          time: DateTime.now().millisecondsSinceEpoch,
+          proxy: _outbound,
+        ),
+        read: () => readSpeedTestHistory(box),
+        write: (records) => writeSpeedTestHistory(box, records),
+      );
+    } catch (error) {
+      // A history write is not worth failing the screen over.
+      box.report(error);
+    }
+  }
+
   Future<void> _cancel() async {
     await context.box.speedTestCancel();
     _poll?.cancel();
@@ -198,42 +212,16 @@ class _SpeedTestPageState extends State<SpeedTestPage>
     if (mounted) setState(() => _running = false);
   }
 
-  Future<void> _pickProvider() async {
-    final picked = await showDialog<String>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: Text(context.tr('Provider')),
-        children: [
-          for (final (value, label) in _providers)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, value),
-              child: Text(label),
-            ),
-        ],
-      ),
-    );
-    if (picked == null || !mounted) return;
-    setState(() => _provider = picked);
+  Future<void> _openSettings() async {
+    final saved = await showSpeedTestSettings(context, _settings);
+    if (saved == null || !mounted) return;
+    setState(() => _settings = saved);
     _persist();
   }
 
-  Future<void> _pickProtocol() async {
-    final picked = await showDialog<String>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: Text(context.tr('Protocol')),
-        children: [
-          for (final (value, label) in _protocols)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, value),
-              child: Text(label),
-            ),
-        ],
-      ),
-    );
-    if (picked == null || !mounted) return;
-    setState(() => _protocol = picked);
-    _persist();
+  Future<void> _openHistory() async {
+    await showSpeedTestHistory(context, box: context.box);
+    if (mounted) setState(() {});
   }
 
   Future<void> _pickOutbound() async {
@@ -259,58 +247,8 @@ class _SpeedTestPageState extends State<SpeedTestPage>
       ),
     );
     if (picked == null || !mounted) return;
-    setState(() {
-      _outbound = picked;
-      _server = null;
-    });
+    setState(() => _outbound = picked);
     _persist();
-  }
-
-  Future<void> _pickServer() async {
-    final box = context.box;
-    List<Json> servers;
-    try {
-      servers = await box.speedTestServers(outbound: _outbound);
-    } catch (error) {
-      if (mounted) setState(() => _error = BoxController.describe(error));
-      return;
-    }
-    if (!mounted) return;
-    final picked = await showDialog<Json>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: Text(context.tr('Test server')),
-        children: [
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, const <String, dynamic>{}),
-            child: Text(context.tr('Nearest')),
-          ),
-          for (final server in servers)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, server),
-              child: Text(
-                [
-                  '${server['name'] ?? ''}'.trim(),
-                  '${server['sponsor'] ?? ''}'.trim(),
-                  if ((server['latency'] as num? ?? 0) > 0)
-                    '${(server['latency'] as num).round()} ms',
-                ].where((part) => part.isNotEmpty).join(' · '),
-              ),
-            ),
-        ],
-      ),
-    );
-    if (picked == null || !mounted) return;
-    setState(() {
-      _server = picked.isEmpty
-          ? null
-          : (
-              '${picked['host'] ?? ''}',
-              '${picked['name'] ?? ''}',
-              '${picked['cc'] ?? ''}',
-              '${picked['sponsor'] ?? ''}',
-            );
-    });
   }
 
   /// The phase the gauge and the step row read, from the kernel's `phase`.
@@ -354,11 +292,17 @@ class _SpeedTestPageState extends State<SpeedTestPage>
   /// coerces it to the default, so the row shows the raw value rather than
   /// throwing inside build.
   String get _providerLabel => _providers
-      .firstWhere((p) => p.$1 == _provider, orElse: () => (_provider, _provider))
+      .firstWhere(
+        (p) => p.$1 == _settings.provider,
+        orElse: () => (_settings.provider, _settings.provider),
+      )
       .$2;
 
   String get _protocolLabel => _protocols
-      .firstWhere((p) => p.$1 == _protocol, orElse: () => (_protocol, _protocol))
+      .firstWhere(
+        (p) => p.$1 == _settings.protocol,
+        orElse: () => (_settings.protocol, _settings.protocol),
+      )
       .$2;
 
   /// The gauge's caption: what the run is doing, in one word.
@@ -377,7 +321,6 @@ class _SpeedTestPageState extends State<SpeedTestPage>
   @override
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
-    final server = json(_state['server']);
     final error = _state['error']?.toString() ?? _error ?? '';
     final isUpload = _phase == 'upload';
     final gaugeColor = isUpload ? scheme.tertiary : scheme.primary;
@@ -401,14 +344,14 @@ class _SpeedTestPageState extends State<SpeedTestPage>
       title: context.tr('Speed test'),
       iconActions: [
         IconButtonData(
-          glyph: AppGlyphs.speed,
-          tooltip: context.tr('Provider'),
-          onPressed: _running ? null : _pickProvider,
+          glyph: AppGlyphs.clock,
+          tooltip: context.tr('Speed test history'),
+          onPressed: _openHistory,
         ),
         IconButtonData(
-          glyph: AppGlyphs.bolt,
-          tooltip: context.tr('Protocol'),
-          onPressed: _running ? null : _pickProtocol,
+          glyph: AppGlyphs.settings,
+          tooltip: context.tr('Speed test settings'),
+          onPressed: _running ? null : _openSettings,
         ),
       ],
       body: ListView(
@@ -419,71 +362,29 @@ class _SpeedTestPageState extends State<SpeedTestPage>
           32 + context.bottomInset,
         ),
         children: [
-          // The outbound card: what the test will measure through.
-          BoxPanel(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                PanelTitle('Outbound', AppGlyphs.proxies),
-                const SizedBox(height: 12),
-                Text(
-                  _outbound.isEmpty
-                      ? (_state['outbound']?.toString().trim().isNotEmpty == true
-                            ? _state['outbound'].toString()
-                            : context.tr('The selected outbound'))
-                      : _outbound,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTextStyle.title3.of(context, emphasized: true),
-                ),
-                const SizedBox(height: 6),
-                _ServerLine(server: server, server_: _server),
-                // Which provider actually ran. The kernel falls back to a
-                // sibling when the chosen provider's discovery endpoint is
-                // unreachable from this exit, and saying so is the difference
-                // between "the test worked" and "the test silently measured
-                // something else than what the picker says".
-                //
-                // `providerFallback`, not `fallback`: the latter reports a
-                // transport downgrade, and the protocol phase used to overwrite
-                // the provider flag, so a successful h2 run dropped the label.
-                if (_state['provider']?.toString() case final String actual
-                    when actual.isNotEmpty && actual != _provider)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(
-                      '${context.tr('Provider')}: '
-                      '${_providers.firstWhere((p) => p.$1 == actual, orElse: () => (actual, actual)).$2}'
-                      '${_state['providerFallback'] == true ? ' · ${context.tr('Fell back')}' : ''}',
-                      style: context.listCaptionStyle,
-                    ),
-                  ),
-                const SizedBox(height: 10),
-                Row(
-                  spacing: 8,
-                  children: [
-                    Expanded(
-                      child: TonalButton(
-                        size: TonalButtonSize.bar,
-                        glyph: AppGlyphs.proxies,
-                        label: context.tr('Outbound'),
-                        onPressed: _running ? null : _pickOutbound,
-                      ),
-                    ),
-                    if (_provider == 'speedtest')
-                      Expanded(
-                        child: TonalButton(
-                          size: TonalButtonSize.bar,
-                          glyph: AppGlyphs.target,
-                          label: context.tr('Server'),
-                          onPressed: _running ? null : _pickServer,
-                        ),
-                      ),
-                  ],
-                ),
-              ],
+          // The outbound card, in Bettbox's three-row shape: the node the run
+          // dialled, the route that sent it there, and the provider's server.
+          SpeedOutboundCard(
+            rows: SpeedOutboundRows.of(
+              _state,
+              coreRunning: _coreRunning,
+              pinnedOutbound: _outbound,
+              unavailable: context.tr('Core stopped'),
             ),
+            coreRunning: _coreRunning,
+            onTap: _running ? null : _pickOutbound,
           ),
+          if (_state['provider']?.toString() case final String actual
+              when actual.isNotEmpty && actual != _settings.provider)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                '${context.tr('Provider')}: '
+                '${_providers.firstWhere((p) => p.$1 == actual, orElse: () => (actual, actual)).$2}'
+                '${_state['providerFallback'] == true ? ' · ${context.tr('Fell back')}' : ''}',
+                style: context.listCaptionStyle,
+              ),
+            ),
           const SizedBox(height: 16),
           // The gauge and its neighbours, as Bettbox stacks them narrow.
           BoxPanel(
@@ -595,51 +496,24 @@ class _SpeedTestPageState extends State<SpeedTestPage>
           const SizedBox(height: 16),
           _ResultTiles(state: _state),
           const SizedBox(height: 16),
-          // The run's settings, so a repeat is one tap away without the dialog.
+          // One row summarising the run, opening the full dialog. The dialog
+          // owns every knob Bettbox's does, so the page does not repeat them.
           generateSection(
             title: context.tr('Test settings'),
             items: [
               ListItem(
-                title: Text(context.tr('Provider')),
-                trailing: Text(
-                  _providerLabel,
-                  style: context.listValueStyle,
+                leading: const GlyphIcon(AppGlyphs.settings),
+                title: Text(context.tr('Run settings')),
+                subtitle: Text(
+                  [
+                    _providerLabel,
+                    _protocolLabel,
+                    '${_settings.duration}s',
+                    '${_settings.streams} ${context.tr('connections')}',
+                    if (_settings.hasServer) context.tr('Pinned server'),
+                  ].join(' · '),
                 ),
-                onTap: _running ? null : _pickProvider,
-              ),
-              ListItem(
-                title: Text(context.tr('Protocol')),
-                trailing: Text(
-                  _protocolLabel,
-                  style: context.listValueStyle,
-                ),
-                onTap: _running ? null : _pickProtocol,
-              ),
-              ListItem(
-                title: Text(context.tr('Duration')),
-                trailing: Text(
-                  '$_duration s',
-                  style: context.listValueStyle,
-                ),
-                onTap: _running ? null : () => _pickNumber(
-                  context.tr('Duration'),
-                  const [5, 10, 15, 20, 30],
-                  _duration,
-                  (value) => setState(() => _duration = value),
-                ),
-              ),
-              ListItem(
-                title: Text(context.tr('Streams')),
-                trailing: Text(
-                  '$_streams',
-                  style: context.listValueStyle,
-                ),
-                onTap: _running ? null : () => _pickNumber(
-                  context.tr('Streams'),
-                  const [1, 2, 4, 8, 16],
-                  _streams,
-                  (value) => setState(() => _streams = value),
-                ),
+                onTap: _running ? null : _openSettings,
               ),
             ],
             footer: context.tr(
@@ -651,29 +525,6 @@ class _SpeedTestPageState extends State<SpeedTestPage>
     );
   }
 
-  Future<void> _pickNumber(
-    String title,
-    List<int> values,
-    int current,
-    ValueChanged<int> onPicked,
-  ) async {
-    final picked = await showDialog<int>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: Text(title),
-        children: [
-          for (final value in values)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, value),
-              child: Text('$value'),
-            ),
-        ],
-      ),
-    );
-    if (picked == null || !mounted) return;
-    onPicked(picked);
-    _persist();
-  }
 }
 
 /// The gauge's centre: the phase label, the big number and its unit.
@@ -716,51 +567,6 @@ class _GaugeReadout extends StatelessWidget {
 
 /// The server line: the provider's own answer once a test ran, the picked
 /// speedtest.net server before that.
-class _ServerLine extends StatelessWidget {
-  const _ServerLine({required this.server, required this.server_});
-
-  final Json server;
-  final (String, String, String, String)? server_;
-
-  @override
-  Widget build(BuildContext context) {
-    String text(String key) => '${server[key] ?? ''}'.trim();
-    final parts = <String>[
-      if (text('country').isNotEmpty) text('country'),
-      if (text('city').isNotEmpty) text('city'),
-      if (text('colo').isNotEmpty) text('colo'),
-      if (text('sponsor').isNotEmpty) text('sponsor'),
-      if (text('host').isNotEmpty) text('host'),
-    ];
-    // Before a run the kernel has no server yet; show what the user picked.
-    final picked = server_;
-    if (parts.isEmpty && picked != null) {
-      final (host, name, cc, _) = picked;
-      parts.addAll([
-        if (cc.isNotEmpty) cc,
-        if (name.isNotEmpty) name,
-        if (host.isNotEmpty) host,
-      ]);
-    }
-    final exit = text('ip');
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          parts.isEmpty ? context.tr('Automatic') : parts.join(' · '),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-          style: context.listCaptionStyle,
-        ),
-        if (exit.isNotEmpty)
-          Text(
-            '${context.tr('Server IP')}: $exit',
-            style: context.listCaptionStyle,
-          ),
-      ],
-    );
-  }
-}
 
 class _Legend extends StatelessWidget {
   const _Legend({required this.label, required this.color});

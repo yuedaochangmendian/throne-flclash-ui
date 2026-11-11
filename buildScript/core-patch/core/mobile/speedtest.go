@@ -159,25 +159,30 @@ type SpeedTestState struct {
 	// fallbacks are decided in different phases, and sharing one flag let the
 	// protocol write erase the provider one. Both are plain booleans on the
 	// JSON envelope, which is a map the bridge marshals — no gobind type grows.
-	ProviderFallback bool             `json:"providerFallback"`
-	ExitIp           string           `json:"exitIp"`
-	ExitInfo         json.RawMessage  `json:"exitInfo"`
-	Streams          int              `json:"streams"`
-	Duration         int              `json:"duration"`
-	Phase            string           `json:"phase"`
-	Progress         float64          `json:"progress"`
-	Speed            float64          `json:"speed"`
-	Outbound         string           `json:"outbound"`
-	Server           *SpeedTestServer `json:"server"`
-	Latency          float64          `json:"latency"`
-	Jitter           float64          `json:"jitter"`
-	Download         float64          `json:"download"`
-	Upload           float64          `json:"upload"`
-	DownloadLatency  float64          `json:"downloadLatency"`
-	UploadLatency    float64          `json:"uploadLatency"`
-	Rpm              int              `json:"rpm"`
-	Bytes            int64            `json:"bytes"`
-	Error            string           `json:"error"`
+	ProviderFallback bool            `json:"providerFallback"`
+	ExitIp           string          `json:"exitIp"`
+	ExitInfo         json.RawMessage `json:"exitInfo"`
+	Streams          int             `json:"streams"`
+	Duration         int             `json:"duration"`
+	Phase            string          `json:"phase"`
+	Progress         float64         `json:"progress"`
+	Speed            float64         `json:"speed"`
+	Outbound         string          `json:"outbound"`
+	// Route is the structured form of Outbound: the group path, the node and
+	// the rule the test's own connection took. The card renders this; the
+	// plain `outbound` string stays for the npm-style callers that only want a
+	// label.
+	Route           *SpeedTestRoute  `json:"route"`
+	Server          *SpeedTestServer `json:"server"`
+	Latency         float64          `json:"latency"`
+	Jitter          float64          `json:"jitter"`
+	Download        float64          `json:"download"`
+	Upload          float64          `json:"upload"`
+	DownloadLatency float64          `json:"downloadLatency"`
+	UploadLatency   float64          `json:"uploadLatency"`
+	Rpm             int              `json:"rpm"`
+	Bytes           int64            `json:"bytes"`
+	Error           string           `json:"error"`
 	// The curves the UI draws: one entry per second, in byte/s, download
 	// first then upload — Bettbox's chart keeps the same two series.
 	DownloadCurve []float64 `json:"downloadCurve"`
@@ -191,6 +196,103 @@ type SpeedTestServer struct {
 	Colo    string `json:"colo"`
 	Host    string `json:"host"`
 	Sponsor string `json:"sponsor"`
+}
+
+// SpeedTestRoute is what the run measured through, in the shape Bettbox's
+// outbound card reads: the group that resolved the traffic, the node it
+// selected, and the rule that sent the test's connection there.
+//
+// Bettbox gets this from mihomo's tracker, which reports the live chain for a
+// connection. This kernel is sing-box, which has no such tracker — but it does
+// expose the outbound groups themselves, and a group's selected tag *is* the
+// node the test dialled, so the chain is the group path down to that node.
+type SpeedTestRoute struct {
+	// Chains runs from the outermost group to the node that dialled, the order
+	// the card prints them in.
+	Chains      []string `json:"chains"`
+	Rule        string   `json:"rule"`
+	RulePayload string   `json:"rulePayload"`
+	// Direct is true when the run bypassed the tunnel entirely.
+	Direct bool `json:"direct"`
+}
+
+// directRoute is what a run with no outbound reports.
+func directRoute() *SpeedTestRoute {
+	return &SpeedTestRoute{Chains: []string{"DIRECT"}, Direct: true}
+}
+
+// resolveRoute walks the outbound groups down to the node a test dials through.
+// `tag` names the pin the caller asked for (a node, a group, or empty for the
+// default); the walk starts at whichever group contains it.
+func resolveRoute(instance *Instance, tag string) *SpeedTestRoute {
+	if instance == nil || instance.outbounds == nil {
+		return nil
+	}
+	if strings.EqualFold(tag, "DIRECT") {
+		return directRoute()
+	}
+	groups := map[string]string{}
+	order := make([]string, 0, 8)
+	iterator := instance.Groups()
+	for iterator.HasNext() {
+		group := iterator.Next()
+		if group == nil {
+			continue
+		}
+		groups[group.Tag] = group.Selected
+		order = append(order, group.Tag)
+	}
+	// The pin names a node: find the group that currently selects it. A pin on
+	// a group names the group instead.
+	start := ""
+	if tag != "" {
+		if _, isGroup := groups[tag]; isGroup {
+			start = tag
+		} else {
+			for _, groupTag := range order {
+				if groups[groupTag] == tag {
+					start = groupTag
+					break
+				}
+			}
+		}
+	}
+	if start == "" {
+		// Follow the default: the group the box dials through when no pin was
+		// named. `outboundLabel` already answers that as a tag.
+		defaultTag := outboundLabel(instance, tag)
+		if _, isGroup := groups[defaultTag]; isGroup {
+			start = defaultTag
+		} else if defaultTag == "" || strings.EqualFold(defaultTag, "DIRECT") {
+			return directRoute()
+		} else {
+			return &SpeedTestRoute{Chains: []string{defaultTag}}
+		}
+	}
+	chains := make([]string, 0, 4)
+	seen := map[string]bool{}
+	current := start
+	for current != "" && !seen[current] {
+		seen[current] = true
+		selected, isGroup := groups[current]
+		if !isGroup {
+			// A node tag reached through a group's selection.
+			chains = append(chains, current)
+			break
+		}
+		chains = append(chains, current)
+		if selected == "" || selected == current {
+			break
+		}
+		current = selected
+	}
+	if len(chains) == 0 {
+		return nil
+	}
+	if strings.EqualFold(chains[len(chains)-1], "DIRECT") {
+		return directRoute()
+	}
+	return &SpeedTestRoute{Chains: chains}
 }
 
 type speedTestTarget struct {
@@ -291,6 +393,7 @@ func newSpeedTester(instance *Instance, params SpeedTestParams) (*speedTester, e
 		}
 		t.outbound = resolved
 		t.state.Outbound = outboundLabel(instance, params.Outbound)
+		t.state.Route = resolveRoute(instance, params.Outbound)
 	}
 	switch params.Provider {
 	case "cloudflare":
