@@ -1129,4 +1129,23 @@ void main() {
       expect(tester.takeException(), isNull);
     },
   );
+
+  // The clock is the one value in this row that grows (`HH:MM:SS`, capped at
+  // 999:00:00). The column used to be narrow enough that large text scales and
+  // long uptimes ellipsised it, so the layout is pinned here: the run-time cell
+  // must be wide enough for the widest time at the app's largest text scale.
+  testWidgets('the run-time cell fits the widest clock at 1.4 scale', (
+    tester,
+  ) async {
+    final dashboard = _Dashboard()..status = 'Started';
+    await dashboard.mount(tester, scale: 1.4);
+    await tester.pumpAndSettle();
+    final cell = find
+        .ancestor(of: find.text('Run time'), matching: find.byType(Column))
+        .first;
+    final width = tester.getSize(cell).width;
+    // Measured at 360 dp with 1.4 scale: `100:00:00` needs about 81 dp.
+    expect(width, greaterThan(84));
+    expect(tester.takeException(), isNull);
+  });
 }
