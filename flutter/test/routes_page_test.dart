@@ -128,6 +128,24 @@ void main() {
           };
         case 'routes.rules':
           return {'rules': rules};
+        // The global pool renders on the Routing page itself now, so the page
+        // asks the channel directly where the standalone page used to.
+        case 'routes.globalRules':
+          return {
+            'rules': [
+              {
+                'id': 1,
+                'name': 'Pool A',
+                'type': 'route',
+                'outbound_id': -1,
+                'disabled': false,
+              },
+            ],
+          };
+        case 'routes.saveGlobalRules':
+          return {'rules': <Object?>[]};
+        case 'routes.deleteGlobalRule':
+          return null;
         case 'routes.saveRules':
           savedRules = [
             for (final rule in (call.arguments as Map)['rules'] as List)
@@ -497,6 +515,55 @@ void main() {
     expect(find.text('Restore default rules'), findsNothing);
     expect(find.text('Endpoint ids'), findsNothing);
     expect(find.text('Remote profile'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the routing page is the global pool, and the rest moved to the menu', (
+    tester,
+  ) async {
+    reportFlutterErrors();
+    rules = [];
+    await mount(tester);
+    openPage(tester.element(find.byType(HomePage)), const RoutingPage());
+    await tester.pumpAndSettle();
+
+    // The pool is the page: its rules render inline, and the add/import
+    // actions sit in the app bar like every other page's primary actions.
+    expect(find.text('Pool A'), findsOneWidget);
+    expect(find.text('Global rules'), findsWidgets);
+    expect(find.byTooltip('Add rule'), findsOneWidget);
+    expect(find.byTooltip('Import rules from JSON'), findsOneWidget);
+
+    // Nothing that used to be stacked below the pool is still on the page.
+    expect(find.text('Route profiles'), findsNothing);
+    expect(find.text('WARP'), findsNothing);
+    expect(find.text('Outbound domain strategy'), findsNothing);
+    expect(find.text('Rule set mirror'), findsNothing);
+    expect(find.text('Ad blocking'), findsNothing);
+    expect(find.text('Update rule sets'), findsNothing);
+
+    // The old controls are one tap deep, in the ⋮ menu.
+    await tester.tap(find.byTooltip('More'));
+    await tester.pumpAndSettle();
+    expect(find.text('Route profiles'), findsOneWidget);
+    expect(find.text('WARP'), findsOneWidget);
+    expect(find.text('Route settings'), findsOneWidget);
+    expect(find.text('Automatic updates'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('inbound, node presets and subscriptions live under Advanced settings', (
+    tester,
+  ) async {
+    reportFlutterErrors();
+    rules = [];
+    await mount(tester);
+    openPage(tester.element(find.byType(HomePage)), const AdvancedSettingsPage());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Inbound'), findsOneWidget);
+    expect(find.text('Node presets'), findsOneWidget);
+    expect(find.text('Subscriptions'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

@@ -78,7 +78,13 @@ class ProxyNodeCard extends StatelessWidget {
     const width = 56.0;
     if (phase != ProxyTestPhase.idle || !tested) {
       return SizedBox(
-        key: const ValueKey('glyph'),
+        // The key names the phase, not "a glyph": FadeBox cross-fades only when
+        // the switcher's child actually changes identity. A constant key made a
+        // single node's tap swap bolt → spinner → delay inside one key, so the
+        // whole transition landed in one frame while a batched run (whose rows
+        // change keys as the queue advances) animated — exactly the asymmetry
+        // FlClash does not have.
+        key: ValueKey('glyph:${phase.name}'),
         height: h,
         width: width,
         child: Semantics(

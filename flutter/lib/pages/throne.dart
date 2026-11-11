@@ -321,6 +321,23 @@ IconButtonData restoreDefaultsAction(BuildContext context, List<String> keys) =>
 
 // --------------------------------------------------------------------------------------------- inbound
 
+/// The configuration surfaces behind one row on the settings list: set once,
+/// rarely revisited, and noisy enough beside the common entries that they made
+/// the list harder to scan.
+class AdvancedSettingsPage extends StatelessWidget {
+  const AdvancedSettingsPage({super.key});
+  @override
+  Widget build(BuildContext context) {
+    return BoxPage(title: 'Advanced settings', children: [
+      generateSection(items: [
+        ListItem.open(leading: const GlyphIcon(AppGlyphs.devices), title: Text(context.tr('Inbound')), widget: const InboundPage()),
+        ListItem.open(leading: const GlyphIcon(AppGlyphs.sliders), title: Text(context.tr('Node presets')), widget: const PresetsPage()),
+        ListItem.open(leading: const GlyphIcon(AppGlyphs.profiles), title: Text(context.tr('Subscriptions')), widget: const SubscriptionPage()),
+      ], footer: context.tr('Inbound ports, the node templates new nodes are built from, and the subscription profiles.')),
+    ]);
+  }
+}
+
 class InboundPage extends StatelessWidget {
   const InboundPage({super.key});
   @override Widget build(BuildContext context) {
@@ -471,19 +488,141 @@ class DnsPage extends StatelessWidget {
 const routingDomainStrategies = ['', 'ipv4_only', 'ipv6_only', 'prefer_ipv4', 'prefer_ipv6'];
 const ruleSetMirrors = [0, 1, 2, 3, 4, 5];
 
-class RoutingPage extends StatelessWidget {
+class RoutingPage extends StatefulWidget {
   const RoutingPage({super.key});
-  @override Widget build(BuildContext context) {
-    final autoUpdate = context.box.settings['routeAutoUpdateEnabled'] == true;
-    return BoxPage(title: 'Routing', actions: [
+  @override State<RoutingPage> createState() => _RoutingPageState();
+}
+
+/// The Routing page is the global added-rules pool, and nothing else.
+///
+/// The page used to stack five sections: the profiles entry, the two domain
+/// strategies plus the mirror and ad-blocking switches, the auto-update pair,
+/// and WARP. That read as a settings dump around the one thing the page is for.
+/// The pool now fills the screen, and every other control moved into the ⋮
+/// menu, one tap away and out of the way.
+class _RoutingPageState extends State<RoutingPage> {
+  final _controller = GlobalRulesController();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: _controller,
+      builder: (context, _) => Scaffold(
+        title: context.tr('Routing'),
+        iconActions: [
+          if (_controller.selectionActive)
+            IconButtonData(
+              glyph: AppGlyphs.delete,
+              tooltip: context.tr('Delete selected'),
+              onPressed: _controller.deleteSelected,
+            )
+          else ...[
+            IconButtonData(
+              glyph: AppGlyphs.code,
+              tooltip: context.tr('Import rules from JSON'),
+              onPressed: _controller.loading ? null : _controller.importRules,
+            ),
+            IconButtonData(
+              glyph: AppGlyphs.add,
+              tooltip: context.tr('Add rule'),
+              onPressed: _controller.loading ? null : _controller.add,
+            ),
+          ],
+        ],
+        menuItems: _menu(context),
+        body: ListView(
+          padding: EdgeInsets.fromLTRB(
+            16,
+            context.sectionsTopPadding,
+            16,
+            24 + context.bottomInset,
+          ),
+          children: [
+            generateSection(
+              title: context.tr('Global rules'),
+              items: [
+                ListItem(
+                  leading: const GlyphIcon(AppGlyphs.rules),
+                  title: Text(context.tr('Applied in front of every profile')),
+                  subtitle: Text(context.tr(
+                      'Drag to reorder; the first match wins. A profile can keep single rules off from its own screen.')),
+                ),
+              ],
+            ),
+            GlobalRulesBody(controller: _controller),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Everything the page used to stack below the pool, kept one tap deep.
+  List<PopupMenuItem> _menu(BuildContext context) {
+    return [
+      PopupMenuItem(
+        glyph: AppGlyphs.rulePresets,
+        label: context.tr('Route profiles'),
+        onPressed: () => openPage(context, const RouteProfilesPage()),
+      ),
+      PopupMenuItem(
+        glyph: AppGlyphs.proxies,
+        label: context.tr('WARP'),
+        onPressed: () => openPage(context, const WarpPage()),
+      ),
+      PopupMenuItem(
+        glyph: AppGlyphs.rules,
+        label: context.tr('Route settings'),
+        section: const PopupMenuSection(),
+        onPressed: () => openPage(context, const _RouteSettingsPage()),
+      ),
+      PopupMenuItem(
+        glyph: AppGlyphs.sync,
+        label: context.tr('Automatic updates'),
+        onPressed: () => openPage(context, const _RouteUpdatePage()),
+      ),
+      PopupMenuItem(
+        glyph: AppGlyphs.reset,
+        label: context.tr('Restore defaults'),
+        danger: true,
+        onPressed: () async {
+          final box = context.box;
+          final ok = await confirm(
+            context,
+            'Restore defaults?',
+            action: 'Restore',
+            message: context.tr('Every routing setting returns to its Throne default.'),
+          );
+          if (ok) {
+            await box.resetSettings(const [
+              'outboundDomainStrategy', 'domainStrategy', 'rulesetMirror', 'adblockEnable',
+              'routeAutoUpdateEnabled', 'routeAutoUpdateMinutes',
+            ]);
+          }
+        },
+      ),
+    ];
+  }
+}
+
+/// The two domain strategies, the rule-set mirror and ad blocking: the
+/// technical switches that used to sit under the pool.
+class _RouteSettingsPage extends StatelessWidget {
+  const _RouteSettingsPage();
+  @override
+  Widget build(BuildContext context) => BoxPage(
+    title: 'Route settings',
+    actions: [
       restoreDefaultsAction(context, const [
         'outboundDomainStrategy', 'domainStrategy', 'rulesetMirror', 'adblockEnable',
-        'routeAutoUpdateEnabled', 'routeAutoUpdateMinutes',
       ]),
-    ], children: [
-      generateSection(items: [
-        ListItem.open(leading: const GlyphIcon(AppGlyphs.rulePresets), title: Text(context.tr('Route profiles')), widget: const RouteProfilesPage()),
-      ], footer: context.tr('The current profile builds every configuration that has no group override.')),
+    ],
+    children: [
       generateSection(items: [
         SettingChoice<String>('Outbound domain strategy', 'outboundDomainStrategy',
           options: routingDomainStrategies, text: _strategyName),
@@ -492,16 +631,29 @@ class RoutingPage extends StatelessWidget {
         SettingChoice<int>('Rule set mirror', 'rulesetMirror', options: ruleSetMirrors, text: _mirrorName),
         SettingToggle('Ad blocking', 'adblockEnable', autoRestart: true),
       ]),
-      generateSection(title: context.tr('Automatic updates'), items: [
-        SettingToggle('Update rule sets', 'routeAutoUpdateEnabled'),
-        if (autoUpdate) SettingNumber('Update interval', 'routeAutoUpdateMinutes', min: 30, unit: 'min'),
+    ],
+  );
+}
+
+/// The rule-set update pair, split out of the page it used to crowd.
+class _RouteUpdatePage extends StatelessWidget {
+  const _RouteUpdatePage();
+  @override
+  Widget build(BuildContext context) => BoxPage(
+    title: 'Automatic updates',
+    actions: [
+      restoreDefaultsAction(context, const [
+        'routeAutoUpdateEnabled', 'routeAutoUpdateMinutes',
       ]),
-      // Upstream keeps WARP in this page as its own section, not as a settings entry beside it.
+    ],
+    children: [
       generateSection(items: [
-        ListItem.open(leading: const GlyphIcon(AppGlyphs.proxies), title: Text(context.tr('WARP')), widget: const WarpPage()),
+        SettingToggle('Update rule sets', 'routeAutoUpdateEnabled'),
+        if (context.box.settings['routeAutoUpdateEnabled'] == true)
+          SettingNumber('Update interval', 'routeAutoUpdateMinutes', min: 30, unit: 'min'),
       ]),
-    ]);
-  }
+    ],
+  );
 }
 
 String _strategyName(String value) => switch (value) {

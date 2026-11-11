@@ -385,7 +385,13 @@ class _SpeedTestPageState extends State<SpeedTestPage>
         ? null
         : switch (error) {
             'cancelled' => context.tr('Cancelled'),
-            'blocked' => context.tr('The test endpoint is blocked'),
+            // `blocked` now means one thing only: the provider answered with a
+            // status that refuses the request (a 4xx upload, a non-200
+            // download, a trace without an exit IP). "The endpoint is blocked"
+            // read as "your network is being censored" and sent users after a
+            // firewall that did not exist whenever a provider simply timed out;
+            // those runs report `timeout`/`unavailable` now.
+            'blocked' => context.tr('The test endpoint refused the request'),
             'rejected' => context.tr('The selected outbound rejects traffic'),
             'timeout' => context.tr('The test timed out'),
             'unavailable' => context.tr('The test endpoint is unavailable'),
