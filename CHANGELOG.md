@@ -1,3 +1,10 @@
+#### 4.10.0
+
+* **The 16 `routes.*` handlers leave the bridge's 136-arm `when` for a registry (ADR 0002, phase 3b-2).** `BboxActions` keys handlers by the same dotted names and the bridge now forwards once (`BboxActions.invoke`) before falling through for everything else. Returning `Unhandled` rather than throwing is what makes the migration incremental: a domain moves while every other name keeps its existing arm, and a name added to one table cannot break the other
+* **Argument coercion is normalised in one place.** The platform codec hands numbers over as `Int`, `Long` or `Double` depending on the device, so `as Long` is the kind of cast that only fails on some hardware; `requireLong` / `requireString` / `ruleList` / `idList` do it once. `routes.ruleSets` keeps its `RouteManager.catalog()` + search body but now lives in the registry too
+* **`channel_audit.py` reads both tables.** Its `kotlin_handlers()` only scanned the bridge's `when`, so a moved domain would have looked like a missing handler and failed CI for the wrong reason. `registry_handlers()` parses `register("…")` from `BboxActions`, and the audit unions the two — the count stayed at 136, which is the check that nothing was dropped in the move
+* **Not moved to Go yet, deliberately.** `routes.*` still resolves through `RouteManager`, which now prefers the JSON documents (phase 3b-1). Pushing the handlers into the Go dispatcher needs Go to read those same files, and two writers on one document set is a worse failure mode than one Kotlin implementation. The registry is the seam that makes that move a swap rather than a rewrite
+
 #### 4.9.0
 
 * **The first data plane moves onto JSON documents: route profiles and rules (ADR 0002, phase 3b).** `RouteJsonStore` keeps `route_profiles` / `route_rules` as two atomic JSON documents beside the database. It speaks the same row shape as Room — `RouteProfileEntity.of` / `toModel` and `RouteRuleEntity.of` / `toModel` are reused unchanged — so ids, rule order, JSON blobs, booleans and nulls round-trip without a hand-written field mapper. Writes are temp-file + rename

@@ -59,6 +59,10 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FLUTTER_LIB = REPO_ROOT / "flutter" / "lib"
 BRIDGE = REPO_ROOT / "app" / "src" / "main" / "java" / "io" / "flrone" / "flutter" / "ThroneBoxBridge.kt"
+# ADR 0002 phase 3b-2: migrated domains move out of the bridge's `when` into this
+# registry. Both tables are legitimate handler sources; the bridge forwards to the
+# registry first and falls through for everything else.
+BRIDGE_ACTIONS = REPO_ROOT / "app" / "src" / "main" / "java" / "io" / "flrone" / "bridge" / "BboxActions.kt"
 BRIDGE_DIR = REPO_ROOT / "app" / "src" / "main" / "java" / "io" / "flrone"
 CAPABILITIES = REPO_ROOT / "app" / "src" / "main" / "java" / "io" / "flrone" / "bridge" / "Capabilities.kt"
 DART_DISPATCH = FLUTTER_LIB / "box.dart"
@@ -150,6 +154,14 @@ def dart_calls() -> tuple[dict[str, list[str]], list[str]]:
             line = text.count("\n", 0, match.start()) + 1
             dynamic.append(f"{rel}:{line}")
     return callers, dynamic
+
+
+def registry_handlers() -> set[str]:
+    """Names registered in BboxActions (`register("dotted.name") { ... }`)."""
+    if not BRIDGE_ACTIONS.is_file():
+        return set()
+    text = BRIDGE_ACTIONS.read_text(encoding="utf-8")
+    return set(re.findall(r'register\(\s*"([a-zA-Z][a-zA-Z0-9_.]*)"', text))
 
 
 def kotlin_handlers() -> set[str]:
@@ -365,7 +377,9 @@ def main() -> int:
     args = parser.parse_args()
 
     calls, dynamic = dart_calls()
-    handlers = kotlin_handlers()
+    # Handlers live in two places now: the bridge's own `when` arms and the
+    # BboxActions registry the bridge forwards to first. A name in either counts.
+    handlers = kotlin_handlers() | registry_handlers()
     disabled = disabled_capabilities()
     absent_prefixes = expected_absent(disabled)
     emits = emitted_events()
