@@ -109,8 +109,14 @@ honours the mode as well.
 
 Since 3.3.0 the Dart driver owns the core again: `KernelService.initialize()` tells the bridge to stand aside
 (`ffi.mode`), opens `libthrone.so` in the worker isolate and drives start/stop/reload plus the status snapshot over
-the `throne_*` C ABI. The channel keeps the data plane — profile storage, `config.build`, subscriptions, test
-sessions — and Android duties (VpnService, notifications, the platform databases), exactly as ADR 0001 splits them.
+the `throne_*` C ABI. The channel currently keeps the data plane — profile storage, `config.build`, subscriptions,
+test sessions — and Android duties (VpnService, notifications, the platform databases). That split is ADR 0001's.
+
+> **ADR 0002 (2026-11-11) supersedes that split.** The data plane moves behind a single
+> `throne_invoke_action` JSON action bus and onto file/JSON storage, in phases; the bridge ends up with
+> only Android platform duties. Until a phase lands, the paragraph above still describes the code that
+> runs. `tools/diagnostics/action_contract.py` gates the new bus's method lists; this document is
+> updated per phase rather than describing the end state as if it shipped.
 
 The driver still yields on its own when the rebuilt core is absent from the build: `ThroneKernel.isAvailable` is
 checked before `ffi.mode` is touched, so an AAR without the patch leaves `BaseService` starting `ProxyInstance`

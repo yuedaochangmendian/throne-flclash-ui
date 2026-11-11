@@ -1,8 +1,11 @@
 # ADR 0001 — FFI 路径的边界（保守路线）
 
 - 日期：2026-11-04
-- 状态：已接受
+- 状态：已被 [0002-bettbox-alignment.md](0002-bettbox-alignment.md) 取代（原文保留为历史）
 - 影响范围：`flutter/lib/core/*`、`buildScript/core-patch/`、`app/.../BboxKernel.kt`、`ThroneBoxBridge.kt`
+
+> 0002 推翻了本 ADR 的决策 1、4、5 及「明确不做」中的 JSON-action、数据面迁移、
+> Riverpod 三条；传输层（消息 port / 长驻 isolate）与 CI 门禁护栏则被继承。
 
 ## 背景
 
