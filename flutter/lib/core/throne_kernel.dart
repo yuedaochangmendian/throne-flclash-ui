@@ -14,20 +14,69 @@ import 'dart:async';
 import 'dart:ffi';
 import 'dart:isolate';
 
+import 'package:ffi/ffi.dart';
 
+import 'action.dart';
 import 'throne_ffi.dart';
 
 /// One JSON event posted by the Go side (`sendEvent` / `postTo`).
 typedef BridgeEvent = Map<String, dynamic>;
 
 class ThroneKernel {
-  ThroneKernel._(this.ffi, this._port) {
+  ThroneKernel._(this.ffi, this._port, this._replyPort) {
     ffi.throne_init_dart_api(NativeApi.initializeApiDLData);
     ffi.throne_attach_message_port(_port.sendPort.nativePort);
     _port.listen((raw) {
       final event = decodeBridgeEvent(raw);
       if (event != null) _events.add(event);
     });
+    // Action results arrive on a dedicated port: the C ABI takes a reply port
+    // per call, and keeping one long-lived reply port avoids allocating an
+    // isolate port for every request. Results are demuxed by their echoed id.
+    _replyPort.listen((raw) {
+      final result = ActionResult.decode(raw);
+      if (result == null || result.id.isEmpty) return;
+      final completer = _pending.remove(result.id);
+      if (completer == null || completer.isCompleted) return;
+      if (result.isError) {
+        completer.completeError(
+          ActionException(result.method, '${result.data ?? 'action failed'}'),
+        );
+      } else {
+        completer.complete(result.data);
+      }
+    });
+  }
+
+  int _nextId = 0;
+  final Map<String, Completer<Object?>> _pending = {};
+  final ReceivePort _replyPort;
+
+  /// Invoke one kernel action and wait for the result correlated by id.
+  ///
+  /// [timeout] bounds the wait even if the kernel never answers; on expiry the
+  /// pending entry is removed so a late reply cannot complete a dead Future.
+  Future<T> invoke<T>(
+    ActionMethod method, {
+    Object? data,
+    Duration timeout = const Duration(seconds: 30),
+  }) {
+    final id = '${method.name}#${_nextId++}';
+    final completer = Completer<Object?>();
+    _pending[id] = completer;
+    final payload = Action(id: id, method: method, data: data).encode().toNativeUtf8();
+    try {
+      ffi.throne_invoke_action(payload, _replyPort.sendPort.nativePort);
+    } finally {
+      malloc.free(payload);
+    }
+    return completer.future.timeout(
+      timeout,
+      onTimeout: () {
+        _pending.remove(id);
+        throw ActionException(method.name, 'timed out after ${timeout.inSeconds}s');
+      },
+    ).then((value) => value as T);
   }
 
   static ThroneKernel? _instance;
@@ -51,7 +100,7 @@ class ThroneKernel {
     if (_instance != null) return _instance;
     if (!isAvailable) return null;
     final lib = DynamicLibrary.open('libthrone.so');
-    _instance = ThroneKernel._(ThroneFFI(lib), ReceivePort());
+    _instance = ThroneKernel._(ThroneFFI(lib), ReceivePort(), ReceivePort());
     return _instance;
   }
 
@@ -72,7 +121,14 @@ class ThroneKernel {
   ReplyPort openReply() => ReplyPort._();
 
   void dispose() {
+    for (final completer in _pending.values) {
+      if (!completer.isCompleted) {
+        completer.completeError(const ActionException('dispose', 'kernel disposed'));
+      }
+    }
+    _pending.clear();
     _port.close();
+    _replyPort.close();
     _events.close();
     _instance = null;
   }

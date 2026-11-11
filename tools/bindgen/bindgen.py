@@ -93,6 +93,10 @@ EXTRA_EXPORTS = [
      "Live/created/released handle counters as JSON: FFI lifetime diagnostics."),
     ("throne_status_snapshot", "char *", [("int64_t", "handle")],
      'All status fields in one JSON object; creates no handle and pushes a "status" event.'),
+    ("throne_invoke_action", "void", [("char *", "actionJson"), ("int64_t", "replyPort")],
+     "Bettbox-style JSON action bus: unmarshal Action{id,method,data}, dispatch "
+     "asynchronously and post ActionResult{id,data,code} to replyPort. "
+     "The typed throne_* exports remain the handlers' implementation."),
     ("throne_Instance_alive", "int32_t", [("int64_t", "handle")],
      "1 while the box behind this handle is started and not closed: the heartbeat's cheap liveness probe."),
     ("throne_start_tun", "int32_t", [("int32_t", "fd"), ("void *", "tun")],
@@ -1072,6 +1076,7 @@ import "C"
 import (
 \t"encoding/json"
 \t"errors"
+\t"fmt"
 \t"sync"
 \t"time"
 \t"unsafe"
@@ -1142,7 +1147,9 @@ func bridgeTun() unsafe.Pointer {{
 
 //export throne_init_dart_api
 func throne_init_dart_api(api unsafe.Pointer) {{
-\tif err := initDartApi(api); err != nil {{ setErr(err) }}
+\tif err := initDartApi(api); err != nil {{
+\t\tsetErr(err)
+\t}}
 }}
 
 //export throne_attach_message_port
@@ -1150,6 +1157,70 @@ func throne_attach_message_port(port C.int64_t) {{
 \tbridgeMu.Lock()
 \tmessagePort = int64(port)
 \tbridgeMu.Unlock()
+}}
+
+//export throne_invoke_action
+func throne_invoke_action(actionJson *C.char, replyPort C.int64_t) {{
+\tdefer guardExport("throne_invoke_action")
+\traw := C.GoString(actionJson)
+\tport := int64(replyPort)
+\tvar action Action
+\tif err := json.Unmarshal([]byte(raw), &action); err != nil {{
+\t\t// A malformed action has no id to echo, so answer on the port with a
+\t\t// zero id and let the Dart side time out its pending correlation.
+\t\tpostActionResult(ActionResult{{Code: actionCodeError, Data: err.Error()}}, port)
+\t\treturn
+\t}}
+\tresult := ActionResult{{Id: action.Id, Method: action.Method, Port: port}}
+\tgo dispatchAction(action, result)
+}}
+
+// postActionResult marshals one ActionResult and posts it to its reply port.
+func postActionResult(result ActionResult, port int64) {{
+\tmsg, err := result.JSON()
+\tif err != nil {{
+\t\treturn
+\t}}
+\tpostRaw(port, string(msg))
+}}
+
+// postRaw sends an already-marshalled result without re-encoding it. The
+// message-port event envelope is {{"method","data"}}; action results are their
+// own shape, so they bypass sendEvent's fixed method field.
+func postRaw(port int64, msg string) {{
+\tif port < 0 {{
+\t\treturn
+\t}}
+\tsendToPort(port, msg)
+}}
+
+// dispatchAction runs one Action with the same panic fence that every other Go
+// handler uses: a panic on a goroutine must become a result, never a dead
+// Completer on the Dart side.
+func dispatchAction(action Action, result ActionResult) {{
+\tdefer func() {{
+\t\tif r := recover(); r != nil {{
+\t\t\tresult.Code = actionCodeError
+\t\t\tresult.Data = fmt.Sprintf("panic: %v", r)
+\t\t\tpostActionResult(result, result.Port)
+\t\t}}
+\t}}()
+\thandler, ok := actionHandlers[action.Method]
+\tif !ok {{
+\t\tresult.Code = actionCodeError
+\t\tresult.Data = "unknown action method: " + string(action.Method)
+\t\tpostActionResult(result, result.Port)
+\t\treturn
+\t}}
+\tdata, err := handler(action.Data)
+\tif err != nil {{
+\t\tresult.Code = actionCodeError
+\t\tresult.Data = err.Error()
+\t}} else {{
+\t\tresult.Code = actionCodeSuccess
+\t\tresult.Data = data
+\t}}
+\tpostActionResult(result, result.Port)
 }}
 
 // sendEvent posts one JSON event to the attached message port (logs, ...).

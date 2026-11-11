@@ -489,6 +489,9 @@ char * throne_handle_stats(void);
 /* All status fields in one JSON object; creates no handle and pushes a "status" event. */
 char * throne_status_snapshot(int64_t handle);
 
+/* Bettbox-style JSON action bus: unmarshal Action{id,method,data}, dispatch asynchronously and post ActionResult{id,data,code} to replyPort. The typed throne_* exports remain the handlers' implementation. */
+void throne_invoke_action(char * actionJson, int64_t replyPort);
+
 /* Feed the VpnService fd and the TunInterface token to the kernel before Start. */
 int32_t throne_start_tun(int32_t fd, void * tun);
 

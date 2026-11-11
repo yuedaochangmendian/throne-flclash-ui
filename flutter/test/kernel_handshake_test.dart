@@ -6,6 +6,7 @@
 import 'dart:async';
 
 import 'package:flrone/box.dart';
+import 'package:flrone/core/action.dart';
 import 'package:flrone/core/kernel_service.dart';
 import 'package:flrone/core/kernel_worker.dart';
 import 'package:flrone/core/throne_ffi.dart';
@@ -30,6 +31,13 @@ class FakeKernel implements ThroneKernel {
   @override
   ReplyPort openReply() =>
       throw UnimplementedError('the driver never opens a reply port');
+
+  @override
+  Future<T> invoke<T>(
+    ActionMethod method, {
+    Object? data,
+    Duration timeout = const Duration(seconds: 30),
+  }) => throw UnimplementedError('the hand-over path never invokes an action');
 
   @override
   void dispose() {}
