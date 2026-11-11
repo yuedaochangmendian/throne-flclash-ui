@@ -46,6 +46,7 @@ CONSTANTS_KT = ROOT / "app/src/main/java/io/nekohasekai/sagernet/Constants.kt"
 DB_DART = ROOT / "flutter/lib/data/db.dart"
 ROUTE_STORE_GO = ROOT / "buildScript/core-patch/core/mobile/route_store.go"
 ROUTE_ACTIONS_GO = ROOT / "buildScript/core-patch/core/mobile/route_actions.go"
+PROFILE_STORE_GO = ROOT / "buildScript/core-patch/core/mobile/profile_store.go"
 MIGRATION_KT = ROOT / "app/src/main/java/io/flrone/bridge/RoomToJsonMigration.kt"
 SCHEMAS_ROOT = ROOT / "app/schemas"
 DAO_DIR = ROOT / "flutter/lib/data"
@@ -346,15 +347,18 @@ def audit_document_migration(tables: dict[str, set[str]], problems: list[str]) -
         return
     kotlin_tables = set(re.findall(r'"([a-z_]+)"', block.group(1)))
 
-    # Both patch files declare document names: route_store.go the two tables it owns, and
-    # route_actions.go the global pool. Read them together.
-    store = read(ROUTE_STORE_GO) + read(ROUTE_ACTIONS_GO)
-    block = re.search(r"const \((.*?)^\)", store, re.M | re.S)
-    if not block:
+    # Both patch files declare document names: route_store.go the two route tables,
+    # route_actions.go the global pool, profile_store.go the profiles and groups tables.
+    # Read them together.
+    store = read(ROUTE_STORE_GO) + read(ROUTE_ACTIONS_GO) + read(PROFILE_STORE_GO)
+    blocks = re.findall(r"const \((.*?)^\)", store, re.M | re.S)
+    if not blocks:
         problems.append("route_store.go has no document-name const block")
         return
-    dart_tables = set(re.findall(r'route(?:Profiles|Rules)Doc\s*=\s*"([a-z_]+)"', block.group(1)))
+    all_consts = "\n".join(blocks)
+    dart_tables = set(re.findall(r'route(?:Profiles|Rules)Doc\s*=\s*"([a-z_]+)"', all_consts))
     dart_tables |= set(re.findall(r'"(global_route_rules)"', store))
+    dart_tables |= set(re.findall(r'(?:profiles|groups)Doc\s*=\s*"([a-z_]+)"', all_consts))
 
     # The two hand-written lists must agree with each other …
     if kotlin_tables != dart_tables:
@@ -366,7 +370,7 @@ def audit_document_migration(tables: dict[str, set[str]], problems: list[str]) -
     for name in sorted((kotlin_tables | dart_tables) - room_tables):
         problems.append(f"the route documents name {name!r}, which Room's schema does not have")
     # The kernel's own table names must be covered by the seed.
-    go_tables = {"route_profiles", "route_rules", "global_route_rules"}
+    go_tables = {"route_profiles", "route_rules", "global_route_rules", "profiles", "groups"}
     for name in sorted(go_tables - kotlin_tables):
         problems.append(
             f"the Go route store reads {name!r} but the Kotlin seed never writes it"
