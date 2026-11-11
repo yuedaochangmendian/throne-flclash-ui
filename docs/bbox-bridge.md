@@ -74,11 +74,13 @@ translation, not a set of adapters bolted onto each screen.
 | `openUrl` | `ACTION_VIEW` on the application context. |
 | `groups.visible(visible)` | `BboxGroupsWire` through `ThroneBoxBridge.setGroupsVisible` | `ready` and the one-second pump carry group **counts** only (`nodeCount`, `timeouts`). The Proxies screen turns rows on while it is open and off when it closes, so the largest payload the bridge builds only exists while a screen renders it. |
 | `groups.nodes` | `BboxGroupsWire.nodes` | The outbound pickers: every node's id, tag, type and `isSelector`, flat, without the per-node rows of the catalog event. The proxy-chain picker needs the last two to skip the rows a hop may not be. |
-| `speedTest.start(params)` | `BboxSpeedTest.start` | Runs one Bettbox speed test in the kernel, through the running instance's own outbound. Answers at once; the screen polls `speedTest.query`. `params` is the kernel's own JSON (`provider`, `protocol`, `duration`, `streams`, `outbound`, optional `testDownload` / `testUpload`). |
+| `speedTest.start(params)` | `BboxSpeedTest.start` | Runs one Bettbox speed test in the kernel, through the running instance's own outbound. Answers at once; the screen polls `speedTest.query`. `params` is the kernel's own JSON (`provider`, `protocol`, `duration`, `streams`, `outbound`, optional `testDownload` / `testUpload`). False means the kernel refused because a test is already running; every other failure throws with its reason (the VPN down, the core gone). |
 | `speedTest.query` | `BboxSpeedTest.query` | The live snapshot, `{state, running}`; `state` is the kernel's `SpeedTestState`. |
 | `speedTest.cancel` | `BboxSpeedTest.cancel` | Stops the running test; the next snapshot reports `cancelled`. |
 | `speedTest.servers(outbound, search)` | `BboxSpeedTest.servers` | speedtest.net's servers with latencies, nearest first. |
 | `speedTest.outbounds` | `BboxSpeedTest.outbounds` | The running box's outbound tags, the test's picker. |
+
+The instance these five reach is the one its driver owns: the service-built core goes through the AAR's gobind calls with the `Instance` object, the Dart-built FFI core goes through the C ABI (`throne_Mobile_startBettboxSpeedTest` and the two listing calls, declared in `android/core/src/main/cpp/speedtest_symbols.h`) with the numeric handle Dart registered over `ffi.handle`.
 
 ## Outbound mode
 

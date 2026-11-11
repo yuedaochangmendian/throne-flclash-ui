@@ -20,6 +20,7 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"math"
 	"net"
@@ -1261,6 +1262,15 @@ func StartBettboxSpeedTest(instance *Instance, params string) bool {
 	bettboxSpeedTestMu.Unlock()
 
 	go func() {
+		// A panic mid-test must still release the single slot: every later
+		// start would be refused with "already running" until the process
+		// restarted, which is exactly the wedge this flag must never make.
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				failSpeedTest(fmt.Sprintf("speed test panicked: %v", recovered))
+			}
+		}()
+
 		p := SpeedTestParams{}
 		_ = json.Unmarshal([]byte(params), &p)
 		ctx, finish := beginSpeedTest()
@@ -1276,36 +1286,51 @@ func StartBettboxSpeedTest(instance *Instance, params string) bool {
 			bettboxSpeedTestState = state
 			bettboxSpeedTestMu.Unlock()
 		})
-		final := tester.snapshot()
-
-		bettboxSpeedTestMu.Lock()
-		bettboxSpeedTestState = final
-		bettboxSpeedTestRunning = false
-		if bettboxSpeedTestDone != nil {
-			close(bettboxSpeedTestDone)
-			bettboxSpeedTestDone = nil
-		}
-		bettboxSpeedTestMu.Unlock()
+		finishSpeedTest(tester.snapshot())
 	}()
 	return true
 }
 
-// publishFailure ends the current run with [err] as its verdict, so a test
-// that never started still reports why instead of hanging at "connecting".
-func publishFailure(err error) {
+// finishSpeedTest publishes the run's own final snapshot and releases the
+// single test slot.
+func finishSpeedTest(state SpeedTestState) {
 	bettboxSpeedTestMu.Lock()
-	defer bettboxSpeedTestMu.Unlock()
+	bettboxSpeedTestState = state
+	releaseSpeedTestSlotLocked()
+	bettboxSpeedTestMu.Unlock()
+}
+
+// failSpeedTest ends the run in place — the phase and verdict change, whatever
+// the test already gathered stays on the curve — and releases the single slot.
+// A panic must land here: dropping the whole state would erase the samples the
+// run managed before it died.
+func failSpeedTest(verdict string) {
+	bettboxSpeedTestMu.Lock()
 	bettboxSpeedTestState.Phase = speedTestPhaseDone
 	bettboxSpeedTestState.Progress = 1
-	bettboxSpeedTestState.Error = speedTestErrorUnavailable
-	if errors.Is(err, errSpeedTestProxyNotFound) {
-		bettboxSpeedTestState.Error = err.Error()
-	}
+	bettboxSpeedTestState.Error = verdict
+	releaseSpeedTestSlotLocked()
+	bettboxSpeedTestMu.Unlock()
+}
+
+// releaseSpeedTestSlotLocked frees the single-test slot; the caller holds
+// [bettboxSpeedTestMu].
+func releaseSpeedTestSlotLocked() {
 	bettboxSpeedTestRunning = false
 	if bettboxSpeedTestDone != nil {
 		close(bettboxSpeedTestDone)
 		bettboxSpeedTestDone = nil
 	}
+}
+
+// publishFailure ends the current run with [err] as its verdict, so a test
+// that never started still reports why instead of hanging at "connecting".
+func publishFailure(err error) {
+	verdict := speedTestErrorUnavailable
+	if errors.Is(err, errSpeedTestProxyNotFound) {
+		verdict = err.Error()
+	}
+	failSpeedTest(verdict)
 }
 
 // QueryBettboxSpeedTest returns the current snapshot as JSON, `{state, running}`.
