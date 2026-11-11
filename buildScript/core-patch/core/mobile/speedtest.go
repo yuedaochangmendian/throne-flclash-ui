@@ -150,27 +150,34 @@ func (p SpeedTestParams) uploadEnabled() bool {
 
 // SpeedTestState is the snapshot pushed to the UI.
 type SpeedTestState struct {
-	Provider        string           `json:"provider"`
-	Protocol        string           `json:"protocol"`
-	Fallback        bool             `json:"fallback"`
-	ExitIp          string           `json:"exitIp"`
-	ExitInfo        json.RawMessage  `json:"exitInfo"`
-	Streams         int              `json:"streams"`
-	Duration        int              `json:"duration"`
-	Phase           string           `json:"phase"`
-	Progress        float64          `json:"progress"`
-	Speed           float64          `json:"speed"`
-	Outbound        string           `json:"outbound"`
-	Server          *SpeedTestServer `json:"server"`
-	Latency         float64          `json:"latency"`
-	Jitter          float64          `json:"jitter"`
-	Download        float64          `json:"download"`
-	Upload          float64          `json:"upload"`
-	DownloadLatency float64          `json:"downloadLatency"`
-	UploadLatency   float64          `json:"uploadLatency"`
-	Rpm             int              `json:"rpm"`
-	Bytes           int64            `json:"bytes"`
-	Error           string           `json:"error"`
+	Provider string `json:"provider"`
+	Protocol string `json:"protocol"`
+	// Fallback reports that the requested transport was not the one used.
+	Fallback bool `json:"fallback"`
+	// ProviderFallback reports that discovery failed on the requested provider
+	// and a sibling measured instead. It is a separate field because the two
+	// fallbacks are decided in different phases, and sharing one flag let the
+	// protocol write erase the provider one. Both are plain booleans on the
+	// JSON envelope, which is a map the bridge marshals — no gobind type grows.
+	ProviderFallback bool             `json:"providerFallback"`
+	ExitIp           string           `json:"exitIp"`
+	ExitInfo         json.RawMessage  `json:"exitInfo"`
+	Streams          int              `json:"streams"`
+	Duration         int              `json:"duration"`
+	Phase            string           `json:"phase"`
+	Progress         float64          `json:"progress"`
+	Speed            float64          `json:"speed"`
+	Outbound         string           `json:"outbound"`
+	Server           *SpeedTestServer `json:"server"`
+	Latency          float64          `json:"latency"`
+	Jitter           float64          `json:"jitter"`
+	Download         float64          `json:"download"`
+	Upload           float64          `json:"upload"`
+	DownloadLatency  float64          `json:"downloadLatency"`
+	UploadLatency    float64          `json:"uploadLatency"`
+	Rpm              int              `json:"rpm"`
+	Bytes            int64            `json:"bytes"`
+	Error            string           `json:"error"`
 	// The curves the UI draws: one entry per second, in byte/s, download
 	// first then upload — Bettbox's chart keeps the same two series.
 	DownloadCurve []float64 `json:"downloadCurve"`
@@ -563,7 +570,7 @@ func (t *speedTester) execute(ctx context.Context) error {
 	}
 
 	t.setPhase(speedTestPhaseLatency)
-	samples := t.measureLatency(ctx, target, speedTestLatencyCount, func(done int) {
+	samples, latencyErr := t.measureLatency(ctx, target, speedTestLatencyCount, func(done int) {
 		t.update(func(state *SpeedTestState) {
 			state.Progress = float64(done) / speedTestLatencyCount
 		})
@@ -572,15 +579,12 @@ func (t *speedTester) execute(ctx context.Context) error {
 		return ctx.Err()
 	}
 	if len(samples) == 0 {
-		// No latency sample at all means the endpoint never answered: every
-		// attempt errored or exceeded `latencyOnce`'s 3 s bound. That is a dead
-		// or unreachable provider, not a firewalled one. Reporting `blocked`
-		// here is what made a slow/blocked-elsewhere provider read as "the
-		// test endpoint is blocking you", sending users after a firewall that
-		// was never there. Let the classifier derive timeout/unavailable from
-		// the real request error instead.
-		if ctx.Err() != nil {
-			return ctx.Err()
+		// No latency sample at all. Hand the last attempt's error to the
+		// classifier so it can tell a timeout from a dead endpoint; returning a
+		// bare sentinel here made `timeout` unreachable on this path, so a slow
+		// endpoint always read as "unavailable".
+		if latencyErr != nil {
+			return latencyErr
 		}
 		return errSpeedTestUnavailable
 	}
@@ -593,15 +597,17 @@ func (t *speedTester) execute(ctx context.Context) error {
 	t.setPhase(speedTestPhaseDownload)
 	var downloadLoaded, uploadLoaded []float64
 	if t.params.downloadEnabled() {
-		download, loaded := t.measureLoad(ctx, target, t.downloadWorker(target.downloadURL), false)
+		download, loaded, refused := t.measureLoad(ctx, target, t.downloadWorker(target.downloadURL), false)
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 		if download <= 0 {
-			// Bytes never flowed. The workers only give up early when the
-			// endpoint answers with a non-200 (that path already returns
-			// errSpeedTestBlocked), so reaching here with nothing counted means
-			// the streams were refused or stalled — unavailable, not blocked.
+			// Nothing came back. The workers recorded why: a non-200 on the
+			// download URL is a refusal (`blocked`), anything else is an
+			// endpoint that could not deliver bytes (`unavailable`).
+			if refused {
+				return errSpeedTestBlocked
+			}
 			return errSpeedTestUnavailable
 		}
 		downloadLoaded = loaded
@@ -613,11 +619,17 @@ func (t *speedTester) execute(ctx context.Context) error {
 
 	t.setPhase(speedTestPhaseUpload)
 	if t.params.uploadEnabled() {
-		upload, loaded := t.measureLoad(ctx, target, t.uploadWorker(target.uploadURL), true)
+		upload, loaded, refused := t.measureLoad(ctx, target, t.uploadWorker(target.uploadURL), true)
 		if ctx.Err() != nil {
 			return ctx.Err()
 		}
 		uploadLoaded = loaded
+		// An upload that transferred nothing is a failed direction. It used to
+		// be reported as a completed run with `upload = -1` — the card said
+		// Complete for a test whose uploads had all been refused.
+		if upload <= 0 && refused {
+			return errSpeedTestBlocked
+		}
 		all := append(append([]float64{}, downloadLoaded...), uploadLoaded...)
 		t.update(func(state *SpeedTestState) {
 			state.Upload = upload
@@ -696,7 +708,7 @@ func (t *speedTester) resolveTarget(ctx context.Context) (*speedTestTarget, erro
 			target, err = retry, nil
 			t.update(func(state *SpeedTestState) {
 				state.Provider = provider
-				state.Fallback = true
+				state.ProviderFallback = true
 			})
 			break
 		}
@@ -1035,14 +1047,21 @@ func parseServerTiming(header string) float64 {
 	return 0
 }
 
-func (t *speedTester) measureLatency(ctx context.Context, target *speedTestTarget, count int, progress func(int)) []float64 {
+// measureLatency samples the endpoint's round trips. It returns the samples and
+// the last error any attempt produced: with no samples the caller has to tell a
+// dead endpoint from a slow one, and the old signature dropped exactly that
+// information, so every failure read as `unavailable`.
+func (t *speedTester) measureLatency(ctx context.Context, target *speedTestTarget, count int, progress func(int)) ([]float64, error) {
 	samples := make([]float64, 0, count)
+	var lastErr error
 	for i := 0; i < count; i++ {
 		if ctx.Err() != nil {
 			break
 		}
 		rtt, resp, err := t.latencyOnce(ctx, t.latency, target.latencyURL)
-		if err == nil {
+		if err != nil {
+			lastErr = err
+		} else {
 			samples = append(samples, rtt)
 			if city := resp.Header.Get("cf-meta-city"); city != "" && target.server != nil && target.server.City == "" {
 				server := *target.server
@@ -1055,7 +1074,7 @@ func (t *speedTester) measureLatency(ctx context.Context, target *speedTestTarge
 		}
 		progress(i + 1)
 	}
-	return samples
+	return samples, lastErr
 }
 
 func (t *speedTester) downloadWorker(url string) func(context.Context, *http.Client, *atomic.Int64) error {
@@ -1103,11 +1122,43 @@ func (t *speedTester) uploadWorker(url string) func(context.Context, *http.Clien
 	}
 }
 
+// speedWorkerErrors records what the load workers ran into. It exists because
+// `startWorkers` used to count failures and drop the errors: a provider that
+// answered 403 on /download therefore surfaced as "unavailable", and an
+// upload-only run whose every attempt was refused finished as a successful test
+// that transferred nothing. Keeping the first few errors is enough — the
+// verdict only needs to know whether something refused us.
+type speedWorkerErrors struct {
+	mu   sync.Mutex
+	errs []error
+}
+
+func (e *speedWorkerErrors) add(err error) {
+	e.mu.Lock()
+	if len(e.errs) < 8 {
+		e.errs = append(e.errs, err)
+	}
+	e.mu.Unlock()
+}
+
+// blocked reports whether any worker saw an explicit refusal, which is a
+// different verdict from "nothing came back".
+func (e *speedWorkerErrors) blocked() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for _, err := range e.errs {
+		if errors.Is(err, errSpeedTestBlocked) {
+			return true
+		}
+	}
+	return false
+}
+
 // measureLoad runs one direction: [streams] workers pull as much as they can
 // for the configured duration while a second sampler times the endpoint under
 // that load, and a third records the throughput curve. It returns the stable
-// rate and the loaded round trips.
-func (t *speedTester) measureLoad(ctx context.Context, target *speedTestTarget, worker func(context.Context, *http.Client, *atomic.Int64) error, upload bool) (float64, []float64) {
+// rate, the loaded round trips, and whether any worker refusal was recorded.
+func (t *speedTester) measureLoad(ctx context.Context, target *speedTestTarget, worker func(context.Context, *http.Client, *atomic.Int64) error, upload bool) (float64, []float64, bool) {
 	_, _, _ = t.latencyOnce(ctx, t.probe, target.latencyURL)
 	duration := time.Duration(t.params.Duration) * time.Second
 	loadCtx, cancel := context.WithTimeout(ctx, duration)
@@ -1115,18 +1166,20 @@ func (t *speedTester) measureLoad(ctx context.Context, target *speedTestTarget, 
 
 	counter := &atomic.Int64{}
 	var wg sync.WaitGroup
-	t.startWorkers(loadCtx, &wg, worker, counter)
+	errors := &speedWorkerErrors{}
+	t.startWorkers(loadCtx, &wg, worker, counter, errors)
 	loaded := t.sampleLoadedLatency(loadCtx, target)
 	samples := t.sampleThroughput(loadCtx, counter, duration, upload)
 	cancel()
 	wg.Wait()
-	return stableSpeed(samples), loaded
+	return stableSpeed(samples), loaded, errors.blocked()
 }
 
 // startWorkers keeps [streams] goroutines pulling until the context ends. A
 // worker that fails backs off; past three times the stream count the whole
-// direction gives up rather than spinning on a dead endpoint.
-func (t *speedTester) startWorkers(loadCtx context.Context, wg *sync.WaitGroup, worker func(context.Context, *http.Client, *atomic.Int64) error, counter *atomic.Int64) {
+// direction gives up rather than spinning on a dead endpoint. Errors are
+// recorded so the caller can tell a refusal from an empty measurement.
+func (t *speedTester) startWorkers(loadCtx context.Context, wg *sync.WaitGroup, worker func(context.Context, *http.Client, *atomic.Int64) error, counter *atomic.Int64, errors *speedWorkerErrors) {
 	var failures atomic.Int32
 	limit := int32(t.params.Streams * 3)
 	for i := 0; i < t.params.Streams; i++ {
@@ -1136,9 +1189,14 @@ func (t *speedTester) startWorkers(loadCtx context.Context, wg *sync.WaitGroup, 
 			defer wg.Done()
 			for loadCtx.Err() == nil {
 				err := worker(loadCtx, client, counter)
-				if err == nil || loadCtx.Err() != nil {
+				if err == nil {
 					continue
 				}
+				// A cancellation is how the load window ends, not a failure.
+				if loadCtx.Err() != nil {
+					continue
+				}
+				errors.add(err)
 				if failures.Add(1) > limit {
 					return
 				}

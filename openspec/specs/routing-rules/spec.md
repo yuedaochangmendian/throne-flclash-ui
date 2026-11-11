@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Defines management and application of routing rules and routing profiles: how the user defines domain/IP-based traffic rules, how rules are grouped into reusable routing profiles, and how the active profile shapes per-connection routing decisions.
+Defines management and application of routing rules: how the user defines domain/IP-based traffic rules, how one shared pool applies them to every configuration, and how that pool shapes per-connection routing decisions.
 
 ## Requirements
 
@@ -20,12 +20,16 @@ Routing decisions SHALL evaluate rules in the user-defined order and apply the f
 - **WHEN** two rules both match a destination but assign different actions
 - **THEN** the earlier rule in the list determines the action
 
-### Requirement: Routing profiles
-The app SHALL group rules into named routing profiles (route configurations), each selectable as the active routing profile, and persist the user's choice across restarts.
+### Requirement: Shared rule pool
+The app SHALL keep one shared rule pool, applied in front of every configuration's own rules, and SHALL edit it on the Routing screen itself. The user does not select a routing profile: the pool is the default routing for every configuration.
 
-#### Scenario: Switch routing profile
-- **WHEN** the user selects a different routing profile
-- **THEN** subsequent connections are routed according to that profile's rules
+#### Scenario: Shared pool
+- **WHEN** the user adds a rule on the Routing screen
+- **THEN** every configuration evaluates that rule before its own rules, and the first match wins
+
+#### Scenario: Per-configuration opt-out
+- **WHEN** the user turns a pool rule off for one configuration
+- **THEN** that configuration skips it while every other configuration keeps it
 
 ### Requirement: Rule set references
 Routing rules SHALL be able to reference external rule sets, and the app SHALL report unresolvable rule set references as configuration errors rather than silently ignoring them.
@@ -35,7 +39,7 @@ Routing rules SHALL be able to reference external rule sets, and the app SHALL r
 - **THEN** the app surfaces a routing configuration error
 
 ### Requirement: Rule editing surface
-Rules SHALL be editable on a screen of their own, separate from the profile's settings form, with search, drag ordering and JSON fragment import.
+Rules SHALL be editable with search, drag ordering and JSON fragment import. The shared pool is edited on the Routing screen; a configuration's own rules are edited on their own screen, reachable from the Routing screen's menu.
 
 #### Scenario: Reorder persists
 - **WHEN** the user drags a rule to a new position within its profile

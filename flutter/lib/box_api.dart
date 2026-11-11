@@ -128,14 +128,15 @@ extension ProfilesApi on BoxController {
 }
 
 extension RoutesApi on BoxController {
-  // The route-profile surface after the Routing page became the rule list.
-  // `routes.list` survives because the FFI-free fallback in
-  // RouteProfilesSource answers through it, and the per-profile rule screen
-  // still resolves a profile's name from it; the remaining profile CRUD
-  // (presets/addPreset/get/save/delete/setCurrent/resetRules/batchAddRules/
-  // setGlobalRuleDisabled) lost its only caller with the profile screens and is
-  // gone from this side. The host handlers stay: the tables and the default
-  // profile they manage are still what the builder reads.
+  // The route surface after the Routing page became the rule list.
+  //
+  // `routes.list` survives (RouteProfilesSource falls back to it, and the
+  // per-profile rule screen resolves profile names through it), and
+  // `setGlobalRuleDisabled` survives because the pool rule's sheet still lets a
+  // single configuration keep a rule off. The rest of the profile CRUD
+  // (presets/addPreset/get/save/delete/setCurrent/resetRules/batchAddRules) lost
+  // its only caller with the profile screens. The host handlers all stay: the
+  // tables and the default profile they manage are still what the builder reads.
   Future<dynamic> routeList() => call('routes.list');
   Future<dynamic> routeRules(dynamic id) => call('routes.rules', {'id': id});
   Future<dynamic> routeSaveRules(dynamic id, dynamic rules) =>
@@ -146,6 +147,10 @@ extension RoutesApi on BoxController {
       call('routes.globalRules', {'profileId': profileId});
   Future<dynamic> routeSaveGlobalRules(dynamic rules) =>
       call('routes.saveGlobalRules', {'rules': rules});
+  Future<dynamic> routeSetGlobalRuleDisabled(
+    dynamic profileId,
+    List<dynamic> ids,
+  ) => call('routes.setGlobalRuleDisabled', {'profileId': profileId, 'ids': ids});
   Future<dynamic> routeDeleteGlobalRule(dynamic id) =>
       call('routes.deleteGlobalRule', {'id': id});
 }

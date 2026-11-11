@@ -443,6 +443,10 @@ class _SpeedTestPageState extends State<SpeedTestPage>
                 // unreachable from this exit, and saying so is the difference
                 // between "the test worked" and "the test silently measured
                 // something else than what the picker says".
+                //
+                // `providerFallback`, not `fallback`: the latter reports a
+                // transport downgrade, and the protocol phase used to overwrite
+                // the provider flag, so a successful h2 run dropped the label.
                 if (_state['provider']?.toString() case final String actual
                     when actual.isNotEmpty && actual != _provider)
                   Padding(
@@ -450,7 +454,7 @@ class _SpeedTestPageState extends State<SpeedTestPage>
                     child: Text(
                       '${context.tr('Provider')}: '
                       '${_providers.firstWhere((p) => p.$1 == actual, orElse: () => (actual, actual)).$2}'
-                      '${_state['fallback'] == true ? ' · ${context.tr('Fell back')}' : ''}',
+                      '${_state['providerFallback'] == true ? ' · ${context.tr('Fell back')}' : ''}',
                       style: context.listCaptionStyle,
                     ),
                   ),

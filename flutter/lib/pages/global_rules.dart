@@ -2,10 +2,10 @@
 //
 // One authored rule set applied in front of every usable route profile's own
 // rules, minus the ids a profile keeps off. This file holds the pool body as a
-// reusable section so the Routing page can be the pool (the user's ask: the
-// routing screen shows nothing but the global rules, and every other control
-// moves into the menu), and [GlobalRulesPage] keeps a standalone page for the
-// places that still open one.
+// reusable section so the Routing page can be the pool itself, and
+// [GlobalRulesPage] keeps a standalone page for callers that want the list on
+// its own. The per-profile subtraction is driven from a pool rule's own menu
+// ("Disable for a profile"); the screen that used to own those switches is gone.
 
 import '../widgets.dart';
 
@@ -156,17 +156,81 @@ class GlobalRulesBodyState extends State<GlobalRulesBody> {
     }
   }
 
+  /// Persists a drag. `onReorderItem` hands over an insertion index that
+  /// already accounts for the removed row (Flutter's own doc for the callback
+  /// says so, and `additional_rules.dart` relies on the same contract), so the
+  /// index is used as-is. Subtracting one here again — as this used to — made
+  /// every downward drag persist one slot short, so the stored order stopped
+  /// matching what the user saw.
   Future<void> _reorder(int oldIndex, int newIndex) async {
     if (oldIndex == newIndex) return;
     final ordered = _sorted;
     final moved = ordered.removeAt(oldIndex);
-    ordered.insert(newIndex > oldIndex ? newIndex - 1 : newIndex, moved);
+    ordered.insert(newIndex, moved);
     setState(() => _rules = ordered);
     try {
       await context.box.routeSaveGlobalRules(ordered.map((e) => e.rule).toList());
       if (mounted) await _load();
     } catch (error) {
       if (mounted) context.box.report(error);
+    }
+  }
+
+  /// Turns this pool rule off for one configuration.
+  ///
+  /// The per-profile switches used to live on the profile's override screen,
+  /// which is gone, and `_disabled` is stored per profile on the host. Listing
+  /// the profiles here keeps the capability: without it a configuration that had
+  /// a rule off stays that way with no way to change its mind.
+  Future<void> _disableForProfile(_PoolRef ref) async {
+    final box = context.box;
+    List<Json> profiles;
+    try {
+      final data = json(await box.routeProfiles.list());
+      profiles = (data['profiles'] as List? ?? const [])
+          .map((item) => json(item))
+          .where((profile) => (profile['isRaw'] as bool?) != true)
+          .toList();
+    } catch (error) {
+      if (mounted) box.report(error);
+      return;
+    }
+    if (!mounted || profiles.isEmpty) return;
+    final picked = await showDialog<Json>(
+      context: context,
+      builder: (context) => SimpleDialog(
+        title: Text(context.tr('Disable for a profile')),
+        children: [
+          for (final profile in profiles)
+            SimpleDialogOption(
+              onPressed: () => Navigator.pop(context, profile),
+              child: Text(
+                '${profile['name'] ?? context.tr('Untitled')}'
+                '${profile['current'] == true ? ' · ${context.tr('Current')}' : ''}',
+              ),
+            ),
+        ],
+      ),
+    );
+    if (picked == null || !mounted) return;
+    final profileId = (picked['id'] as num?)?.toInt() ?? 0;
+    if (profileId <= 0) return;
+    try {
+      final data = json(await box.routeGlobalRules(profileId));
+      final disabled = {
+        for (final rule in rows(data['rules']))
+          if (rule['enabled'] != true) (rule['id'] as num?)?.toInt(),
+      }..remove(null);
+      disabled.add(ref.id);
+      await box.routeSetGlobalRuleDisabled(profileId, disabled.toList());
+      if (mounted) {
+        showAppBanner(
+          context,
+          '${context.tr('Disabled for')} ${picked['name'] ?? context.tr('Untitled')}',
+        );
+      }
+    } catch (error) {
+      if (mounted) box.report(error);
     }
   }
 
@@ -275,6 +339,14 @@ class GlobalRulesBodyState extends State<GlobalRulesBody> {
                 glyph: AppGlyphs.edit,
                 label: context.tr('Edit'),
                 onPressed: () => _edit(ref),
+              ),
+              // The per-configuration opt-out the profile screens used to own.
+              // The rule stays in the pool and every other configuration keeps
+              // it; this is the only way to turn it off for one of them.
+              PopupMenuItem(
+                glyph: AppGlyphs.eyeOff,
+                label: context.tr('Disable for a profile'),
+                onPressed: () => _disableForProfile(ref),
               ),
               PopupMenuItem(
                 glyph: AppGlyphs.delete,

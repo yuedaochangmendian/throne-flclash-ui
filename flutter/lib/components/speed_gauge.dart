@@ -131,8 +131,11 @@ class _SpeedGaugeState extends State<SpeedGauge>
     final next = speedGaugeFraction(widget.fraction);
     if (next == _target) return;
     // Retarget from wherever the needle is now: one continuous ease, no reset.
+    // `drive(CurveTween(...))` rather than a fresh `CurvedAnimation`: the SDK
+    // requires a CurvedAnimation be created once and disposed, and this runs on
+    // every sample; a CurveTween needs no disposal.
     _chase = Tween(begin: _chase.value, end: next).animate(
-      CurvedAnimation(parent: _controller, curve: Curves.easeOutCubic),
+      _controller.drive(CurveTween(curve: Curves.easeOutCubic)),
     );
     _target = next;
     _controller.forward(from: 0);

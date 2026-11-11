@@ -851,4 +851,96 @@ void main() {
       await events.close();
     },
   );
+
+  // A group run must animate per node the way FlClash does: the row under test
+  // spins, the rows still waiting show the clock. The batch marks every id in
+  // one set so the action can be awaited once, and reading that set as "this
+  // node is running" painted the whole group as spinning and made the session
+  // rows unreachable.
+  testWidgets('a group delay test spins only the node under test', (
+    tester,
+  ) async {
+    reportFlutterErrors();
+    tester.view.physicalSize = const Size(360, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final events = StreamController<dynamic>.broadcast();
+    const channel = MethodChannel('test.group-queue');
+    final testDone = Completer<Object?>();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          if (call.method == 'ready') {
+            return {
+              'version': 'test',
+              'coreVersion': 'test',
+              'dashboard': {'status': 'Started'},
+              'preferences': {'locale': 'en'},
+            };
+          }
+          if (call.method == 'groups.test') return testDone.future;
+          return null;
+        });
+    addTearDown(
+      () => TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, null),
+    );
+    await tester.pumpWidget(
+      BoxApp(
+        controller: BoxController(channel: channel, events: events.stream),
+      ),
+    );
+    await tester.pumpAndSettle();
+    events.add({
+      'type': 'groups',
+      'value': [
+        {
+          'tag': 'Group A',
+          'selected': 'Node A',
+          'selectable': true,
+          'items': [
+            {'id': 10, 'tag': 'Node A', 'type': 'direct', 'delay': 12, 'testedAt': 1},
+            {'id': 11, 'tag': 'Node B', 'type': 'direct', 'delay': 30, 'testedAt': 1},
+          ],
+        },
+      ],
+    });
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Proxies').last);
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Test latency').first);
+    await tester.pump();
+    // Rows have not arrived: the whole batch reads as queued, not running.
+    expect(find.byKey(const ValueKey('proxy-test-running')), findsNothing);
+    expect(
+      find.byKey(const ValueKey('glyph:ProxyTestPhase.queued')),
+      findsNWidgets(2),
+    );
+
+    events.add({
+      'type': 'testSession',
+      'value': {
+        'kind': 0,
+        'running': true,
+        'startedAt': DateTime.now().millisecondsSinceEpoch,
+        'rows': [
+          {'id': 10, 'phase': 'TESTING'},
+          {'id': 11, 'phase': 'QUEUED'},
+        ],
+      },
+    });
+    await tester.pump();
+    // One spinner for the node under test, one clock for the one waiting.
+    expect(find.byKey(const ValueKey('proxy-test-running')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('glyph:ProxyTestPhase.queued')),
+      findsOneWidget,
+    );
+
+    testDone.complete(null);
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox());
+    await events.close();
+  });
 }
