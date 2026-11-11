@@ -1129,6 +1129,24 @@ const _zh = <String, String>{
   "Every profile's rules in one list": '所有配置的规则汇总在一个列表',
   'Delete this rule?': '删除这条规则？',
   'Start the VPN first: the test measures through the running core.': '请先启动 VPN：测速通过运行中的内核进行。',
+  // Routing UI: FlClash-style override screen (PR2).
+  'Global rules': '全局规则',
+  'Manage global rules': '管理全局规则',
+  'Global added rules apply in front of every profile; turn them off per profile here.':
+      '全局附加规则会先于每个配置自身的规则执行；在此可按配置单独关闭。',
+  'Match target': '匹配目标',
+  'The action a rule without an explicit outbound falls back to.': '没有显式出站的规则采用的默认动作。',
+  'Profile settings': '配置设置',
+  'Disable for this profile': '对该配置关闭',
+  'Use profile default': '跟随配置默认',
+  'Profile default': '配置默认',
+  'No global rules yet': '还没有全局规则',
+  'Manage the shared rule pool applied to every profile.': '管理对所有配置生效的共享规则池。',
+  'Per-profile controls': '按配置控制',
+  'Choose which profiles keep each shared rule off.': '选择哪些配置关闭这条共享规则。',
+  'Edit profile': '编辑配置',
+  'Rule presets': '规则预设',
+  'Delete selected': '删除所选',
 };
 
 extension BoxLocalization on BuildContext {

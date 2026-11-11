@@ -147,6 +147,14 @@ extension RoutesApi on BoxController {
       call('routes.saveRules', {'id': id, 'rules': rules});
   Future<dynamic> routeRuleSets(String query, int limit) =>
       call('routes.ruleSets', {'query': query, 'limit': limit});
+  Future<dynamic> routeGlobalRules(dynamic profileId) =>
+      call('routes.globalRules', {'profileId': profileId});
+  Future<dynamic> routeSaveGlobalRules(dynamic rules) =>
+      call('routes.saveGlobalRules', {'rules': rules});
+  Future<dynamic> routeSetGlobalRuleDisabled(dynamic profileId, List<dynamic> ids) =>
+      call('routes.setGlobalRuleDisabled', {'profileId': profileId, 'ids': ids});
+  Future<dynamic> routeDeleteGlobalRule(dynamic id) =>
+      call('routes.deleteGlobalRule', {'id': id});
 }
 
 /// The one channel call the data plane still needs: the host answers with the

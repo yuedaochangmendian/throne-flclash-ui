@@ -471,27 +471,28 @@ void main() {
     },
   );
 
-  testWidgets('the route editor keeps only the core fields', (tester) async {
+  testWidgets('the route override screen keeps only the core fields', (tester) async {
     reportFlutterErrors();
     rules = [];
     await mount(tester);
     openPage(
       tester.element(find.byType(HomePage)),
-      const RouteEditorPage(id: 1),
+      const RouteOverridePage(id: 1),
     );
     await tester.pumpAndSettle();
 
     // Core profile fields survive the simplification; the rules themselves live
-    // on their own screen, reached through this row.
+    // on their own screen, reached through the "Additional rules" row.
     expect(find.text('Name'), findsOneWidget);
     expect(find.text('Default outbound'), findsOneWidget);
     expect(find.text('Remote'), findsWidgets);
-    expect(find.text('Additional rules'), findsOneWidget);
+    // "Additional rules" also appears on the route-profiles list behind this page.
+    expect(find.text('Additional rules'), findsWidgets);
+    expect(find.text('Global rules'), findsOneWidget);
     expect(find.text('Use this profile'), findsOneWidget);
 
-    // The JSON fragment import is a way in the rule list does not have; the
-    // batch-add text box and the default-rules reset stay out of the editor.
-    expect(find.text('Import rules from JSON'), findsOneWidget);
+    // The batch-add text box, default-rules reset and endpoint ids stay out of
+    // the override screen; those live on the rules screen and the profile list.
     expect(find.text('Batch add simple rules'), findsNothing);
     expect(find.text('Restore default rules'), findsNothing);
     expect(find.text('Endpoint ids'), findsNothing);

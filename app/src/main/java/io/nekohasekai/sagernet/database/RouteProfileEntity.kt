@@ -32,6 +32,8 @@ data class RouteProfileEntity(
     @ColumnInfo(name = "custom_dns", defaultValue = "0") var customDns: Boolean = false,
     /** The subscription group whose refreshes overwrite this profile's rules, -1 = none (RoutesRepo.cpp). */
     @ColumnInfo(name = "source_gid", defaultValue = "-1") var sourceGid: Long = -1L,
+    /** Compact JSON int array: the global-pool rule ids this profile keeps off (FlClash's per-profile disables). */
+    @ColumnInfo(name = "disabled_global_rule_json", defaultValue = "[]") var disabledGlobalRuleJson: String = "[]",
 ) {
 
     /** custom_dns only counts when dns_json holds an object (RoutesRepo.cpp routeProfileFromJson). */
@@ -51,6 +53,7 @@ data class RouteProfileEntity(
         it.dns = dnsFromJson(dnsJson)
         it.custom_dns = customDns && it.dns != null
         it.source_gid = sourceGid
+        it.disabled_global_rules = ArrayList(parseIdJson(disabledGlobalRuleJson))
         it.rules = rules.sortedBy { r -> r.ruleOrder }.mapTo(ArrayList<RouteRule>()) { r -> r.toModel() }
     }
 
@@ -73,7 +76,16 @@ data class RouteProfileEntity(
             dnsJson = p.dns?.toJson()?.toCompact() ?: "",
             customDns = p.custom_dns,
             sourceGid = p.source_gid,
+            disabledGlobalRuleJson = p.disabled_global_rules.joinToString(",", "[", "]") { it.toString() },
         )
+
+        /** A stored compact JSON int array ([RouteManager.ID_RE] shape); anything else reads as empty. */
+        fun parseIdJson(text: String?): List<Long> {
+            val ids = ID_RE.findAll(text ?: "").mapNotNull { it.value.toLongOrNull() }
+            return ids.toList()
+        }
+
+        private val ID_RE = Regex("-?\\d+")
 
         /** A stored dns_json; anything but a JSON object reads as no DNS. */
         fun dnsFromJson(text: String?): RouteDns? {

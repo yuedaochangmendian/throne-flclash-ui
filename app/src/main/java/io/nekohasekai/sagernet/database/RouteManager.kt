@@ -5,6 +5,7 @@ import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.ktx.runOnIoDispatcher
 import io.nekohasekai.sagernet.route.RouteDns
 import io.nekohasekai.sagernet.route.RouteProfile
+import io.nekohasekai.sagernet.route.RouteRule
 import io.nekohasekai.sagernet.route.RuleSetCatalog
 import java.io.File
 import java.util.concurrent.Callable
@@ -252,6 +253,64 @@ object RouteManager {
         null
     }
 
+    // -------------------------------------------------------------------------------------------
+    // The global added-rules pool: one authored rule set applied in front of every usable profile's
+    // own rules, minus the ids the profile keeps off (FlClash's 控制全局附加规则).
+    // -------------------------------------------------------------------------------------------
+
+    /** The pool in rule order, as models with their stable ids attached. */
+    fun globalRules(): List<Pair<Long, RouteRule>> = SagerDatabase.instance.runInTransaction(Callable {
+        dao.globalRules().sortedBy { it.ruleOrder }.map { it.ruleId to it.toModel() }
+    })
+
+    /** Replaces the whole pool with [rules] in list order; the previous ids do not survive. */
+    fun saveGlobalRules(rules: List<RouteRule>) {
+        SagerDatabase.instance.runInTransaction {
+            dao.deleteGlobalRules()
+            if (rules.isNotEmpty()) {
+                dao.insertGlobalRules(rules.mapIndexed { index, rule -> GlobalRouteRuleEntity.of(index, rule) })
+            }
+        }
+    }
+
+    fun deleteGlobalRule(ruleId: Long) {
+        SagerDatabase.instance.runInTransaction {
+            dao.deleteGlobalRule(ruleId)
+        }
+    }
+
+    /** The pool rule ids [profileId] keeps off; a missing profile reads as none. */
+    fun disabledGlobalRules(profileId: Long): Set<Long> {
+        val json = dao.disabledGlobalRuleJson(profileId) ?: return emptySet()
+        return RouteProfileEntity.parseIdJson(json).toSet()
+    }
+
+    /** Persists [profileId]'s disabled ids; the ids that no longer exist in the pool are dropped. */
+    fun setDisabledGlobalRules(profileId: Long, ids: Collection<Long>) {
+        val poolIds = dao.globalRules().map { it.ruleId }.toSet()
+        val kept = ids.filter { it in poolIds }.distinct()
+        val json = kept.joinToString(",", "[", "]") { it.toString() }
+        if (dao.updateDisabledGlobalRuleJson(profileId, json) == 0) {
+            error("No route profile with id $profileId")
+        }
+    }
+
+    /**
+     * The build's global rules: every pool rule except the ones [profileId] disables, in pool order.
+     * A rule naming a server that no longer exists is left out (the share writer's rule), so a stale
+     * pool entry cannot fail a build that would otherwise succeed.
+     */
+    fun globalRulesForBuild(profileId: Long): List<RouteRule> {
+        val pool = dao.globalRules().sortedBy { it.ruleOrder }
+        if (pool.isEmpty()) return emptyList()
+        val disabled = RouteProfileEntity.parseIdJson(dao.disabledGlobalRuleJson(profileId)).toSet()
+        return pool.asSequence()
+            .filterNot { it.ruleId in disabled }
+            .map { it.toModel() }
+            .filter { it.outbound_id <= 0L || ProfileManager.getProfile(it.outbound_id) != null }
+            .toList()
+    }
+
     private fun load(): List<RouteProfile> = SagerDatabase.instance.runInTransaction(Callable {
         val rules = dao.allRules().groupBy { it.routeProfileId }
         dao.allProfiles().map { it.toModel(rules[it.id].orEmpty()) }
@@ -264,7 +323,7 @@ object RouteManager {
         }
         runOnIoDispatcher {
             SagerDatabase.instance.invalidationTracker.addObserver(
-                object : InvalidationTracker.Observer(arrayOf(RouteProfileEntity.TABLE, RouteRuleEntity.TABLE)) {
+                object : InvalidationTracker.Observer(arrayOf(RouteProfileEntity.TABLE, RouteRuleEntity.TABLE, GlobalRouteRuleEntity.TABLE)) {
                     override fun onInvalidated(tables: Set<String>) {
                         for (l in listeners) l()
                     }

@@ -36,6 +36,9 @@ class RouteProfile {
     /** The subscription group whose refreshes overwrite [rules], -1 = none; local only, never shared. */
     @JvmField var source_gid: Long = -1L
 
+    /** The global added-rules pool's ids this profile keeps off; stored on the entity, applied by the build. */
+    @JvmField var disabled_global_rules: MutableList<Long> = mutableListOf()
+
     fun copy(): RouteProfile {
         val c = RouteProfile()
         c.id = id
@@ -52,6 +55,7 @@ class RouteProfile {
         c.inner_hop_endpoint_ids = inner_hop_endpoint_ids
         c.custom_dns = custom_dns
         c.dns = dns
+        c.disabled_global_rules = ArrayList(disabled_global_rules)
         c.rules = rules.mapTo(ArrayList()) { it.copy() }
         c.source_gid = source_gid
         return c

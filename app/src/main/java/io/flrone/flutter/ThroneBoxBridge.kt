@@ -619,6 +619,24 @@ class ThroneBoxBridge(
                         .mapNotNull { it as? Map<String, Any?> }
                     result.respond { BboxRoutes.saveRules(call.argument<Int>("id")?.toLong() ?: -1L, rules) }
                 }
+                "routes.globalRules" -> result.respond {
+                    BboxRoutes.globalRules(call.argument<Int>("profileId")?.toLong() ?: 0L)
+                }
+                "routes.saveGlobalRules" -> {
+                    @Suppress("UNCHECKED_CAST")
+                    val rules = call.argument<List<Any>>("rules").orEmpty()
+                        .mapNotNull { it as? Map<String, Any?> }
+                    result.respond { BboxRoutes.saveGlobalRules(rules) }
+                }
+                "routes.setGlobalRuleDisabled" -> result.respond {
+                    BboxRoutes.setGlobalRuleDisabled(
+                        call.argument<Int>("profileId")?.toLong() ?: -1L,
+                        (call.argument<List<*>>("ids") ?: emptyList<Any?>()).mapNotNull { (it as? Number)?.toLong() },
+                    )
+                }
+                "routes.deleteGlobalRule" -> result.respond {
+                    BboxRoutes.deleteGlobalRule(call.argument<Int>("id")?.toLong() ?: -1L); null
+                }
                 "routes.batchAddRules" -> result.respond {
                     BboxRoutes.batchAddRules(
                         call.argument<Int>("id")?.toLong() ?: -1L,

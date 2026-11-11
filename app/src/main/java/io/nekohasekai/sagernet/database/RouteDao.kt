@@ -73,4 +73,25 @@ interface RouteDao {
     /** Every profile; their rules go by the foreign key cascade. */
     @Query("DELETE FROM route_profiles")
     fun reset()
+
+    // ------------------------------------------------------------------ global added-rules pool
+
+    @Query("SELECT * FROM global_route_rules ORDER BY rule_order")
+    fun globalRules(): List<GlobalRouteRuleEntity>
+
+    @Insert
+    fun insertGlobalRules(rules: List<GlobalRouteRuleEntity>)
+
+    @Query("DELETE FROM global_route_rules")
+    fun deleteGlobalRules()
+
+    @Query("DELETE FROM global_route_rules WHERE rule_id = :ruleId")
+    fun deleteGlobalRule(ruleId: Long)
+
+    /** One profile's disabled ids, read raw for the bridge and the build. */
+    @Query("SELECT disabled_global_rule_json FROM route_profiles WHERE id = :profileId")
+    fun disabledGlobalRuleJson(profileId: Long): String?
+
+    @Query("UPDATE route_profiles SET disabled_global_rule_json = :json WHERE id = :profileId")
+    fun updateDisabledGlobalRuleJson(profileId: Long, json: String): Int
 }

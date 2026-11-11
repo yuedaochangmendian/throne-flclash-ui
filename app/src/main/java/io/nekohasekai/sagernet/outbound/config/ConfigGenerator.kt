@@ -1,5 +1,6 @@
 package io.nekohasekai.sagernet.outbound.config
 
+import io.nekohasekai.sagernet.database.RouteManager
 import io.nekohasekai.sagernet.ktx.Logs
 import io.nekohasekai.sagernet.outbound.BuildContext
 import io.nekohasekai.sagernet.outbound.Outbound
@@ -133,6 +134,10 @@ class ConfigGenerator @JvmOverloads constructor(
      */
     private fun routeProfileForBuild(profile: RouteProfile): RouteProfile = profile.copy().also { copy ->
         copy.rules.removeAll { it.disabled }
+        // The global added-rules pool runs in front of the profile's own rules, minus the ids the
+        // profile keeps off (FlClash's 控制全局附加规则): a user-level intent must win over a
+        // profile catch-all, or it would never fire.
+        copy.rules.addAll(0, RouteManager.globalRulesForBuild(copy.id))
         for (rule in copy.rules) if (rule.action == "bypass") rule.action = "route"
     }
 
