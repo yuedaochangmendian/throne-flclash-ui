@@ -144,7 +144,7 @@ class _CaptureAppsPageState extends State<CaptureAppsPage> {
             return Column(children: [
             Padding(padding: const EdgeInsets.all(12), child: Text(context.tr('An empty selection captures applications in this Android user. Flrone itself is excluded from eBPF capture. Applications sharing a UID share the same filter.'))),
             if (snapshot.hasError) ErrorState(snapshot.error!, retry: () => setState(() => _apps = context.box.appsList({'system': true, 'refresh': true}).then(rows))),
-            if (!snapshot.hasData && !snapshot.hasError) const Center(child: CircularProgressIndicator()),
+            if (!snapshot.hasData && !snapshot.hasError) const Center(child: ActivityIndicator()),
           ]);
           }
           final app = visible[index - 1], package = app['package'].toString();

@@ -87,7 +87,7 @@ class _RequestsPageState extends State<RequestsPage> {
                 if ((state['error'] as String? ?? '').isNotEmpty) Text(state['error'].toString(), style: TextStyle(color: context.colorScheme.error)),
                 if ((page['error'] as String? ?? '').isNotEmpty) Text(page['error'].toString(), style: TextStyle(color: context.colorScheme.error)),
                 if (error != null) ErrorState(error, retry: refresh),
-                if (snapshot == null && error == null) const Center(child: CircularProgressIndicator()),
+                if (snapshot == null && error == null) const Center(child: ActivityIndicator()),
                 if (snapshot != null && entries.isEmpty) EmptyState(_query.isEmpty ? 'No captured requests' : 'No results',
                   message: _query.isEmpty ? 'HTTP capture follows the local service. HTTPS uses Root/eBPF on this device. Start capture, then reconnect the target app.' : null),
               ]));
@@ -195,7 +195,7 @@ class _RequestDetailPageState extends State<RequestDetailPage> {
           checked: part == _part, onPressed: () => setState(() => _part = part)),
       ], children: [
         if (error != null) ErrorState(error, retry: refresh),
-        if (detail == null && error == null) const Center(child: CircularProgressIndicator()),
+        if (detail == null && error == null) const Center(child: ActivityIndicator()),
         if (detail != null) ...[
           generateGroup([for (final value in values.entries) DetailRow.text(title: context.tr(value.key),
             value: value.value?.toString() ?? '—', stacked: const ['URL', 'Original URL', 'App', 'Error', 'Note'].contains(value.key))]),

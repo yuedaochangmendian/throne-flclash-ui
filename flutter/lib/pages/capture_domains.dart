@@ -48,7 +48,7 @@ class _CaptureDomainsPageState extends State<CaptureDomainsPage> {
               return Column(children: [
               ListFooter(text: context.tr('Domains are extracted from retained requests and visible TLS/QUIC names, using the current search filter. Encrypted hostnames cannot be recovered.')),
               if (snapshot.hasError) ErrorState(snapshot.error!, retry: () => setState(() => _domains = _load())),
-              if (!snapshot.hasData && !snapshot.hasError) const Center(child: CircularProgressIndicator()),
+              if (!snapshot.hasData && !snapshot.hasError) const Center(child: ActivityIndicator()),
               if (snapshot.hasData && domains.isEmpty) const EmptyState('No captured domains'),
             ]);
             }

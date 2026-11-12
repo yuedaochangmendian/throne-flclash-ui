@@ -783,7 +783,7 @@ class _RuleSetDialogState extends State<_RuleSetDialog> {
         const SizedBox(height: 8),
         Expanded(
           child: _loading
-              ? const Center(child: CircularProgressIndicator())
+              ? const Center(child: ActivityIndicator())
               : _entries.isEmpty
                   ? Center(child: Text(context.tr('No results')))
                   : ListView(children: [

@@ -534,7 +534,7 @@ class _ScanPageState extends State<ScanPage> {
       padding: const EdgeInsets.all(32), child: Column(mainAxisSize: MainAxisSize.min, spacing: 16, children: [
         if (_error != null) ErrorState(context.tr(_error!), retry: _startScan)
         else ...[
-          if (_busy) const CircularProgressIndicator(),
+          if (_busy) const ActivityIndicator(),
           Text(
             context.tr('The camera opens in the scanning screen. Point it at a configuration QR code.'),
             textAlign: TextAlign.center,
