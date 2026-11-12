@@ -2,8 +2,11 @@
 //
 // Each codec translates between the wire value (what Dart sends/receives) and the Room row
 // value (what the settings table stores). The generated schema references these by ID.
-// The encodings must match SettingsSchema.kt exactly — the golden fixtures in
-// tools/testdata/settings_wire_golden.json pin both sides to identical output.
+// The encodings must match SettingsSchema.kt exactly.
+//
+// The settings domain is channel-authoritative again: Room is the only writer, so
+// these are pure functions kept as a contract (and a base for a future migration),
+// exercised by settings_codec_test.go. No runtime handler calls them today.
 package mobile
 
 import (
@@ -11,22 +14,6 @@ import (
 	"strconv"
 	"strings"
 )
-
-// roomRow is one row in the Room `settings` table: a key-value pair where the value is
-// stored as a string in desktop encodings (bools "true"/"false", ints decimal, lists JSON).
-type roomRow struct {
-	Key   string `json:"key"`
-	Value string `json:"value"`
-}
-
-// rowStore abstracts the Room `settings` table. The real implementation uses sqlite;
-// tests use an in-memory map. Reads are uncached (SettingsStore doctrine).
-type rowStore interface {
-	Get(key string) (string, bool)
-	Put(key, value string)
-	Delete(key string)
-	All() []roomRow
-}
 
 // --- codec interface ----------------------------------------------------------
 
@@ -427,4 +414,17 @@ func defaultValue(spec settingSpec) any {
 	default:
 		return ""
 	}
+}
+
+// camelToSnake converts camelCase to snake_case (matching SettingsSchema.kt).
+func camelToSnake(name string) string {
+	out := make([]byte, 0, len(name)+4)
+	for _, c := range []byte(name) {
+		if c >= 'A' && c <= 'Z' {
+			out = append(out, '_', c+32)
+		} else {
+			out = append(out, c)
+		}
+	}
+	return string(out)
 }

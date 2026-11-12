@@ -236,42 +236,26 @@ extension RoutesApi on BoxController {
       _routeKernel().invoke<Object?>(ActionMethod.resetRouteRules, data: {'id': id});
 }
 
-// Settings mutations, ADR 0002 phase 3e. Bus-first with channel fallback:
-// settings must work when the FFI driver is not attached (bridge mode).
+// Settings stay on the channel (ADR 0002, amended). Room is the authoritative
+// store for `ThroneSettings`, and preferences live in SharedPreferences; Go's
+// JSON documents hold neither. A bus-first arm here silently swallowed every
+// write once the FFI driver attached, so this domain is channel-only.
 extension SettingsApi on BoxController {
-  Future<dynamic> settingsGet() async {
-    final k = kernel.attached;
-    if (k != null) return k.invoke<Object?>(ActionMethod.settingsGet);
-    return call('settings.get', {});
-  }
+  Future<dynamic> settingsGet() => call('settings.get', {});
 
-  Future<dynamic> settingsSet(String key, dynamic value, {bool restart = false}) async {
-    final k = kernel.attached;
-    if (k != null) {
-      return k.invoke<Object?>(ActionMethod.settingsSet, data: {
+  Future<dynamic> settingsSet(String key, dynamic value, {bool restart = false}) =>
+      call('settings.set', {
         'key': key, 'value': value, if (restart) 'restart': true,
       });
-    }
-    return call('settings.set', {'key': key, 'value': value, if (restart) 'restart': true});
-  }
 
-  Future<dynamic> settingsPatch(Map<String, dynamic> values) async {
-    final k = kernel.attached;
-    if (k != null) return k.invoke<Object?>(ActionMethod.settingsPatch, data: {'value': values});
-    return call('settings.patch', {'value': values});
-  }
+  Future<dynamic> settingsPatch(Map<String, dynamic> values) =>
+      call('settings.patch', {'value': values});
 
-  Future<dynamic> settingsReset(List<String> keys) async {
-    final k = kernel.attached;
-    if (k != null) return k.invoke<Object?>(ActionMethod.settingsReset, data: {'keys': keys});
-    return call('settings.reset', {'keys': keys});
-  }
+  Future<dynamic> settingsReset(List<String> keys) =>
+      call('settings.reset', {'keys': keys});
 
-  Future<dynamic> preferencesSet(Map<String, dynamic> values) async {
-    final k = kernel.attached;
-    if (k != null) return k.invoke<Object?>(ActionMethod.preferencesSet, data: {'value': values});
-    return call('preferences.set', {'value': values});
-  }
+  Future<dynamic> preferencesSet(Map<String, dynamic> values) =>
+      call('preferences.set', {'value': values});
 }
 
 /// The one channel call the data plane still needs: the host answers with the
