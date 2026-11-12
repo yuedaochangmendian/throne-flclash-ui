@@ -57,6 +57,15 @@ Go/Dart。对齐架构就必须同时换掉存储层，这正是 0001 估算的 
 | 3 | `routes.*` → `profiles.*` → `settings.*` → `config.build` → `speedTest.*` 迁到总线，Kotlin case 同步删除 | 每个域一个 PR；`channel_audit.py` 双向对齐；模拟器回归连接、测速、通知 |
 | 4（二期） | Riverpod、双 Flutter engine、剩余平台面 | 另开计划 |
 
+> **修订（settings.\* 回到 channel）**：phase 3 里 `settings.*` 的 Go 侧从未接线 ——
+> `settings_store.go` 的 `globalRowStoreInstance` 没有实现、`SetGlobalRowStore` 零调用点，
+> 四个 handler 在 FFI driver attach 后必然返回 `errNoRowStore`；`preferencesSet` 也写到了
+> 与 Kotlin 读取路径不同的文档。由于 Room 才是 `ThroneSettings` 的权威存储、preferences 存于
+> SharedPreferences，`SettingsApi` 已改回 channel-only，五个 action 与 Go 运行时代码删除。
+> `settings_schema.go` / `settings_codec.go` 保留为纯契约（由 `settings_contract.py` 校验），
+> 待有真实 row store 实现时再迁。判定标准：**一个域只有在存储权威也在 Go 时才算迁完**，
+> 仅注册 handler 不算。
+
 ## 后果
 
 **正面**：与 Bettbox 的协议、存储、事件模型一致；新增能力只需在 Go 注册表加一个 handler；

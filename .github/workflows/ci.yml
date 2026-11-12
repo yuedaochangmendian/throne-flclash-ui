@@ -111,6 +111,9 @@ jobs:
           # protocol files land in phase 1, then becomes a hard gate.
           python3 tools/diagnostics/action_contract.py
           python3 tools/diagnostics/settings_audit.py --summary
+          # Phase 3e's generated Go schema must still match SettingsSchema.kt:
+          # it is a contract, even though settings itself is channel-owned.
+          python3 tools/diagnostics/settings_contract.py
           python3 tools/diagnostics/ffi_regression_test.py
           python3 tools/diagnostics/generated_models_check.py
           # Dart reads Room's file directly, so Room's schema version has a second
