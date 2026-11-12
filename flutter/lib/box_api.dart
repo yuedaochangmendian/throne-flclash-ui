@@ -56,11 +56,26 @@ extension ProfilesApi on BoxController {
     }
   }
 
+  /// A kernel write to profiles.json/groups.json cannot fire the Kotlin repo
+  /// listeners, so the catalog Dart renders would keep the old rows. This asks
+  /// the host for one immediate catalog refresh after such a write.
+  Future<void> _refreshAfterKernelWrite() async {
+    try {
+      await call('data.refresh');
+    } catch (_) {
+      // The write itself succeeded; a failed refresh only delays the redraw.
+    }
+  }
+
   Future<dynamic> profileNodeLink(String group, String tag, dynamic nodeJson) =>
       call('profiles.nodeLink', {'group': group, 'tag': tag, 'json': nodeJson});
   Future<dynamic> profileNodeDelete(dynamic id) async {
     final k = kernel.attached;
-    if (k != null) return k.invoke<Object?>(ActionMethod.profileNodeDelete, data: {'id': id});
+    if (k != null) {
+      final result = await k.invoke<Object?>(ActionMethod.profileNodeDelete, data: {'id': id});
+      await _refreshAfterKernelWrite();
+      return result;
+    }
     return call('profiles.nodeDelete', {'id': id});
   }
   Future<dynamic> profileNodeConfig(dynamic id) async {
@@ -80,12 +95,20 @@ extension ProfilesApi on BoxController {
   Future<dynamic> profileRead(dynamic id) => call('profiles.read', {'id': id});
   Future<bool> profileClearTestResults(dynamic id) async {
     final k = kernel.attached;
-    if (k != null) { await k.invoke<Object?>(ActionMethod.profileClearTestResults, data: {'id': id}); return true; }
+    if (k != null) {
+      await k.invoke<Object?>(ActionMethod.profileClearTestResults, data: {'id': id});
+      await _refreshAfterKernelWrite();
+      return true;
+    }
     return act('profiles.clearTestResults', {'id': id});
   }
   Future<bool> profileClearTraffic(dynamic id) async {
     final k = kernel.attached;
-    if (k != null) { await k.invoke<Object?>(ActionMethod.profileClearTraffic, data: {'id': id}); return true; }
+    if (k != null) {
+      await k.invoke<Object?>(ActionMethod.profileClearTraffic, data: {'id': id});
+      await _refreshAfterKernelWrite();
+      return true;
+    }
     return act('profiles.clearTraffic', {'id': id});
   }
   Future<bool> profileDelete(dynamic id) => act('profiles.delete', {'id': id});
@@ -115,7 +138,11 @@ extension ProfilesApi on BoxController {
   Future<dynamic> profileSave(Json value) => call('profiles.save', value);
   Future<bool> profileReorder(List<dynamic> ids) async {
     final k = kernel.attached;
-    if (k != null) { await k.invoke<Object?>(ActionMethod.profileReorder, data: {'ids': ids}); return true; }
+    if (k != null) {
+      await k.invoke<Object?>(ActionMethod.profileReorder, data: {'ids': ids});
+      await _refreshAfterKernelWrite();
+      return true;
+    }
     return act('profiles.reorder', {'ids': ids});
   }
   Future<bool> profileScanClose(dynamic session) =>

@@ -306,8 +306,13 @@ func triState(m map[string]any, unspecifiedKey, flagKey string) int {
 // that need OutboundFactory, parseOutbounds, subscription fetching or BboxBridge.refresh
 // stay on the channel.
 
-// handleProfileReorder updates display_order on the groups document to match the given id
-// order. Mirrors BboxProfiles.reorder -> GroupRepo.setDisplayOrder.
+// handleProfileReorder renumbers display_order on the groups document.
+//
+// Mirrors GroupRepo.setDisplayOrder exactly: the rows in `ids` become 0..n-1 (0-based —
+// GroupJsonStore sorts by display_order, so a 1-based run would leave a hole), ids that
+// name no group are dropped, duplicates count once, and any group the caller omitted
+// follows in its current order. Renumbering only the named rows would interleave them
+// with the ones left behind.
 func handleProfileReorder(data json.RawMessage) (any, error) {
 	var payload struct {
 		IDs []int64 `json:"ids"`
@@ -322,18 +327,46 @@ func handleProfileReorder(data json.RawMessage) (any, error) {
 	if err != nil {
 		return nil, err
 	}
-	for i, id := range payload.IDs {
-		for _, g := range groups {
-			if rowInt64(g, "id") == id {
-				g["display_order"] = int64(i + 1)
-				break
-			}
-		}
-	}
+	applyGroupOrder(groups, payload.IDs)
 	if err := writeDocument(groupsDoc, sortedGroups(groups)); err != nil {
 		return nil, err
 	}
 	return nil, nil
+}
+
+// applyGroupOrder renumbers the rows in place: `ids` first, in the order given, then
+// every group the caller omitted in its current order.
+//
+// Split out of the handler so the ordering rules are testable without a document
+// directory. GroupRepo.setDisplayOrder has exactly this shape (0-based, distinct,
+// unknown ids dropped, omitted groups appended).
+func applyGroupOrder(groups []row, ids []int64) {
+	known := make(map[int64]bool, len(groups))
+	for _, group := range groups {
+		known[rowInt64(group, "id")] = true
+	}
+	ordered := make([]int64, 0, len(groups))
+	seen := make(map[int64]bool, len(ids))
+	for _, id := range ids {
+		if !known[id] || seen[id] {
+			continue
+		}
+		seen[id] = true
+		ordered = append(ordered, id)
+	}
+	for _, group := range sortedGroups(groups) {
+		if id := rowInt64(group, "id"); !seen[id] {
+			ordered = append(ordered, id)
+		}
+	}
+	for index, id := range ordered {
+		for _, group := range groups {
+			if rowInt64(group, "id") == id {
+				group["display_order"] = int64(index)
+				break
+			}
+		}
+	}
 }
 
 // handleProfileNodeDelete removes one profile row. Mirrors BboxProfiles.deleteNode ->

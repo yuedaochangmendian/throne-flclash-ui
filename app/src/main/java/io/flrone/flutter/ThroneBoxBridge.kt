@@ -18,6 +18,8 @@ import android.os.Build
 import android.os.Debug
 import io.nekohasekai.sagernet.Key
 import io.nekohasekai.sagernet.database.DataStore
+import io.nekohasekai.sagernet.database.GroupJsonStore
+import io.nekohasekai.sagernet.database.ProfileJsonStore
 import io.nekohasekai.sagernet.database.RouteJsonStore
 import io.nekohasekai.sagernet.database.SagerDatabase
 import io.nekohasekai.sagernet.utils.CrashStore
@@ -705,6 +707,13 @@ class ThroneBoxBridge(
                         "direct" to DnsServerHistory.directSuggestions(),
                     )
                 )
+                // A kernel-side write to profiles.json/groups.json has no way to fire
+                // GroupRepo's listeners, so the catalog that Dart renders would stay
+                // stale. Dart asks for one refresh after such a write completes.
+                "data.refresh" -> {
+                    BboxBridge.scheduleRefresh(immediate = true)
+                    result.success(null)
+                }
                 // The Proxies screen asks for the node rows on open and gives them back on close;
                 // `ready` and every other screen only get the counts.
                 "groups.visible" -> {
@@ -953,12 +962,16 @@ class ThroneBoxBridge(
                     result.respondIo {
                         val file = activity.getDatabasePath(Key.DB_PROFILE)
                         val version = SagerDatabase.instance.openHelper.readableDatabase.version
-                        // ADR 0002 phase 3c: the kernel owns the route documents and writes
-                        // them under its base path, which the host sets to filesDir in
-                        // CoreRuntime.setup. This side only reads, so the two must name the
-                        // same directory or every read would silently fall back to Room.
-                        RouteJsonStore.directory =
-                            java.io.File(activity.filesDir, "documents")
+                        // ADR 0002 phase 3c/3d: the kernel owns the route, profile and
+                        // group documents and writes them under its base path, which the
+                        // host sets to filesDir in CoreRuntime.setup. This side only reads,
+                        // so the three must name the same directory or every read would
+                        // silently fall back to Room — and a kernel write would land in a
+                        // file nothing reads.
+                        val documents = java.io.File(activity.filesDir, "documents")
+                        RouteJsonStore.directory = documents
+                        ProfileJsonStore.directory = documents
+                        GroupJsonStore.directory = documents
                         mapOf("path" to file.absolutePath, "version" to version)
                     }
                 }
