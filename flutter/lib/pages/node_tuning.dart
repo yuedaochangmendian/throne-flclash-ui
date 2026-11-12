@@ -80,13 +80,14 @@ class _NodeTuningPageState extends State<NodeTuningPage> {
             title: Text(context.tr('Mux')),
             trailing: Text(context.tr(_muxStateName(muxState)), style: context.listValueStyle),
             onTap: () async {
-              final picked = await showDialog<int>(context: context, builder: (context) => SimpleDialog(
-                title: Text(context.tr('Mux')),
-                children: [
+              final picked = await showOptionSheet<int>(
+                context: context,
+                title: context.tr('Mux'),
+                options: [
                   for (final (value, label) in [(0, 'Keep default'), (1, 'On'), (2, 'Off'), (3, 'Custom')])
-                    SimpleDialogOption(onPressed: () => Navigator.pop(context, value), child: Text(context.tr(label))),
+                    (value, context.tr(label)),
                 ],
-              ));
+              );
               if (picked != null) _set('muxState', picked);
             },
           ),
@@ -95,13 +96,11 @@ class _NodeTuningPageState extends State<NodeTuningPage> {
               title: Text(context.tr('Mux protocol')),
               trailing: Text('${_info['muxProtocol'] ?? 'smux'}', style: context.listValueStyle),
               onTap: () async {
-                final picked = await showDialog<String>(context: context, builder: (context) => SimpleDialog(
-                  title: Text(context.tr('Mux protocol')),
-                  children: [
-                    for (final value in const ['smux', 'yamux', 'h2mux'])
-                      SimpleDialogOption(onPressed: () => Navigator.pop(context, value), child: Text(value)),
-                  ],
-                ));
+                final picked = await showOptionSheet<String>(
+                  context: context,
+                  title: context.tr('Mux protocol'),
+                  options: [for (final value in const ['smux', 'yamux', 'h2mux']) (value, value)],
+                );
                 if (picked != null) _set('muxProtocol', picked);
               },
             ),
@@ -129,13 +128,14 @@ class _NodeTuningPageState extends State<NodeTuningPage> {
             title: Text(context.tr('Xray multiplex')),
             trailing: Text(context.tr(_muxStateName(xrayMuxState)), style: context.listValueStyle),
             onTap: () async {
-              final picked = await showDialog<int>(context: context, builder: (context) => SimpleDialog(
-                title: Text(context.tr('Xray multiplex')),
-                children: [
+              final picked = await showOptionSheet<int>(
+                context: context,
+                title: context.tr('Xray multiplex'),
+                options: [
                   for (final (value, label) in [(0, 'Keep default'), (1, 'On'), (2, 'Off'), (3, 'Custom')])
-                    SimpleDialogOption(onPressed: () => Navigator.pop(context, value), child: Text(context.tr(label))),
+                    (value, context.tr(label)),
                 ],
-              ));
+              );
               if (picked != null) _set('xrayMuxState', picked);
             },
           ),
@@ -147,13 +147,11 @@ class _NodeTuningPageState extends State<NodeTuningPage> {
               title: Text(context.tr('XUDP proxy UDP/443')),
               trailing: Text(_info['xrayMuxXudpProxyUDP443']?.toString().isNotEmpty == true ? '${_info['xrayMuxXudpProxyUDP443']}' : 'reject', style: context.listValueStyle),
               onTap: () async {
-                final picked = await showDialog<String>(context: context, builder: (context) => SimpleDialog(
-                  title: Text(context.tr('XUDP proxy UDP/443')),
-                  children: [
-                    for (final value in const ['reject', 'allow', 'skip'])
-                      SimpleDialogOption(onPressed: () => Navigator.pop(context, value), child: Text(value)),
-                  ],
-                ));
+                final picked = await showOptionSheet<String>(
+                  context: context,
+                  title: context.tr('XUDP proxy UDP/443'),
+                  options: [for (final value in const ['reject', 'allow', 'skip']) (value, value)],
+                );
                 if (picked != null) _set('xrayMuxXudpProxyUDP443', picked);
               },
             ),
@@ -212,11 +210,12 @@ class _NodeTuningPageState extends State<NodeTuningPage> {
     1 => 'On', 2 => 'Off', _ => 'Keep default',
   };
 
-  Future<int?> _tristateDialog(String title) => showDialog<int>(context: context, builder: (context) => SimpleDialog(
-    title: Text(title),
-    children: [
+  Future<int?> _tristateDialog(String title) => showOptionSheet<int>(
+    context: context,
+    title: title,
+    options: [
       for (final (value, label) in [(0, 'Keep default'), (1, 'On'), (2, 'Off')])
-        SimpleDialogOption(onPressed: () => Navigator.pop(context, value), child: Text(context.tr(label))),
+        (value, context.tr(label)),
     ],
-  ));
+  );
 }

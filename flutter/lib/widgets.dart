@@ -83,6 +83,7 @@ export 'package:material_ui/material_ui.dart'
     ThemeMode;
 export 'box.dart';
 export 'l10n.dart';
+export 'components/option_sheet.dart';
 export 'components/settings_controls.dart';
 export 'pages/settings_pages.dart';
 export 'pages/route_texts.dart';
