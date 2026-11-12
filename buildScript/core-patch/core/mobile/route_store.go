@@ -20,9 +20,11 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"sync"
 )
 
@@ -216,18 +218,54 @@ func stringOf(value any) string {
 	return ""
 }
 
+// intOf narrows a JSON number to int, saturating rather than wrapping.
+//
+// The saturation matters on 32-bit devices (armeabi-v7a, i686), where int is
+// 32 bits and a stored int64 exceeds it: a plain conversion would wrap a large
+// selector interval into a negative and hand the form a value it never stored.
 func intOf(value any) int {
 	switch typed := value.(type) {
 	case float64:
-		return int(typed)
+		return narrowToInt(typed)
 	case int:
 		return typed
 	// The kernel's own writes store int64 (a JSON document it re-encoded keeps
-	// no float64), so a reader of its own output needs this branch.
+	// no float64), so a reader of its own output needs this branch. The bound
+	// only bites where int is narrower than int64; on a 64-bit device every
+	// int64 fits.
 	case int64:
+		if strconv.IntSize < 64 {
+			if typed > math.MaxInt32 {
+				return math.MaxInt32
+			}
+			if typed < math.MinInt32 {
+				return math.MinInt32
+			}
+		}
 		return int(typed)
 	}
 	return 0
+}
+
+const (
+	maxInt = int(^uint(0) >> 1)
+	minInt = -maxInt - 1
+)
+
+// narrowToInt clamps a float64 to the platform int range. The comparison is in
+// float64, which is exact for every int up to 2^53 — beyond any realistic
+// setting, and the clamp keeps a nonsensical one from wrapping.
+func narrowToInt(value float64) int {
+	if value != value { // NaN
+		return 0
+	}
+	if value >= float64(maxInt) {
+		return maxInt
+	}
+	if value <= float64(minInt) {
+		return minInt
+	}
+	return int(value)
 }
 
 func int64Of(value any) int64 {
