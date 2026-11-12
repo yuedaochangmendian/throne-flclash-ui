@@ -63,7 +63,7 @@
 
 | workflow | 触发 | 职责 | 对外产物 |
 |---|---|---|---|
-| `ci.yml` | push `main` / PR to `main` | 轻量变更检测后运行静态分析、单测、契约审计；文档-only 变更走全跳过成功路径 | `build-inputs`（Flutter AAR、ThroneCore、schema、routeprofiles、dashboard，供 Release 复用）/ `flutter-coverage`（仅 main 或失败） |
+| `ci.yml` | push `main` / PR to `main` | 轻量变更检测后运行静态分析、单测、契约审计；文档-only 变更走全跳过成功路径 | `build-inputs`（仅 `main` 的 push：Flutter AAR、ThroneCore、schema、routeprofiles、dashboard，供 Release 复用）/ `flutter-coverage`（仅 main 或失败） |
 | `release.yml` | CI `workflow_run` / `workflow_dispatch` / push `v*` tag | CI 成功后，仅在存在应用或构建输入变化时自动发布 preview；自动路径复用 CI 的 `build-inputs`、只重跑 release Gradle 任务，其余路径完整构建；统一处理手动 preview/stable、签名、资产和 release | GitHub release / prerelease |
 | `governance.yml` | 每周 / 手动 | 校验仓库状态是否符合本文 | Step Summary |
 
@@ -74,7 +74,7 @@
 ## 7. 降级路径（外部依赖故障）
 
 - GitHub releases 下载端点可能返回 504（2026-11-08 的 `kotlin-compiler-embeddable-2.2.21.jar` 持续故障），导致 `ci.yml` / `release.yml` 的 Gradle 构建失败。**这是外部故障，不是代码问题**；`Repository governance` 不依赖 Gradle/NDK/Flutter，仍可运行。
-- 自动 preview 复用 CI 的 `build-inputs` artifact（按触发 CI run id 下载、解包到工作区，并校验 5 类输入齐全）。artifact 缺失/过期/不完整时 `release.yml` 自动回退到完整构建，发版不被 CI 产物可用性卡住；`android-build` 的 `reuse-inputs` 断言保证不会用残缺输入打出 APK。
+- 自动 preview 复用 CI 的 `build-inputs` artifact（仅 `main` push 的 CI 上传；按触发 CI run id 下载，并校验该 run 的 `head_sha` 与本次构建的 `HEAD` 完全一致，不一致即丢弃、回退完整构建）。artifact 只被当作构建输入读取、从不执行其中任何脚本；`android-build` 的 `reuse-inputs` 断言保证不会用残缺输入打出 APK。
 - 已构建并签名的产物由 `publish_release.sh` 保留为 `Flrone-<tag>-publish-failed` artifact；按 `docs/release-runbook.md` 的本地补发路径收口（草稿按 release id 查询、`target_commitish` 写目标 sha、资产走 `uploads.github.com`）。
 - 需要读取 release 资产时，`api.github.com/repos/.../releases/assets/<id>` 的 302 `Location`（`release-assets.githubusercontent.com` 签名直连）通常仍可用，可配合 HTTP Range；不要因为 `github.com/.../releases/download/` 返回 504 就判定资产丢失。
 - **就地转正**仅作为 CI 完全不可用时的临时手段，且必须：补 `throne-update.json`、改 `prerelease=false` + `make_latest=true`、重写发行说明并明确标注 APK 仍是 preview 构建；CDN 恢复后补发标准 stable 版本并在 CHANGELOG 补对应段落。

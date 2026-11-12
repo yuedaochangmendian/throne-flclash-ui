@@ -84,8 +84,10 @@ jobs:
       # Gradle's build inputs are identical for debug and release. Release
       # reuses them (see release.yml) instead of rebuilding Flutter AAR,
       # ThroneCore, routeprofiles and the dashboard on the same commit.
+      # Only main uploads it: a release only ever consumes the CI run of a main
+      # push, and a PR's artifact must never be something a release could pick up.
       - name: Upload build inputs
-        if: ${{ needs.changes.outputs.code == 'true' }}
+        if: ${{ needs.changes.outputs.code == 'true' && github.event_name == 'push' }}
         uses: actions/upload-artifact@v7
         with:
           name: build-inputs
