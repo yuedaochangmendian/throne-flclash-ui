@@ -22,8 +22,10 @@ import java.io.File
  */
 object RoomToJsonMigration {
 
-    /** The route and profile tables the kernel owns. Other Room tables stay Kotlin's. */
-    private val tables = listOf("route_profiles", "route_rules", "global_route_rules", "profiles", "groups")
+    /** The route tables the kernel owns. Profiles and groups stay in Room: the kernel
+     * reads and writes that database directly over SQLite (see room_db.go), so no
+     * document seed is needed for them. */
+    private val tables = listOf("route_profiles", "route_rules", "global_route_rules")
 
     /**
      * Writes [tables] into [dir] when it is empty. Returns false when the seed had already

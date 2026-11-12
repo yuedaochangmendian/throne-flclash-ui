@@ -80,9 +80,6 @@ object ProfileManager {
 
     fun getProfile(profileId: Long): ProxyEntity? {
         if (profileId <= 0L) return null
-        // ADR 0002 phase 3d: the kernel owns profiles.json and is its only writer, so a
-        // readable document is the truth; Room remains the seed and the fallback.
-        ProfileJsonStore.getById(profileId)?.let { return it }
         return try {
             dao.getById(profileId)
         } catch (ex: SQLiteCantOpenDatabaseException) {
@@ -95,11 +92,6 @@ object ProfileManager {
 
     fun getProfiles(profileIds: List<Long>): List<ProxyEntity> {
         if (profileIds.isEmpty()) return listOf()
-        val fromJson = ProfileJsonStore.all()
-        if (fromJson != null) {
-            val byId = fromJson.associateBy { it.id }
-            return profileIds.mapNotNull { byId[it] }
-        }
         return try {
             profileIds.chunked(CHUNK).flatMap { dao.getEntities(it) }
         } catch (ex: SQLiteCantOpenDatabaseException) {
@@ -111,18 +103,10 @@ object ProfileManager {
     }
 
     /** The group's profile ids in list order (Group::Profiles). */
-    fun memberIds(groupId: Long): List<Long> {
-        val fromJson = ProfileJsonStore.byGroup(groupId)
-        if (ProfileJsonStore.all() != null) return fromJson.map { it.id }
-        return dao.getIdsByGroup(groupId)
-    }
+    fun memberIds(groupId: Long): List<Long> = dao.getIdsByGroup(groupId)
 
     /** The group's profiles in list order. */
-    fun members(groupId: Long): List<ProxyEntity> {
-        val fromJson = ProfileJsonStore.byGroup(groupId)
-        if (ProfileJsonStore.all() != null) return fromJson
-        return dao.getByGroup(groupId)
-    }
+    fun members(groupId: Long): List<ProxyEntity> = dao.getByGroup(groupId)
 
     /** The profile the service runs (the desktop's started_id), 0 when stopped. */
     fun runningProfileId(): Long = if (DataStore.serviceState.started) DataStore.currentProfile else 0L
@@ -179,17 +163,11 @@ object ProfileManager {
     // ------------------------------------------------------------------------------------------------ update
 
     suspend fun updateProfile(profile: ProxyEntity) {
-        check(!ProfileJsonStore.ready) {
-            "profile documents are kernel-owned; update through the action bus, not Room"
-        }
         dao.updateProxy(profile)
         iterator { onUpdated(profile, false) }
     }
 
     suspend fun updateProfile(profiles: List<ProxyEntity>) {
-        check(!ProfileJsonStore.ready) {
-            "profile documents are kernel-owned; update through the action bus, not Room"
-        }
         dao.updateProxy(profiles)
         profiles.forEach {
             iterator { onUpdated(it, false) }
@@ -201,9 +179,6 @@ object ProfileManager {
      * Returns whether that data changed.
      */
     suspend fun updateOutbound(profile: ProxyEntity): Boolean {
-        check(!ProfileJsonStore.ready) {
-            "profile documents are kernel-owned; update through the action bus, not Room"
-        }
         val before = dao.getById(profile.id)
         dao.updateOutbound(profile.id, profile.type, profile.name, profile.outboundJson)
         val stored = dao.getById(profile.id) ?: return false
@@ -239,9 +214,6 @@ object ProfileManager {
 
     /** Deletes one profile (the list's own delete, no running-profile rule) and closes the gap in its group. */
     suspend fun deleteProfile(groupId: Long, profileId: Long) {
-        check(!ProfileJsonStore.ready) {
-            "profile documents are kernel-owned; delete through the action bus, not Room"
-        }
         val deleted = SagerDatabase.instance.runInTransaction(Callable {
             // In a group numbered 0..n-1, shifting the rows behind the gap is the same as renumbering them all.
             val order = dao.orderInGroup(profileId, groupId)?.takeIf { dao.isDense(groupId) }

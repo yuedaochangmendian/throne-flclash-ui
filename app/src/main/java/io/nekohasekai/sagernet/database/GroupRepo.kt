@@ -44,29 +44,29 @@ object GroupRepo {
 
     /** Every group in tab order; an empty table first gets the Default group. */
     /** The groups as stored, without creating the Default group of an empty table. */
-    fun rawGroups(): List<ProxyGroup> = GroupJsonStore.all() ?: dao.allGroups()
+    fun rawGroups(): List<ProxyGroup> = dao.allGroups()
 
     fun all(): List<ProxyGroup> {
-        val groups = rawGroups()
+        val groups = dao.allGroups()
         if (groups.isNotEmpty()) return groups
         ensureDefault()
-        return rawGroups()
+        return dao.allGroups()
     }
 
     /** The group ids in tab order (GetGroupsTabOrder). */
     fun ids(): List<Long> {
-        val ids = all().map { it.id }
+        val ids = dao.allIds()
         if (ids.isNotEmpty()) return ids
+        ensureDefault()
         return dao.allIds()
     }
 
-    fun get(id: Long): ProxyGroup? =
-        if (id > 0) GroupJsonStore.getById(id) ?: dao.getById(id) else null
+    fun get(id: Long): ProxyGroup? = if (id > 0) dao.getById(id) else null
 
     /** current_group when it names a group, else the first group, which then becomes current. */
     fun currentId(): Long {
         val stored = SettingsRegistry.CURRENT_GROUP.read(DataStore.configurationStore)
-        if (stored > 0 && get(stored) != null) return stored
+        if (stored > 0 && dao.getById(stored) != null) return stored
         val first = ids().first()
         setCurrent(first)
         return first
@@ -74,7 +74,7 @@ object GroupRepo {
 
     fun current(): ProxyGroup {
         val stored = SettingsRegistry.CURRENT_GROUP.read(DataStore.configurationStore)
-        if (stored > 0) get(stored)?.let { return it }
+        if (stored > 0) dao.getById(stored)?.let { return it }
         val first = all().first()
         setCurrent(first.id)
         return first
@@ -94,9 +94,6 @@ object GroupRepo {
 
     /** GroupsRepo::AddGroup: a new id and the last tab (display_order = MAX + 1). */
     suspend fun add(group: ProxyGroup): ProxyGroup {
-        check(!GroupJsonStore.ready) {
-            "group documents are kernel-owned; add through the action bus, not Room"
-        }
         SagerDatabase.instance.runInTransaction {
             group.id = 0L
             group.displayOrder = dao.nextDisplayOrder()
@@ -107,9 +104,6 @@ object GroupRepo {
     }
 
     suspend fun save(group: ProxyGroup) {
-        check(!GroupJsonStore.ready) {
-            "group documents are kernel-owned; save through the action bus, not Room"
-        }
         dao.update(group)
         notify { groupUpdated(group) }
     }
@@ -119,9 +113,6 @@ object GroupRepo {
      * profile of the group is stopped first. The members go by the foreign key cascade.
      */
     suspend fun delete(id: Long): Boolean {
-        check(!GroupJsonStore.ready) {
-            "group documents are kernel-owned; delete through the action bus, not Room"
-        }
         val remaining = SagerDatabase.instance.runInTransaction(Callable {
             val ids = dao.allIds()
             if (id !in ids || ids.size <= 1) return@Callable null
@@ -145,9 +136,6 @@ object GroupRepo {
 
     /** SetGroupsTabOrder: [ids] become the tabs 0..n-1; groups missing from [ids] follow in their current order. */
     suspend fun setDisplayOrder(ids: List<Long>) {
-        check(!GroupJsonStore.ready) {
-            "group documents are kernel-owned; reorder through the action bus, not Room"
-        }
         SagerDatabase.instance.runInTransaction {
             val existing = dao.allIds()
             val ordered = ids.distinct().filter { it in existing } + existing.filter { it !in ids }

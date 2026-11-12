@@ -28,3 +28,5 @@
 *.toml eol=lf
 *.lock eol=lf
 *.go eol=lf
+*.c eol=lf
+*.h eol=lf
