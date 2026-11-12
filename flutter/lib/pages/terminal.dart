@@ -144,8 +144,8 @@ class _GhosttySurfaceState extends State<GhosttySurface> {
         case 'modifiers': setState(() => _modifiers = json(call.arguments)); return null;
         case 'unsafePaste': return confirm(context, 'Paste multiple lines?', message: 'Pasted text may execute commands in this terminal.', action: 'Paste');
         case 'clipboardRead': return confirm(context, 'Allow terminal to read clipboard?', action: 'Allow');
-        case 'link': return showDialog<String>(context: context, builder: (context) => material.AlertDialog(
-          title: Text(context.tr('Link')), content: SelectableText(call.arguments.toString()), actions: [
+        case 'link': return showDialog<String>(context: context, builder: (context) => AlertDialog(
+          title: context.tr('Link'), child: SelectableText(call.arguments.toString()), actions: [
             TextButton(onPressed: () => Navigator.pop(context), child: Text(context.tr('Cancel'))),
             TextButton(onPressed: () => Navigator.pop(context, 'copy'), child: Text(context.tr('Copy'))),
             TextButton(onPressed: () => Navigator.pop(context, 'open'), child: Text(context.tr('Open'))),

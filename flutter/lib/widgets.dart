@@ -224,18 +224,21 @@ class ErrorState extends StatelessWidget {
   );
 }
 
-Future<bool> confirm(BuildContext context, String title, {String? message, String action = 'Delete'}) async =>
-    await showDialog<bool>(
-      context: context,
-      builder: (context) => material.AlertDialog(
-        title: Text(context.tr(title)),
-        content: message == null ? null : Text(context.tr(message)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(context.tr('Cancel'))),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: Text(context.tr(action))),
-        ],
-      ),
-    ) ?? false;
+Future<bool> confirm(BuildContext context, String title, {String? message, String action = 'Delete'}) async {
+  // The alert's own context is the one its navigator can pop.
+  final result = await showFloatingDialog<bool>(
+    context: context,
+    child: Builder(builder: (context) => AlertDialog(
+      title: context.tr(title),
+      child: message == null ? null : Text(context.tr(message)),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false), child: Text(context.tr('Cancel'))),
+        TextButton(onPressed: () => Navigator.pop(context, true), child: Text(context.tr(action))),
+      ],
+    )),
+  );
+  return result ?? false;
+}
 
 class DetailRows extends StatelessWidget {
   const DetailRows(this.values, {super.key});

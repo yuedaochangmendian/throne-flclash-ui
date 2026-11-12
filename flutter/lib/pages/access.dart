@@ -114,8 +114,8 @@ class _AccessPageState extends State<AccessPage> {
 
   Future<bool> _back(BuildContext context) async {
     if (_saving) return false;
-    final decision = await showDialog<String>(context: context, builder: (context) => material.AlertDialog(
-      title: Text(context.tr('Unsaved changes')),
+    final decision = await showDialog<String>(context: context, builder: (context) => AlertDialog(
+      title: context.tr('Unsaved changes'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: Text(context.tr('Cancel'))),
         TextButton(onPressed: () => Navigator.pop(context, 'discard'), child: Text(context.tr('Discard'))),

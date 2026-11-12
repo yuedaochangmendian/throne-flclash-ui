@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show listEquals;
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
+import 'package:material_ui/material_ui.dart' as material;
 import 'package:flrone/ui/l10n.dart';
 import 'package:flrone/ui/card_surface.dart';
 import 'package:flrone/ui/color.dart';
@@ -383,6 +384,18 @@ class AlertDialog extends StatelessWidget {
     this.destructive = false,
   });
 
+  /// Hosts a field that comes from the framework's Material layer.
+  ///
+  /// Prism's own [TextField] needs no such ancestor, but the app still has
+  /// call sites built on Material's field, and those assert without a
+  /// `Material` in the tree. A transparent pane satisfies that without adding
+  /// a second painted surface under the alert's own.
+  Widget _fieldHost(Widget? child) =>
+      child == null ? const SizedBox.shrink() : material.Material(
+        type: material.MaterialType.transparency,
+        child: child,
+      );
+
   @override
   Widget build(BuildContext context) {
     final actions = this.actions ?? const <Widget>[];
@@ -438,6 +451,10 @@ class AlertDialog extends StatelessWidget {
                       ),
                       width: double.infinity,
                       child: SingleChildScrollView(
+                        // A field widget from the framework's Material layer
+                        // still needs a Material ancestor; the alert's own
+                        // surface is prism's, so one transparent pane keeps
+                        // those call sites working without changing the look.
                         child: hasFields
                             ? FilledInputTheme(
                                 fillColor: fill,
@@ -449,9 +466,9 @@ class AlertDialog extends StatelessWidget {
                                       _fieldInputGap,
                                   vertical: 12,
                                 ),
-                                child: child ?? const SizedBox.shrink(),
+                                child: _fieldHost(child ?? const SizedBox.shrink()),
                               )
-                            : child,
+                            : _fieldHost(child),
                       ),
                     ),
                   ),

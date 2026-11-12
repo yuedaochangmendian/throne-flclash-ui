@@ -62,9 +62,9 @@ class _BoxAppState extends State<BoxApp> with WidgetsBindingObserver {
       // The listener body is synchronous — no await separates the context capture from the
       // dialog — but the lint still fires on the builder's deferred execution.
       // ignore: use_build_context_synchronously
-      showDialog<void>(context: context, builder: (dialogContext) => material.AlertDialog(
-        title: Text(report['title']?.toString() ?? dialogContext.tr('Change of configuration')),
-        content: SizedBox(width: 480, child: SingleChildScrollView(child: SelectableText(
+      showDialog<void>(context: context, builder: (dialogContext) => AlertDialog(
+        title: report['title']?.toString() ?? dialogContext.tr('Change of configuration'),
+        child: SizedBox(width: 480, child: SingleChildScrollView(child: SelectableText(
           text.trim().isEmpty ? dialogContext.tr('Nothing changed') : text))),
         actions: [
           TextButton(onPressed: () => Clipboard.setData(ClipboardData(text: text.trim())),

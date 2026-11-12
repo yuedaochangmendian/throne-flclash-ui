@@ -20,9 +20,9 @@ class _AboutPageState extends State<AboutPage> {
       final result = json(await box.updatesCheck());
       if (!mounted) return;
       setState(() => _checking = false);
-      await showDialog<void>(context: context, builder: (context) => material.AlertDialog(
-        title: Text(context.tr(result['available'] == true ? 'Update available' : 'Check for updates')),
-        content: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420), child: SingleChildScrollView(child: Column(
+      await showDialog<void>(context: context, builder: (context) => AlertDialog(
+        title: context.tr(result['available'] == true ? 'Update available' : 'Check for updates'),
+        child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420), child: SingleChildScrollView(child: Column(
           mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, spacing: 12, children: [
             Text(result['available'] == true ? 'Flrone ${result['version']}' : context.tr(result['hasMetadata'] == false ? 'No release metadata available' : 'You are up to date')),
             if (result['available'] == true && result['notes'] is String && (result['notes'] as String).isNotEmpty) SelectableText(result['notes'] as String),

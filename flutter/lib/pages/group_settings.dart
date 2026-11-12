@@ -325,9 +325,9 @@ class _GroupSettingsPageState extends State<GroupSettingsPage> {
           ], _options['httpVersion']?.toString() ?? '', (value) => _setOption('httpVersion', value.isEmpty ? null : int.tryParse(value)))),
           _menuRow(context.tr('Update interval'), _intervalLabel(), () async {
             final controller = TextEditingController(text: _updateInterval.text);
-            final picked = await showDialog<String>(context: context, builder: (context) => material.AlertDialog(
-              title: Text(context.tr('Update interval')),
-              content: TextField(controller: controller, autofocus: true, keyboardType: TextInputType.number,
+            final picked = await showDialog<String>(context: context, builder: (context) => AlertDialog(
+              title: context.tr('Update interval'),
+              child: TextField(controller: controller, autofocus: true, keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: InputDecoration(hintText: context.tr('Keep default')),
                 onSubmitted: (value) => Navigator.pop(context, value)),

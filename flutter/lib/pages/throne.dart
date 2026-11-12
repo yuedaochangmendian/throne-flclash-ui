@@ -109,9 +109,9 @@ class _JsonEditorState extends State<_JsonEditor> {
   void dispose() { _controller.dispose(); super.dispose(); }
 
   @override
-  Widget build(BuildContext context) => material.AlertDialog(
-    title: Text(widget.title),
-    content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+  Widget build(BuildContext context) => AlertDialog(
+    title: widget.title,
+    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
       if (widget.hint != null) Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: Text(context.tr(widget.hint!), style: AppTextStyle.caption1.of(context)),
@@ -175,9 +175,9 @@ class _DnsServerDialogState extends State<_DnsServerDialog> {
   late final TextEditingController _controller = TextEditingController(text: widget.initial);
   @override void dispose() { _controller.dispose(); super.dispose(); }
 
-  @override Widget build(BuildContext context) => material.AlertDialog(
-    title: Text(widget.title),
-    content: SizedBox(
+  @override Widget build(BuildContext context) => AlertDialog(
+    title: widget.title,
+    child: SizedBox(
       width: 360,
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         TextField(
@@ -287,9 +287,9 @@ class _LinesEditorState extends State<_LinesEditor> {
   }
 
   @override
-  Widget build(BuildContext context) => material.AlertDialog(
-    title: Text(widget.title),
-    content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+  Widget build(BuildContext context) => AlertDialog(
+    title: widget.title,
+    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
       if (widget.hint != null) Padding(
         padding: const EdgeInsets.only(bottom: 12),
         child: Text(widget.hint!, style: AppTextStyle.caption1.of(context)),

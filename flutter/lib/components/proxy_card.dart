@@ -324,9 +324,9 @@ class ProxyNodeCard extends StatelessWidget {
             try {
               final confirmed = await showDialog<bool>(
                 context: context,
-                builder: (context) => material.AlertDialog(
-                  title: Text(context.tr('Delete node?')),
-                  content: Text(node['tag'].toString()),
+                builder: (context) => AlertDialog(
+                  title: context.tr('Delete node?'),
+                  child: Text(node['tag'].toString()),
                   actions: [
                     TextButton(
                       onPressed: () => Navigator.pop(context, false),
