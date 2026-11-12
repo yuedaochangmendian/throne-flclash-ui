@@ -230,40 +230,61 @@ func intOf(value any) int {
 	case int:
 		return typed
 	// The kernel's own writes store int64 (a JSON document it re-encoded keeps
-	// no float64), so a reader of its own output needs this branch. The bound
-	// only bites where int is narrower than int64; on a 64-bit device every
-	// int64 fits.
+	// no float64), so a reader of its own output needs this branch.
 	case int64:
-		if strconv.IntSize < 64 {
-			if typed > math.MaxInt32 {
-				return math.MaxInt32
-			}
-			if typed < math.MinInt32 {
-				return math.MinInt32
-			}
-		}
-		return int(typed)
+		return int64ToInt(typed)
 	}
 	return 0
 }
 
-const (
-	maxInt = int(^uint(0) >> 1)
-	minInt = -maxInt - 1
-)
+// int64ToInt narrows an int64 to int without wrapping. On a 64-bit build every
+// int64 fits, so the conversion is exact; on a 32-bit one the value is bounded
+// to the int32 range first. The comparison stays in int64 so no precision is
+// lost on the way in.
+func int64ToInt(value int64) int {
+	// A 64-bit int holds every int64: the bound only exists where int is
+	// narrower, and clamping there is what keeps a huge stored value from
+	// coming back negative.
+	if strconv.IntSize == 64 {
+		return int(value)
+	}
+	if value > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if value < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int(value)
+}
 
-// narrowToInt clamps a float64 to the platform int range. The comparison is in
-// float64, which is exact for every int up to 2^53 — beyond any realistic
-// setting, and the clamp keeps a nonsensical one from wrapping.
+// narrowToInt clamps a float64 to the platform int range, refusing NaN and
+// infinities. Without the clamp a value past the range would wrap, and a form
+// would render a number the user never typed.
+//
+// The bounds are the int32 ones on a 32-bit build and the float64-exact
+// neighbour of 2^63 on a 64-bit one; either way the clamp lands on a value int
+// can hold.
 func narrowToInt(value float64) int {
-	if value != value { // NaN
+	if value != value || math.IsInf(value, 0) {
 		return 0
 	}
-	if value >= float64(maxInt) {
-		return maxInt
+	if strconv.IntSize < 64 {
+		if value >= math.MaxInt32 {
+			return math.MaxInt32
+		}
+		if value <= math.MinInt32 {
+			return math.MinInt32
+		}
+		return int(value)
 	}
-	if value <= float64(minInt) {
-		return minInt
+	// 2^63 is past int's range and is exactly representable in float64, so it
+	// serves as the bound; the clamp lands on the largest int the platform has.
+	const bound = float64(1 << 63)
+	if value >= bound {
+		return math.MaxInt
+	}
+	if value <= -bound {
+		return math.MinInt
 	}
 	return int(value)
 }
