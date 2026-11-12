@@ -11,6 +11,12 @@
 //
 // The SQLite amalgamation in ./sqlite3 is compiled into the gomobile .so by
 // cgo; there is no runtime shared-library dependency and no Go module change.
+//
+// The vendored amalgamation is unmodified upstream, currently 3.54.1 (published
+// 2026-10-16, SHA3-256 of sqlite-amalgamation-3540100.zip verified). Upgrade it
+// by dropping in a newer unmodified release rather than patching the file: 3.45.1
+// carried three upstream integer-multiplication fixes CodeQL flagged, and drift
+// from upstream is the thing that makes a vendored 9 MB C file dangerous.
 
 package mobile
 
