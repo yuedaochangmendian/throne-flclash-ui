@@ -68,7 +68,8 @@ export 'package:material_ui/material_ui.dart'
     ThemeMode;
 export 'box.dart';
 export 'l10n.dart';
-export 'pages/throne.dart';
+export 'components/settings_controls.dart';
+export 'pages/settings_pages.dart';
 export 'pages/route_texts.dart';
 export 'pages/additional_rules.dart';
 export 'pages/global_rules.dart';
