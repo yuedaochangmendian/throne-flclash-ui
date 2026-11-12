@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+// ignore: unnecessary_import — widgets.dart only re-exports rendering on newer SDKs.
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flrone/ui/sliver_list/super_sliver_list.dart';

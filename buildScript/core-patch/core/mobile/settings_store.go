@@ -121,7 +121,12 @@ func readHostFacts() map[string]any {
 func settingsWire(rows map[string]string) map[string]any {
 	settingsStoreMu.Lock()
 	defer settingsStoreMu.Unlock()
+	return settingsWireUnlocked(rows)
+}
 
+// settingsWireUnlocked is the merge itself. Callers that already hold settingsStoreMu
+// (the writers below) call this directly — sync.Mutex is not reentrant.
+func settingsWireUnlocked(rows map[string]string) map[string]any {
 	result := map[string]any{}
 
 	// Layer 1: overlay (shell-only keys from ui_settings.json).
@@ -201,7 +206,7 @@ func settingsSet(store rowStore, key string, value any) (map[string]any, int, bo
 		rowMap[r.Key] = r.Value
 	}
 
-	return settingsWire(rowMap), spec.apply, true
+	return settingsWireUnlocked(rowMap), spec.apply, true
 }
 
 // --- settingsPatch ------------------------------------------------------------
@@ -241,7 +246,7 @@ func settingsPatch(store rowStore, values map[string]any) (map[string]any, int) 
 		rowMap[r.Key] = r.Value
 	}
 
-	return settingsWire(rowMap), maxApply
+	return settingsWireUnlocked(rowMap), maxApply
 }
 
 // --- settingsReset ------------------------------------------------------------
@@ -256,9 +261,9 @@ func settingsReset(store rowStore, keys []string) (map[string]any, int) {
 	if len(keys) == 0 {
 		// Reset all.
 		for _, spec := range settingSpecs {
-			before := decodeRow(*spec, rowMapOf(store))
-			deleteSpecRows(store, *spec)
-			after := decodeRow(*spec, rowMapOf(store))
+			before := decodeRow(spec, rowMapOf(store))
+			deleteSpecRows(store, spec)
+			after := decodeRow(spec, rowMapOf(store))
 			if !wireEqual(before, after) && spec.apply > maxApply {
 				maxApply = spec.apply
 			}
@@ -278,7 +283,7 @@ func settingsReset(store rowStore, keys []string) (map[string]any, int) {
 		}
 	}
 
-	return settingsWire(rowMapOf(store)), maxApply
+	return settingsWireUnlocked(rowMapOf(store)), maxApply
 }
 
 // --- preferencesSet -----------------------------------------------------------
@@ -338,10 +343,9 @@ func wireEqual(a, b any) bool {
 // camelToSnake converts camelCase to snake_case (matching SettingsSchema.kt).
 func camelToSnake(name string) string {
 	out := make([]byte, 0, len(name)+4)
-	for _, c := range name {
+	for _, c := range []byte(name) {
 		if c >= 'A' && c <= 'Z' {
-			out = append(out, '_')
-			out = append(out, c+32)
+			out = append(out, '_', c+32)
 		} else {
 			out = append(out, c)
 		}

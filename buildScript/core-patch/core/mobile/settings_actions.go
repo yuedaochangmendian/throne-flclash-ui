@@ -39,9 +39,6 @@ func init() {
 // --- settings.get -------------------------------------------------------------
 
 func handleSettingsGet(_ json.RawMessage) (any, error) {
-	settingsStoreMu.Lock()
-	defer settingsStoreMu.Unlock()
-
 	store := globalRowStore()
 	if store == nil {
 		return nil, errNoRowStore
