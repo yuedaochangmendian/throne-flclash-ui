@@ -264,7 +264,7 @@ class _CodeEditorState extends State<CodeEditor> {
             smartDashesType: SmartDashesType.disabled, smartQuotesType: SmartQuotesType.disabled,
             keyboardType: TextInputType.multiline, textDirection: TextDirection.ltr,
             textAlignVertical: TextAlignVertical.top, style: style, strutStyle: strut, cursorWidth: 2,
-            decoration: const InputDecoration(border: InputBorder.none, isDense: true,
+            decoration: const InputDecoration(border: NoInputBorder(), isDense: true,
               contentPadding: EdgeInsets.fromLTRB(12, 16, 16, 16)),
           ))),
         ])),

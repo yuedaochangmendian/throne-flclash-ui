@@ -175,7 +175,7 @@ class _NewLANProxyState extends State<NewLANProxy> {
       onPressed: context.box.canSetLanProxy ? _save : null),
     children: [
       Form(key: _form, child: TextFormField(controller: _port, keyboardType: TextInputType.number,
-        decoration: InputDecoration(labelText: context.tr('Port')), validator: (value) {
+        decoration: InputDecoration(hintText: context.tr('Port')), validator: (value) {
           final port = int.tryParse(value ?? '');
           return port != null && port >= 1 && port <= 65535 ? null : context.tr('Invalid proxy port');
         })),

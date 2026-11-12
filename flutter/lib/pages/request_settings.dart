@@ -1,4 +1,3 @@
-import 'package:material_ui/material_ui.dart' as material;
 import 'package:flutter/services.dart';
 import '../widgets.dart';
 import 'capture_domains.dart';
@@ -65,7 +64,7 @@ class _RequestSettingsPageState extends State<RequestSettingsPage> {
       textInputAction: multiline ? TextInputAction.newline : TextInputAction.done,
       inputFormatters: [LengthLimitingTextInputFormatter(65536)], autocorrect: false,
       style: AppTextStyle.body.of(context),
-      decoration: InputDecoration.collapsed(border: material.InputBorder.none, hintText: hint),
+      decoration: InputDecoration.collapsed(border: NoInputBorder(), hintText: hint),
       onChanged: (_) => setState(() => _dirty = true),
     ))],
   );

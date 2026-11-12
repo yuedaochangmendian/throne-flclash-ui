@@ -155,7 +155,7 @@ class _RuleImportPageState extends State<RuleImportPage> {
                   keyboardType: TextInputType.multiline, textAlignVertical: TextAlignVertical.top,
                   autocorrect: false, onChanged: _changed,
                   style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 13),
-                  decoration: const InputDecoration(border: OutlineInputBorder(),
+                  decoration: const InputDecoration(border: AppShape.input,
                     isDense: true, contentPadding: EdgeInsets.fromLTRB(12, 12, 12, 12)),
                 )),
                 if (result != null) ConstrainedBox(

@@ -262,11 +262,11 @@ class _RemoteFormState extends State<RemoteForm> {
       }
     }),
     children: [
-      TextField(controller: _name, decoration: InputDecoration(labelText: context.tr('Name'))),
+      TextField(controller: _name, decoration: InputDecoration(hintText: context.tr('Name'))),
       const SizedBox(height: 16),
-      TextField(controller: _url, keyboardType: TextInputType.text, decoration: InputDecoration(labelText: context.tr('Address'))),
+      TextField(controller: _url, keyboardType: TextInputType.text, decoration: InputDecoration(hintText: context.tr('Address'))),
       const SizedBox(height: 16),
-      TextField(controller: _secret, obscureText: true, decoration: InputDecoration(labelText: context.tr('Secret'))),
+      TextField(controller: _secret, obscureText: true, decoration: InputDecoration(hintText: context.tr('Secret'))),
     ],
   );
 }

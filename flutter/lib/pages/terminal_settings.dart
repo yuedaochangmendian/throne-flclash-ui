@@ -199,7 +199,7 @@ class _TerminalConfigEditorState extends State<TerminalConfigEditor> {
           autocorrect: false, smartDashesType: SmartDashesType.disabled, smartQuotesType: SmartQuotesType.disabled,
           textAlignVertical: TextAlignVertical.top, keyboardType: TextInputType.multiline,
           style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 13, height: 1.6),
-          decoration: const InputDecoration(border: InputBorder.none, contentPadding: EdgeInsets.all(16)))),
+          decoration: const InputDecoration(border: NoInputBorder(), contentPadding: EdgeInsets.all(16)))),
       ])),
     ));
 }

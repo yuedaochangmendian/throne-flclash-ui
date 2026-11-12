@@ -664,7 +664,7 @@ class _RuleValuesDialogState extends State<_RuleValuesDialog> {
         TextField(
           controller: _controller, minLines: 4, maxLines: 10, autocorrect: false,
           keyboardType: TextInputType.multiline,
-          decoration: const InputDecoration(border: OutlineInputBorder()),
+          decoration: const InputDecoration(border: AppShape.input),
         ),
       ]),
     ),
@@ -765,17 +765,17 @@ class _RuleSetDialogState extends State<_RuleSetDialog> {
           controller: _values, autocorrect: false,
           minLines: 1, maxLines: 2,
           decoration: InputDecoration(
-            labelText: context.tr('Rule set'),
+            hintText: context.tr('Rule set'),
             helperText: context.tr('Comma-separated'),
-            border: const OutlineInputBorder(),
+            border: AppShape.input,
           ),
         ),
         const SizedBox(height: 8),
         TextField(
           controller: _query, autocorrect: false,
           decoration: InputDecoration(
-            labelText: context.tr('Search'),
-            border: const OutlineInputBorder(),
+            hintText: context.tr('Search'),
+            border: AppShape.input,
             prefixIcon: const GlyphIcon(AppGlyphs.search),
           ),
           onChanged: (_) => _search(),
