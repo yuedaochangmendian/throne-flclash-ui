@@ -1,5 +1,4 @@
 import '../widgets.dart';
-import '../components/settings_controls.dart';
 
 // The Throne settings pages. The controls they build with live in
 // components/settings_controls.dart.

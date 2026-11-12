@@ -1,7 +1,6 @@
 import 'package:material_ui/material_ui.dart' as material;
 import 'package:flutter/services.dart';
 import '../widgets.dart';
-import '../components/form.dart';
 import 'capture_domains.dart';
 
 class RequestSettingsPage extends StatefulWidget {

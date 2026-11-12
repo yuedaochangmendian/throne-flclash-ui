@@ -53,7 +53,7 @@ class _NodeTuningPageState extends State<NodeTuningPage> {
     if (_loading) {
       return BoxPage(
       title: 'Node tuning',
-      confirmationAction: IconButtonData(glyph: AppGlyphs.check, tooltip: context.tr('Save'), isLoading: true, onPressed: true ? null : () {}),
+      confirmationAction: IconButtonData(glyph: AppGlyphs.check, tooltip: context.tr('Save'), isLoading: true, onPressed: null),
       loading: true,
       absorbing: true,
       children: const [],

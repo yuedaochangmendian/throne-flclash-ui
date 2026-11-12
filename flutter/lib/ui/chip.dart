@@ -7,7 +7,6 @@ import 'package:flrone/ui/icons/icons.dart';
 import 'package:flrone/ui/measure.dart';
 import 'package:flrone/ui/press_surface.dart';
 import 'package:flrone/ui/shape.dart';
-import 'package:flrone/ui/surface.dart';
 import 'package:flrone/ui/typography.dart';
 
 class Chip extends StatelessWidget {
