@@ -54,6 +54,49 @@ object RoomToJsonMigration {
         return true
     }
 
+    /**
+     * Seeds the UI documents from SharedPreferences (ADR 0002, phase 3e). Per-file skip:
+     * an upgrade from a routes-seeded build adds just the new docs. Returns true when
+     * at least one document was written.
+     */
+    fun seedUiDocuments(dir: File, settingsJson: String?, preferencesJson: String?): Boolean {
+        if (!dir.isDirectory && !dir.mkdirs()) return false
+        var seeded = false
+        // ui_settings.json: the shell overlay layer.
+        val uiFile = File(dir, "ui_settings.json")
+        if (!uiFile.isFile && settingsJson != null) {
+            val payload = JSONObject().apply {
+                put("version", 1)
+                put("name", "ui_settings")
+                put("rows", JSONObject(settingsJson))
+            }.toString()
+            val temp = File(dir, "ui_settings.json.${System.nanoTime()}.tmp")
+            temp.writeText(payload)
+            if (!temp.renameTo(uiFile)) {
+                uiFile.writeText(payload)
+                temp.delete()
+            }
+            seeded = true
+        }
+        // preferences.json: UI preferences.
+        val prefFile = File(dir, "preferences.json")
+        if (!prefFile.isFile && preferencesJson != null) {
+            val payload = JSONObject().apply {
+                put("version", 1)
+                put("name", "preferences")
+                put("rows", JSONObject(preferencesJson))
+            }.toString()
+            val temp = File(dir, "preferences.json.${System.nanoTime()}.tmp")
+            temp.writeText(payload)
+            if (!temp.renameTo(prefFile)) {
+                prefFile.writeText(payload)
+                temp.delete()
+            }
+            seeded = true
+        }
+        return seeded
+    }
+
     private fun dumpTable(db: SupportSQLiteDatabase, table: String): JSONArray {
         val out = JSONArray()
         // The table names are compile-time constants in this object, never user input.

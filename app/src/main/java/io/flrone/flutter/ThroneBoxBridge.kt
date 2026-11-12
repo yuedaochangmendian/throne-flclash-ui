@@ -42,6 +42,7 @@ import io.flrone.bridge.BboxBackup
 import io.flrone.bridge.BboxBridge
 import io.flrone.bridge.BboxCommands
 import io.flrone.bridge.RoomToJsonMigration
+import io.flrone.bridge.UiDocuments
 import io.flrone.bridge.BboxEgress
 import io.flrone.bridge.BboxGroupsWire
 import io.flrone.bridge.BboxKernel
@@ -976,9 +977,20 @@ class ThroneBoxBridge(
                     val profiles = java.io.File(dir, "route_profiles.json")
                     val rules = java.io.File(dir, "route_rules.json")
                     if (profiles.isFile || rules.isFile) {
+                        // Seed the UI documents (per-file skip) on every attach.
+                        RoomToJsonMigration.seedUiDocuments(dir,
+                            preferences.getString("settings", null),
+                            preferences.getString("value", null))
+                        UiDocuments.directory = dir
+                        publishHostFacts(dir)
                         mapOf("seeded" to false)
                     } else {
                         RoomToJsonMigration.seed(dir)
+                        RoomToJsonMigration.seedUiDocuments(dir,
+                            preferences.getString("settings", null),
+                            preferences.getString("value", null))
+                        UiDocuments.directory = dir
+                        publishHostFacts(dir)
                         mapOf("seeded" to true)
                     }
                 }
@@ -1603,9 +1615,14 @@ class ThroneBoxBridge(
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && DataStore.serviceMode == Key.MODE_VPN
 
     private fun batteryExempt(): Boolean = runCatching {
-        val power = app.getSystemService(Context.POWER_SERVICE) as PowerManager
-        power.isIgnoringBatteryOptimizations(app.packageName)
+        val power = activity.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        power.isIgnoringBatteryOptimizations(activity.packageName)
     }.getOrDefault(false)
+
+    /** Publishes host facts (batteryExempt) so Go's settingsWire can read them. */
+    private fun publishHostFacts(dir: java.io.File) {
+        UiDocuments.writeHostFacts(mapOf("batteryExempt" to batteryExempt()))
+    }
 
     /**
      * The share / open-with payload, delivered once per intent: the first `intent.take` after an
@@ -1757,7 +1774,8 @@ class ThroneBoxBridge(
      */
     private fun settingsWire(): Map<String, Any?> {
         val result = LinkedHashMap<String, Any?>()
-        result.putAll(readJsonMap(SETTINGS_KEY))
+        // Overlay layer: UiDocuments (Go-owned) with prefs fallback for bridge mode.
+        result.putAll(UiDocuments.readUiSettings().ifEmpty { readJsonMap(SETTINGS_KEY) })
         result.putAll(ThroneSettings.read())
         result["fontSize"] = (result["fontSize"] as? Number)?.toInt() ?: 0
         result["perAppManaged"] = false
