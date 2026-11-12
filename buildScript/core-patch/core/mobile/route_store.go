@@ -20,6 +20,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"sort"
@@ -216,14 +217,44 @@ func stringOf(value any) string {
 	return ""
 }
 
-func intOf(value any) int {
+// intOf reads a JSON number as int64.
+//
+// int64 rather than int on purpose: every caller puts the result into the
+// map[string]any a handler answers, and Dart reads a JSON number as num, so a
+// wider type costs nothing. Narrowing to int would mean a bound check whose
+// upper half is unreachable on 64-bit builds (where int and int64 are the same
+// width) and whose lower half only exists on the 32-bit ABIs — a conversion
+// carrying a hazard for no gain.
+func intOf(value any) int64 {
 	switch typed := value.(type) {
 	case float64:
-		return int(typed)
+		return floatToInt64(typed)
 	case int:
+		return int64(typed)
+	// The kernel's own writes store int64: a document it re-encoded holds no
+	// float64, so a reader of its own output needs this branch.
+	case int64:
 		return typed
 	}
 	return 0
+}
+
+// floatToInt64 converts a JSON number, clamping instead of wrapping.
+//
+// Go leaves an out-of-range float-to-int conversion undefined, and JSON has no
+// integer type: a hand-edited document could hold 1e30. NaN and the infinities
+// read as zero, past-range values saturate.
+func floatToInt64(value float64) int64 {
+	if value != value || math.IsInf(value, 0) {
+		return 0
+	}
+	if value >= math.MaxInt64 {
+		return math.MaxInt64
+	}
+	if value <= math.MinInt64 {
+		return math.MinInt64
+	}
+	return int64(value)
 }
 
 func int64Of(value any) int64 {

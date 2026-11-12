@@ -64,6 +64,41 @@ static int room_query(const char *path, const char *sql, char ***table,
 static const char *room_cell(char **table, int index) {
 	return table[index];
 }
+
+// room_exec_params runs one bound statement. Every value is text (the columns
+// this is used on carry JSON, names and tags); NULL is passed as a NULL pointer.
+// Binding rather than formatting is what keeps a user-typed profile name from
+// being parsed as SQL.
+static int room_exec_params(const char *path, const char *sql, int nparams,
+                            const char **params, char **err) {
+	sqlite3 *db = NULL;
+	int rc = sqlite3_open_v2(path, &db, SQLITE_OPEN_READWRITE | SQLITE_OPEN_FULLMUTEX, NULL);
+	if (rc != SQLITE_OK) {
+		if (db != NULL) { *err = sqlite3_mprintf("%s", sqlite3_errmsg(db)); sqlite3_close(db); }
+		return rc;
+	}
+	sqlite3_busy_timeout(db, 5000);
+	sqlite3_stmt *stmt = NULL;
+	rc = sqlite3_prepare_v2(db, sql, -1, &stmt, NULL);
+	if (rc != SQLITE_OK) {
+		*err = sqlite3_mprintf("%s", sqlite3_errmsg(db));
+		sqlite3_close(db);
+		return rc;
+	}
+	for (int i = 0; i < nparams; i++) {
+		if (params[i] == NULL) {
+			sqlite3_bind_null(stmt, i + 1);
+		} else {
+			sqlite3_bind_text(stmt, i + 1, params[i], -1, SQLITE_TRANSIENT);
+		}
+	}
+	rc = sqlite3_step(stmt);
+	if (rc == SQLITE_DONE || rc == SQLITE_ROW) rc = SQLITE_OK;
+	else *err = sqlite3_mprintf("%s", sqlite3_errmsg(db));
+	sqlite3_finalize(stmt);
+	sqlite3_close(db);
+	return rc;
+}
 */
 import "C"
 
@@ -118,6 +153,60 @@ func roomExec(statements ...string) error {
 		if cErr != nil {
 			C.sqlite3_free(unsafe.Pointer(cErr))
 		}
+	}
+	return nil
+}
+
+// roomExecParams runs one statement with bound text parameters.
+//
+// Use this rather than roomExec for anything carrying a value the user typed:
+// roomExec formats SQL itself, which is fine for the numeric ids it was built
+// for but would let a profile name close the quote.
+func roomExecParams(sql string, params ...any) error {
+	path, err := roomDBPath()
+	if err != nil {
+		return err
+	}
+	cPath := C.CString(path)
+	cSQL := C.CString(sql)
+	defer C.free(unsafe.Pointer(cPath))
+	defer C.free(unsafe.Pointer(cSQL))
+
+	// The C side holds only pointers; the backing strings stay alive in this
+	// slice until the call returns.
+	texts := make([]*C.char, len(params))
+	nils := make([]bool, len(params))
+	for i, param := range params {
+		if param == nil {
+			nils[i] = true
+			continue
+		}
+		texts[i] = C.CString(param.(string))
+		defer C.free(unsafe.Pointer(texts[i]))
+	}
+	bindings := make([]*C.char, len(params))
+	for i := range params {
+		if !nils[i] {
+			bindings[i] = texts[i]
+		}
+	}
+
+	var cErr *C.char
+	var paramsPtr **C.char
+	if len(bindings) > 0 {
+		paramsPtr = (**C.char)(unsafe.Pointer(&bindings[0]))
+	}
+	rc := C.room_exec_params(cPath, cSQL, C.int(len(bindings)), paramsPtr, &cErr)
+	if rc != C.SQLITE_OK {
+		message := "unknown sqlite error"
+		if cErr != nil {
+			message = C.GoString(cErr)
+			C.sqlite3_free(unsafe.Pointer(cErr))
+		}
+		return fmt.Errorf("sqlite: %s", message)
+	}
+	if cErr != nil {
+		C.sqlite3_free(unsafe.Pointer(cErr))
 	}
 	return nil
 }
@@ -185,37 +274,24 @@ func queryRows(sql string) ([]row, error) {
 type roomGroup struct {
 	id    int64
 	order int64
+	name  string
 }
 
 // readRoomGroups reads the group ids in tab order. A read failure surfaces as an
-// empty set, which makes the reorder a no-op rather than a silent corruption.
-func readRoomGroups(path string) []roomGroup {
-	cPath := C.CString(path)
-	cSQL := C.CString("SELECT `id`, `display_order` FROM `groups` ORDER BY `display_order`, `id`;")
-	defer C.free(unsafe.Pointer(cPath))
-	defer C.free(unsafe.Pointer(cSQL))
-
-	var db *C.sqlite3
-	if C.sqlite3_open_v2(cPath, &db, C.SQLITE_OPEN_READONLY|C.SQLITE_OPEN_FULLMUTEX, nil) != C.SQLITE_OK {
-		if db != nil {
-			C.sqlite3_close(db)
-		}
-		return nil
+// empty set, which makes a reorder a no-op rather than a silent corruption; the
+// name is carried along for the pickers that need one.
+func readRoomGroups() ([]roomGroup, error) {
+	rows, err := queryRows("SELECT `id`, `display_order`, `name` FROM `groups` ORDER BY `display_order`, `id`;")
+	if err != nil {
+		return nil, err
 	}
-	defer C.sqlite3_close(db)
-
-	var stmt *C.sqlite3_stmt
-	if C.sqlite3_prepare_v2(db, cSQL, -1, &stmt, nil) != C.SQLITE_OK {
-		return nil
-	}
-	defer C.sqlite3_finalize(stmt)
-
-	var out []roomGroup
-	for C.sqlite3_step(stmt) == C.SQLITE_ROW {
+	out := make([]roomGroup, 0, len(rows))
+	for _, r := range rows {
 		out = append(out, roomGroup{
-			id:    int64(C.sqlite3_column_int64(stmt, 0)),
-			order: int64(C.sqlite3_column_int64(stmt, 1)),
+			id:    rowInt64(r, "id"),
+			order: rowInt64(r, "display_order"),
+			name:  rowString(r, "name"),
 		})
 	}
-	return out
+	return out, nil
 }
