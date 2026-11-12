@@ -26,4 +26,3 @@ export 'list_item.dart';
 export 'null_status_illustration.dart';
 export 'qr_code.dart';
 export 'scaffold/scaffold.dart';
-export 'setting_text_card.dart';

@@ -215,30 +215,3 @@ double chipLabelWidth(BuildContext context, String label) =>
         )
         .width;
 
-class MetaChip extends StatelessWidget {
-  final String label;
-
-  const MetaChip({super.key, required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = context.colorScheme;
-    return DecoratedBox(
-      decoration: ShapeDecoration(
-        color: context.raisedSurfaceLevel.colorOf(colorScheme),
-        shape: AppShape.sm,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-        child: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: AppTextStyle.caption2
-              .of(context, emphasized: true)
-              .copyWith(color: colorScheme.onSurfaceVariant),
-        ),
-      ),
-    );
-  }
-}

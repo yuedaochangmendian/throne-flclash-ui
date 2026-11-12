@@ -2,10 +2,9 @@
 //
 // One authored rule set applied in front of every usable route profile's own
 // rules, minus the ids a profile keeps off. This file holds the pool body as a
-// reusable section so the Routing page can be the pool itself, and
-// [GlobalRulesPage] keeps a standalone page for callers that want the list on
-// its own. The per-profile subtraction is driven from a pool rule's own menu
-// ("Disable for a profile"); the screen that used to own those switches is gone.
+// reusable section, so the Routing page can be the pool itself. The
+// per-profile subtraction is driven from a pool rule's own menu ("Disable for
+// a profile"); the screen that used to own those switches is gone.
 
 import '../widgets.dart';
 
@@ -394,66 +393,5 @@ class GlobalRulesBodyState extends State<GlobalRulesBody> {
       );
     }
     return _list(shrinkWrap: true);
-  }
-}
-
-class GlobalRulesPage extends StatefulWidget {
-  const GlobalRulesPage({super.key});
-
-  @override
-  State<GlobalRulesPage> createState() => _GlobalRulesPageState();
-}
-
-class _GlobalRulesPageState extends State<GlobalRulesPage> {
-  final _controller = GlobalRulesController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return ListenableBuilder(
-      listenable: _controller,
-      builder: (context, _) {
-        final selectionActive = _controller.selectionActive;
-        return Scaffold(
-          title: context.tr('Global rules'),
-          iconActions: [
-            if (selectionActive)
-              IconButtonData(
-                glyph: AppGlyphs.delete,
-                tooltip: context.tr('Delete selected'),
-                onPressed: _controller.deleteSelected,
-              )
-            else ...[
-              IconButtonData(
-                glyph: AppGlyphs.code,
-                tooltip: context.tr('Import rules from JSON'),
-                onPressed: _controller.loading ? null : _controller.importRules,
-              ),
-              IconButtonData(
-                glyph: AppGlyphs.add,
-                tooltip: context.tr('Add rule'),
-                onPressed: _controller.loading ? null : _controller.add,
-              ),
-            ],
-          ],
-          body: ListView(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              context.sectionsTopPadding,
-              16,
-              24 + context.bottomInset,
-            ),
-            children: [
-              GlobalRulesBody(controller: _controller),
-            ],
-          ),
-        );
-      },
-    );
   }
 }
