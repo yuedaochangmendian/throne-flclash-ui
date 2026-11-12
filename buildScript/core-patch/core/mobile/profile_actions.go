@@ -1,16 +1,17 @@
-// Profile read and simple-write actions, answered from the JSON documents (ADR 0002, phase 3d).
+// Profile read and simple-write actions (ADR 0002, phase 3d).
 //
-// These handlers read and write `profiles.json` and `route_rules.json` — the two documents Go
-// already owns — and return the same wire shapes the Kotlin handlers produced. Methods that
-// need the Kotlin outbound model (share links, full config generation, outbound parsing,
-// subscription fetching) stay on the channel: Go cannot call into Kotlin, and reimplementing
-// the outbound model here is out of scope.
+// Both sides go through the Room `profiles`/`groups` tables over SQLite (see
+// room_db.go), because GroupRepo and ProfileManager are Room-backed — a JSON
+// document the seed wrote once and nothing updates would answer stale data.
+// Methods that need the Kotlin outbound model (share links, full config
+// generation, outbound parsing, subscription fetching) stay on the channel.
 package mobile
 
 import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 )
 
 // The method names the Dart ActionMethod enum uses.
@@ -36,6 +37,15 @@ func init() {
 	register(profileClearTrafficMethod, handleProfileClearTraffic)
 }
 
+// readRoomProfiles answers the profiles table in the row shape the handlers
+// already use, so the JSON document readers and the SQLite readers share the
+// same rowString/rowInt64 helpers.
+func readRoomProfiles() ([]row, error) {
+	return queryRows("SELECT `id`, `type`, `name`, `gid`, `user_order`, `latency`, `latency_at`, " +
+		"`dl_speed`, `ul_speed`, `test_country`, `ip_out`, `outbound_json`, `traffic_dl`, " +
+		"`traffic_up`, `test_error` FROM `profiles`;")
+}
+
 // --- stats -------------------------------------------------------------------
 
 // handleProfileStats returns the counts the dashboard card shows: group membership size
@@ -47,10 +57,8 @@ func handleProfileStats(data json.RawMessage) (any, error) {
 	if err := json.Unmarshal(data, &payload); err != nil {
 		return nil, err
 	}
-	profileStoreMu.Lock()
-	defer profileStoreMu.Unlock()
 
-	profiles, err := readDocument(profilesDoc)
+	profiles, err := readRoomProfiles()
 	if err != nil {
 		return nil, err
 	}
@@ -97,10 +105,8 @@ func handleProfileNodeInfo(data json.RawMessage) (any, error) {
 	if err := json.Unmarshal(data, &payload); err != nil {
 		return nil, err
 	}
-	profileStoreMu.Lock()
-	defer profileStoreMu.Unlock()
 
-	profiles, err := readDocument(profilesDoc)
+	profiles, err := readRoomProfiles()
 	if err != nil {
 		return nil, err
 	}
@@ -128,10 +134,8 @@ func handleProfileNodeConfig(data json.RawMessage) (any, error) {
 	if err := json.Unmarshal(data, &payload); err != nil {
 		return nil, err
 	}
-	profileStoreMu.Lock()
-	defer profileStoreMu.Unlock()
 
-	profiles, err := readDocument(profilesDoc)
+	profiles, err := readRoomProfiles()
 	if err != nil {
 		return nil, err
 	}
@@ -178,10 +182,8 @@ func handleProfileNodeTuningInfo(data json.RawMessage) (any, error) {
 	if err := json.Unmarshal(data, &payload); err != nil {
 		return nil, err
 	}
-	profileStoreMu.Lock()
-	defer profileStoreMu.Unlock()
 
-	profiles, err := readDocument(profilesDoc)
+	profiles, err := readRoomProfiles()
 	if err != nil {
 		return nil, err
 	}
@@ -306,13 +308,12 @@ func triState(m map[string]any, unspecifiedKey, flagKey string) int {
 // that need OutboundFactory, parseOutbounds, subscription fetching or BboxBridge.refresh
 // stay on the channel.
 
-// handleProfileReorder renumbers display_order on the groups document.
+// handleProfileReorder renumbers display_order in the Room groups table.
 //
-// Mirrors GroupRepo.setDisplayOrder exactly: the rows in `ids` become 0..n-1 (0-based —
-// GroupJsonStore sorts by display_order, so a 1-based run would leave a hole), ids that
-// name no group are dropped, duplicates count once, and any group the caller omitted
-// follows in its current order. Renumbering only the named rows would interleave them
-// with the ones left behind.
+// Mirrors GroupRepo.setDisplayOrder exactly: the rows in `ids` become 0..n-1, ids
+// that name no group are dropped, duplicates count once, and any group the caller
+// omitted follows in its current order. Renumbering only the named rows would
+// interleave them with the ones left behind.
 func handleProfileReorder(data json.RawMessage) (any, error) {
 	var payload struct {
 		IDs []int64 `json:"ids"`
@@ -320,30 +321,32 @@ func handleProfileReorder(data json.RawMessage) (any, error) {
 	if err := json.Unmarshal(data, &payload); err != nil {
 		return nil, err
 	}
-	profileStoreMu.Lock()
-	defer profileStoreMu.Unlock()
 
-	groups, err := readDocument(groupsDoc)
+	path, err := roomDBPath()
 	if err != nil {
 		return nil, err
 	}
-	applyGroupOrder(groups, payload.IDs)
-	if err := writeDocument(groupsDoc, sortedGroups(groups)); err != nil {
+	groups := readRoomGroups(path)
+	ordered := orderedGroupIDs(groups, payload.IDs)
+
+	var sql strings.Builder
+	sql.WriteString("BEGIN;")
+	for index, id := range ordered {
+		fmt.Fprintf(&sql, "UPDATE `groups` SET `display_order`=%d WHERE `id`=%d;", index, id)
+	}
+	sql.WriteString("COMMIT;")
+	if err := roomExec(sql.String()); err != nil {
 		return nil, err
 	}
 	return nil, nil
 }
 
-// applyGroupOrder renumbers the rows in place: `ids` first, in the order given, then
-// every group the caller omitted in its current order.
-//
-// Split out of the handler so the ordering rules are testable without a document
-// directory. GroupRepo.setDisplayOrder has exactly this shape (0-based, distinct,
-// unknown ids dropped, omitted groups appended).
-func applyGroupOrder(groups []row, ids []int64) {
+// orderedGroupIDs is the ordering rule split out of the handler so it stays
+// testable without a database. GroupRepo.setDisplayOrder has exactly this shape.
+func orderedGroupIDs(groups []roomGroup, ids []int64) []int64 {
 	known := make(map[int64]bool, len(groups))
 	for _, group := range groups {
-		known[rowInt64(group, "id")] = true
+		known[group.id] = true
 	}
 	ordered := make([]int64, 0, len(groups))
 	seen := make(map[int64]bool, len(ids))
@@ -354,23 +357,15 @@ func applyGroupOrder(groups []row, ids []int64) {
 		seen[id] = true
 		ordered = append(ordered, id)
 	}
-	for _, group := range sortedGroups(groups) {
-		if id := rowInt64(group, "id"); !seen[id] {
-			ordered = append(ordered, id)
+	for _, group := range groups {
+		if !seen[group.id] {
+			ordered = append(ordered, group.id)
 		}
 	}
-	for index, id := range ordered {
-		for _, group := range groups {
-			if rowInt64(group, "id") == id {
-				group["display_order"] = int64(index)
-				break
-			}
-		}
-	}
+	return ordered
 }
 
-// handleProfileNodeDelete removes one profile row. Mirrors BboxProfiles.deleteNode ->
-// ProfileManager.deleteProfile. The group itself stays.
+// handleProfileNodeDelete removes one profile row from Room. The group itself stays.
 func handleProfileNodeDelete(data json.RawMessage) (any, error) {
 	var payload struct {
 		ID int64 `json:"id"`
@@ -378,33 +373,10 @@ func handleProfileNodeDelete(data json.RawMessage) (any, error) {
 	if err := json.Unmarshal(data, &payload); err != nil {
 		return nil, err
 	}
-	profileStoreMu.Lock()
-	defer profileStoreMu.Unlock()
-
-	profiles, err := readDocument(profilesDoc)
-	if err != nil {
-		return nil, err
-	}
-	kept := make([]row, 0, len(profiles))
-	removed := false
-	for _, p := range profiles {
-		if rowInt64(p, "id") == payload.ID {
-			removed = true
-			continue
-		}
-		kept = append(kept, p)
-	}
-	if !removed {
-		return nil, fmt.Errorf("no proxy with id %d", payload.ID)
-	}
-	if err := writeDocument(profilesDoc, sortedProfilesById(kept)); err != nil {
-		return nil, err
-	}
-	return nil, nil
+	return nil, roomExec(fmt.Sprintf("DELETE FROM `profiles` WHERE `id`=%d;", payload.ID))
 }
 
 // handleProfileClearTestResults resets every member's test fields in the given group.
-// Mirrors BboxProfiles.clearGroupTestResults -> ProfileManager.clearGroupTestResults.
 func handleProfileClearTestResults(data json.RawMessage) (any, error) {
 	var payload struct {
 		ID int64 `json:"id"`
@@ -412,33 +384,12 @@ func handleProfileClearTestResults(data json.RawMessage) (any, error) {
 	if err := json.Unmarshal(data, &payload); err != nil {
 		return nil, err
 	}
-	profileStoreMu.Lock()
-	defer profileStoreMu.Unlock()
-
-	profiles, err := readDocument(profilesDoc)
-	if err != nil {
-		return nil, err
-	}
-	for _, p := range profiles {
-		if rowInt64(p, "gid") != payload.ID {
-			continue
-		}
-		p["latency"] = 0
-		p["latency_at"] = int64(0)
-		p["dl_speed"] = nil
-		p["ul_speed"] = nil
-		p["test_country"] = nil
-		p["ip_out"] = nil
-		p["test_error"] = nil
-	}
-	if err := writeDocument(profilesDoc, profiles); err != nil {
-		return nil, err
-	}
-	return nil, nil
+	return nil, roomExec(fmt.Sprintf(
+		"UPDATE `profiles` SET `latency`=0, `latency_at`=0, `dl_speed`=NULL, `ul_speed`=NULL, "+
+			"`test_country`=NULL, `ip_out`=NULL, `test_error`=NULL WHERE `gid`=%d;", payload.ID))
 }
 
 // handleProfileClearTraffic resets every member's traffic counters in the given group.
-// Mirrors BboxProfiles.clearGroupTraffic -> ProfileManager.resetTraffic.
 func handleProfileClearTraffic(data json.RawMessage) (any, error) {
 	var payload struct {
 		ID int64 `json:"id"`
@@ -446,22 +397,6 @@ func handleProfileClearTraffic(data json.RawMessage) (any, error) {
 	if err := json.Unmarshal(data, &payload); err != nil {
 		return nil, err
 	}
-	profileStoreMu.Lock()
-	defer profileStoreMu.Unlock()
-
-	profiles, err := readDocument(profilesDoc)
-	if err != nil {
-		return nil, err
-	}
-	for _, p := range profiles {
-		if rowInt64(p, "gid") != payload.ID {
-			continue
-		}
-		p["traffic_dl"] = int64(0)
-		p["traffic_up"] = int64(0)
-	}
-	if err := writeDocument(profilesDoc, profiles); err != nil {
-		return nil, err
-	}
-	return nil, nil
+	return nil, roomExec(fmt.Sprintf(
+		"UPDATE `profiles` SET `traffic_dl`=0, `traffic_up`=0 WHERE `gid`=%d;", payload.ID))
 }
