@@ -406,8 +406,8 @@ void main() {
         'value': [group('New group', 1, 0), ...groups],
       });
       await tester.pumpAndSettle();
-      final tabContext = tester.element(find.byType(TabBarView));
-      expect(DefaultTabController.of(tabContext).index, 2);
+      final tabs = tester.widget<TabBarView>(find.byType(TabBarView));
+      expect(tabs.controller.index, 2);
       expect(find.text('Group B node 150').hitTestable(), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());

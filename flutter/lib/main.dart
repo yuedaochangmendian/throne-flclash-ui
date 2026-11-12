@@ -161,6 +161,10 @@ class HomePage extends StatefulWidget {
 
 class _HomePageState extends State<HomePage> {
   int _index = 0;
+
+  /// The desktop sidebar starts labelled — the app has no other textual
+  /// navigation — and its toggle collapses it to icons.
+  bool _sidebarExpanded = true;
   StreamSubscription<IntentAvailableEvent>? _intents;
   BoxController? _box;
   bool _handlingIntent = false;
@@ -239,12 +243,13 @@ class _HomePageState extends State<HomePage> {
     return Surface(
       color: context.colorScheme.surface,
       child: Row(children: [
-          if (!mobile) NavigationRail(
+          if (!mobile) NavigationSidebar(
             selectedIndex: index,
-            onDestinationSelected: (index) => setState(() => _index = index),
-            labelType: NavigationRailLabelType.all,
-            destinations: [for (final item in items) NavigationRailDestination(
-              icon: GlyphIcon(item.$2), label: Text(context.tr(item.$1)),
+            expanded: _sidebarExpanded,
+            onSelected: (index) => setState(() => _index = index),
+            onToggle: () => setState(() => _sidebarExpanded = !_sidebarExpanded),
+            destinations: [for (final item in items) SidebarDestination(
+              glyph: item.$2, label: context.tr(item.$1),
             )],
           ),
           Expanded(child: Column(children: [
