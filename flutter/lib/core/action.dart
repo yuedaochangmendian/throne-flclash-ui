@@ -45,6 +45,14 @@ enum ActionMethod {
   profileNodeInfo,
   profileNodeConfig,
   profileNodeTuningInfo,
+
+  // Phase 3d PR-4: simple profile mutations. Complex writes (save, createNode,
+  // commitNode, updateNode, groupSettings, autoSelector) need the Kotlin outbound
+  // model and stay on the channel.
+  profileReorder,
+  profileNodeDelete,
+  profileClearTestResults,
+  profileClearTraffic,
 }
 
 /// `message` is the tag of an unsolicited Go->Dart push. It never appears in

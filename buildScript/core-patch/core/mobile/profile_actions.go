@@ -1,9 +1,10 @@
-// Profile read actions, answered from the JSON documents (ADR 0002, phase 3d, PR-3).
+// Profile read and simple-write actions, answered from the JSON documents (ADR 0002, phase 3d).
 //
-// These handlers read `profiles.json` and `route_rules.json` — the two documents Go already
-// owns — and return the same wire shapes the Kotlin handlers produced. Methods that need the
-// Kotlin outbound model (share links, full config generation) stay on the channel: Go cannot
-// call into Kotlin, and reimplementing the outbound model here is out of scope.
+// These handlers read and write `profiles.json` and `route_rules.json` — the two documents Go
+// already owns — and return the same wire shapes the Kotlin handlers produced. Methods that
+// need the Kotlin outbound model (share links, full config generation, outbound parsing,
+// subscription fetching) stay on the channel: Go cannot call into Kotlin, and reimplementing
+// the outbound model here is out of scope.
 package mobile
 
 import (
@@ -18,6 +19,10 @@ const (
 	profileNodeInfoMethod Method = "profileNodeInfo"
 	profileNodeConfigMethod Method = "profileNodeConfig"
 	profileNodeTuningInfoMethod Method = "profileNodeTuningInfo"
+	profileReorderMethod Method = "profileReorder"
+	profileNodeDeleteMethod Method = "profileNodeDelete"
+	profileClearTestResultsMethod Method = "profileClearTestResults"
+	profileClearTrafficMethod Method = "profileClearTraffic"
 )
 
 func init() {
@@ -25,6 +30,10 @@ func init() {
 	register(profileNodeInfoMethod, handleProfileNodeInfo)
 	register(profileNodeConfigMethod, handleProfileNodeConfig)
 	register(profileNodeTuningInfoMethod, handleProfileNodeTuningInfo)
+	register(profileReorderMethod, handleProfileReorder)
+	register(profileNodeDeleteMethod, handleProfileNodeDelete)
+	register(profileClearTestResultsMethod, handleProfileClearTestResults)
+	register(profileClearTrafficMethod, handleProfileClearTraffic)
 }
 
 // --- stats -------------------------------------------------------------------
@@ -289,4 +298,137 @@ func triState(m map[string]any, unspecifiedKey, flagKey string) int {
 		return 1
 	}
 	return 2
+}
+
+// --- write actions (phase 3d, PR-4) ------------------------------------------
+//
+// These are the mutations Go can own: direct row edits on the JSON documents. Operations
+// that need OutboundFactory, parseOutbounds, subscription fetching or BboxBridge.refresh
+// stay on the channel.
+
+// handleProfileReorder updates display_order on the groups document to match the given id
+// order. Mirrors BboxProfiles.reorder -> GroupRepo.setDisplayOrder.
+func handleProfileReorder(data json.RawMessage) (any, error) {
+	var payload struct {
+		IDs []int64 `json:"ids"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return nil, err
+	}
+	profileStoreMu.Lock()
+	defer profileStoreMu.Unlock()
+
+	groups, err := readDocument(groupsDoc)
+	if err != nil {
+		return nil, err
+	}
+	for i, id := range payload.IDs {
+		for _, g := range groups {
+			if rowInt64(g, "id") == id {
+				g["display_order"] = int64(i + 1)
+				break
+			}
+		}
+	}
+	if err := writeDocument(groupsDoc, sortedGroups(groups)); err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+
+// handleProfileNodeDelete removes one profile row. Mirrors BboxProfiles.deleteNode ->
+// ProfileManager.deleteProfile. The group itself stays.
+func handleProfileNodeDelete(data json.RawMessage) (any, error) {
+	var payload struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return nil, err
+	}
+	profileStoreMu.Lock()
+	defer profileStoreMu.Unlock()
+
+	profiles, err := readDocument(profilesDoc)
+	if err != nil {
+		return nil, err
+	}
+	kept := make([]row, 0, len(profiles))
+	removed := false
+	for _, p := range profiles {
+		if rowInt64(p, "id") == payload.ID {
+			removed = true
+			continue
+		}
+		kept = append(kept, p)
+	}
+	if !removed {
+		return nil, fmt.Errorf("no proxy with id %d", payload.ID)
+	}
+	if err := writeDocument(profilesDoc, sortedProfilesById(kept)); err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+
+// handleProfileClearTestResults resets every member's test fields in the given group.
+// Mirrors BboxProfiles.clearGroupTestResults -> ProfileManager.clearGroupTestResults.
+func handleProfileClearTestResults(data json.RawMessage) (any, error) {
+	var payload struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return nil, err
+	}
+	profileStoreMu.Lock()
+	defer profileStoreMu.Unlock()
+
+	profiles, err := readDocument(profilesDoc)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range profiles {
+		if rowInt64(p, "gid") != payload.ID {
+			continue
+		}
+		p["latency"] = 0
+		p["latency_at"] = int64(0)
+		p["dl_speed"] = nil
+		p["ul_speed"] = nil
+		p["test_country"] = nil
+		p["ip_out"] = nil
+		p["test_error"] = nil
+	}
+	if err := writeDocument(profilesDoc, profiles); err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+
+// handleProfileClearTraffic resets every member's traffic counters in the given group.
+// Mirrors BboxProfiles.clearGroupTraffic -> ProfileManager.resetTraffic.
+func handleProfileClearTraffic(data json.RawMessage) (any, error) {
+	var payload struct {
+		ID int64 `json:"id"`
+	}
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return nil, err
+	}
+	profileStoreMu.Lock()
+	defer profileStoreMu.Unlock()
+
+	profiles, err := readDocument(profilesDoc)
+	if err != nil {
+		return nil, err
+	}
+	for _, p := range profiles {
+		if rowInt64(p, "gid") != payload.ID {
+			continue
+		}
+		p["traffic_dl"] = int64(0)
+		p["traffic_up"] = int64(0)
+	}
+	if err := writeDocument(profilesDoc, profiles); err != nil {
+		return nil, err
+	}
+	return nil, nil
 }

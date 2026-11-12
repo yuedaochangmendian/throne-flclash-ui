@@ -58,8 +58,11 @@ extension ProfilesApi on BoxController {
 
   Future<dynamic> profileNodeLink(String group, String tag, dynamic nodeJson) =>
       call('profiles.nodeLink', {'group': group, 'tag': tag, 'json': nodeJson});
-  Future<dynamic> profileNodeDelete(dynamic id) =>
-      call('profiles.nodeDelete', {'id': id});
+  Future<dynamic> profileNodeDelete(dynamic id) async {
+    final k = kernel.attached;
+    if (k != null) return k.invoke<Object?>(ActionMethod.profileNodeDelete, data: {'id': id});
+    return call('profiles.nodeDelete', {'id': id});
+  }
   Future<dynamic> profileNodeConfig(dynamic id) async {
     final k = kernel.attached;
     if (k != null) return k.invoke<Object?>(ActionMethod.profileNodeConfig, data: {'id': id});
@@ -75,10 +78,16 @@ extension ProfilesApi on BoxController {
   Future<dynamic> profileNodeTuningSave(dynamic id, Json value) =>
       call('profiles.nodeTuningSave', {'id': id, 'value': value});
   Future<dynamic> profileRead(dynamic id) => call('profiles.read', {'id': id});
-  Future<bool> profileClearTestResults(dynamic id) =>
-      act('profiles.clearTestResults', {'id': id});
-  Future<bool> profileClearTraffic(dynamic id) =>
-      act('profiles.clearTraffic', {'id': id});
+  Future<bool> profileClearTestResults(dynamic id) async {
+    final k = kernel.attached;
+    if (k != null) { await k.invoke<Object?>(ActionMethod.profileClearTestResults, data: {'id': id}); return true; }
+    return act('profiles.clearTestResults', {'id': id});
+  }
+  Future<bool> profileClearTraffic(dynamic id) async {
+    final k = kernel.attached;
+    if (k != null) { await k.invoke<Object?>(ActionMethod.profileClearTraffic, data: {'id': id}); return true; }
+    return act('profiles.clearTraffic', {'id': id});
+  }
   Future<bool> profileDelete(dynamic id) => act('profiles.delete', {'id': id});
   Future<bool> profileSwitchRelative(int step) async {
     if (kernel.ffiMode) {
@@ -104,8 +113,11 @@ extension ProfilesApi on BoxController {
   Future<dynamic> profileNodeCreate(Json value) =>
       call('profiles.nodeCreate', value);
   Future<dynamic> profileSave(Json value) => call('profiles.save', value);
-  Future<bool> profileReorder(List<dynamic> ids) =>
-      act('profiles.reorder', {'ids': ids});
+  Future<bool> profileReorder(List<dynamic> ids) async {
+    final k = kernel.attached;
+    if (k != null) { await k.invoke<Object?>(ActionMethod.profileReorder, data: {'ids': ids}); return true; }
+    return act('profiles.reorder', {'ids': ids});
+  }
   Future<bool> profileScanClose(dynamic session) =>
       act('profiles.scan.close', {'session': session});
   Future<dynamic> profileScan(dynamic session, String text) =>
