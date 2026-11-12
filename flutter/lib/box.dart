@@ -491,7 +491,7 @@ class BoxController extends ChangeNotifier {
 
   Future<bool> setPreferences(Json values) async {
     try {
-      preferences = json(await call('preferences.set', {'value': values}));
+      preferences = json(await preferencesSet(values));
       _notify([BoxAspect.state, BoxAspect.appearance]);
       return true;
     } catch (error) {
@@ -508,8 +508,7 @@ class BoxController extends ChangeNotifier {
       _notify([BoxAspect.state]);
     }
     try {
-      final saved = json(await call('settings.set', {'key': key, 'value': value,
-        if (restartService) 'restart': true}));
+      final saved = json(await settingsSet(key, value, restart: restartService));
       if (!_disposed) {
         settings = saved;
         if (restartService) {
@@ -529,7 +528,7 @@ class BoxController extends ChangeNotifier {
 
   Future<bool> setSettings(Json values, {bool restart = true}) async {
     try {
-      settings = json(await call('settings.patch', {'value': values}));
+      settings = json(await settingsPatch(values));
       if (restart && running && !remote) applyRequired = 'Restart';
       _notify([BoxAspect.state]);
       return true;
@@ -541,7 +540,7 @@ class BoxController extends ChangeNotifier {
   /// actually changed needs it, and a reset that changed nothing leaves the running core alone.
   Future<bool> resetSettings(List<String> keys) async {
     try {
-      settings = json(await call('settings.reset', {'keys': keys}));
+      settings = json(await settingsReset(keys));
       _notify([BoxAspect.state]);
       return true;
     } catch (error) { report(error); return false; }

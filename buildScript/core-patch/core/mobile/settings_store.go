@@ -27,6 +27,21 @@ const (
 // settingsStoreMu serialises read-modify-write on the settings documents.
 var settingsStoreMu = sync.Mutex
 
+// --- row store accessor -------------------------------------------------------
+
+// globalRowStore is set by the host once the database path is known.
+// Nil means the store is not yet initialized (host has not called setup).
+var globalRowStoreInstance rowStore
+
+// SetGlobalRowStore injects the row store implementation (called from bridge init).
+func SetGlobalRowStore(store rowStore) {
+	globalRowStoreInstance = store
+}
+
+func globalRowStore() rowStore {
+	return globalRowStoreInstance
+}
+
 // --- document helpers ---------------------------------------------------------
 
 func readJSONDoc(name string) map[string]any {

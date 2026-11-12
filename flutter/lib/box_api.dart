@@ -236,6 +236,44 @@ extension RoutesApi on BoxController {
       _routeKernel().invoke<Object?>(ActionMethod.resetRouteRules, data: {'id': id});
 }
 
+// Settings mutations, ADR 0002 phase 3e. Bus-first with channel fallback:
+// settings must work when the FFI driver is not attached (bridge mode).
+extension SettingsApi on BoxController {
+  Future<dynamic> settingsGet() async {
+    final k = kernel.attached;
+    if (k != null) return k.invoke<Object?>(ActionMethod.settingsGet);
+    return call('settings.get', {});
+  }
+
+  Future<dynamic> settingsSet(String key, dynamic value, {bool restart = false}) async {
+    final k = kernel.attached;
+    if (k != null) {
+      return k.invoke<Object?>(ActionMethod.settingsSet, data: {
+        'key': key, 'value': value, if (restart) 'restart': true,
+      });
+    }
+    return call('settings.set', {'key': key, 'value': value, if (restart) 'restart': true});
+  }
+
+  Future<dynamic> settingsPatch(Map<String, dynamic> values) async {
+    final k = kernel.attached;
+    if (k != null) return k.invoke<Object?>(ActionMethod.settingsPatch, data: {'value': values});
+    return call('settings.patch', {'value': values});
+  }
+
+  Future<dynamic> settingsReset(List<String> keys) async {
+    final k = kernel.attached;
+    if (k != null) return k.invoke<Object?>(ActionMethod.settingsReset, data: {'keys': keys});
+    return call('settings.reset', {'keys': keys});
+  }
+
+  Future<dynamic> preferencesSet(Map<String, dynamic> values) async {
+    final k = kernel.attached;
+    if (k != null) return k.invoke<Object?>(ActionMethod.preferencesSet, data: {'value': values});
+    return call('preferences.set', {'value': values});
+  }
+}
+
 /// The one channel call the data plane still needs: the host answers with the
 /// Room file's path and the schema version it actually opened at. Everything
 /// after that is a `dart:ffi` read — see `lib/data/route_profiles_source.dart`.

@@ -53,6 +53,14 @@ enum ActionMethod {
   profileNodeDelete,
   profileClearTestResults,
   profileClearTraffic,
+
+  // Phase 3e PR-3: settings mutations. Go reads/writes the Room settings table
+  // and the UI documents, returning the full wire map after every mutation.
+  settingsGet,
+  settingsSet,
+  settingsPatch,
+  settingsReset,
+  preferencesSet,
 }
 
 /// `message` is the tag of an unsolicited Go->Dart push. It never appears in
