@@ -168,20 +168,21 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
       : _isEndpoint ? 'Endpoint preferred by' : 'Custom';
 
   @override
-  Widget build(BuildContext context) => FormPage(
-    title: widget.index < 0 ? 'Add rule' : 'Edit rule',
-    saving: _saving,
-    onSave: _save,
-    error: _error,
-    actions: [
+  Widget build(BuildContext context) => BoxPage(
+      title: widget.index < 0 ? 'Add rule' : 'Edit rule',
+      confirmationAction: IconButtonData(glyph: AppGlyphs.check, tooltip: context.tr('Save'), isLoading: _saving, onPressed: _saving ? null : _save),
+      actions: [
       IconButtonData(glyph: AppGlyphs.delete, tooltip: 'Delete', onPressed: _delete),
     ],
-    children: [
+      error: _error,
+      loading: _saving,
+      absorbing: _saving,
+      children: [
       _ruleSection(),
       ..._simpleSections(),
       ..._customSections(),
     ],
-  );
+    );
 
   /// Throne's "Rule" category: name, state, type and target, then — for a
   /// custom rule — the action fields, which decide what the rule does rather

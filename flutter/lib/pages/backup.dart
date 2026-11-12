@@ -652,12 +652,13 @@ class _WebDAVFormState extends State<WebDAVForm> {
     return BoxEditGuard(
       dirty: _dirty,
       busy: _saving,
-      child: FormPage(
-        title: 'WebDAV configuration',
-        onSave: _save,
-        saving: _saving,
-        error: _error ?? (issue == null ? null : context.tr(issue)),
-        children: [
+      child: BoxPage(
+      title: 'WebDAV configuration',
+      confirmationAction: IconButtonData(glyph: AppGlyphs.check, tooltip: context.tr('Save'), isLoading: _saving, onPressed: _saving ? null : _save),
+      error: _error ?? (issue == null ? null : context.tr(issue)),
+      loading: _saving,
+      absorbing: _saving,
+      children: [
           generateSection(
             footer: context.tr(
               'Enter the WebDAV directory URL. Backups are stored in a folder on that server.',
@@ -712,7 +713,7 @@ class _WebDAVFormState extends State<WebDAVForm> {
               ],
             ),
         ],
-      ),
+    ),
     );
   }
 }

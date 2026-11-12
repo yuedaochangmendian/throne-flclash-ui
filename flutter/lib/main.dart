@@ -142,9 +142,10 @@ class _BoxAppState extends State<BoxApp> with WidgetsBindingObserver {
           // Banners hang below the page bar so they never cover its buttons.
           bannerTopInset: media.padding.top + pageToolbarHeight,
           bannerKey: _banner,
-          home: widget.controller.ready ? const HomePage() : material.Scaffold(
-            body: SafeArea(child: Center(child: widget.controller.startupError == null
-                ? const CircularProgressIndicator()
+          home: widget.controller.ready ? const HomePage() : Surface(
+            color: context.colorScheme.surface,
+            child: SafeArea(child: Center(child: widget.controller.startupError == null
+                ? const ActivityIndicator()
                 : ErrorState(widget.controller.startupError!, retry: widget.controller.initialize))),
           ),
         );
@@ -234,9 +235,10 @@ class _HomePageState extends State<HomePage> {
         TickerMode(enabled: i == index, child: PageActivityScope(isActive: i == index, child: pages[i])),
       ],
     );
-    // The shell itself is plain Material: every page brings its own prism bar.
-    return material.Scaffold(
-        body: Row(children: [
+    // The shell is a bare surface: every page brings its own prism bar.
+    return Surface(
+      color: context.colorScheme.surface,
+      child: Row(children: [
           if (!mobile) NavigationRail(
             selectedIndex: index,
             onDestinationSelected: (index) => setState(() => _index = index),
@@ -268,7 +270,7 @@ class _HomePageState extends State<HomePage> {
               ],
             ),
           ])),
-        ]),
+      ]),
     );
   }
 }

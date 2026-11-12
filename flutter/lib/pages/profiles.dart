@@ -396,9 +396,12 @@ class _ProfileFormState extends State<ProfileForm> {
     final imported = (widget.initial['nodeCount'] as num?)?.toInt();
     final groups = context.box.profiles;
     final needsGroup = imported == 1 && groups.length > 1;
-    return FormPage(
+    return BoxPage(
       title: widget.initial['id'] == null ? 'Add profile' : 'Edit',
-      saving: _saving, onSave: _save, error: _errorMessage ?? issue?.message,
+      confirmationAction: IconButtonData(glyph: AppGlyphs.check, tooltip: context.tr('Save'), isLoading: _saving, onPressed: _saving ? null : _save),
+      error: _errorMessage ?? issue?.message,
+      loading: _saving,
+      absorbing: _saving,
       children: [
         if (needsGroup) generateSection(title: context.tr('Target group'), items: [
           for (final group in groups)

@@ -153,12 +153,13 @@ class _AutoSelectorPageState extends State<AutoSelectorPage>
   @override
   Widget build(BuildContext context) {
     if (widget.id == 0) {
-      return FormPage(
-        title: 'Auto selector',
-        saving: _saving,
-        onSave: _draftSave,
-        error: _error,
-        children: [
+      return BoxPage(
+      title: 'Auto selector',
+      confirmationAction: IconButtonData(glyph: AppGlyphs.check, tooltip: context.tr('Save'), isLoading: _saving, onPressed: _saving ? null : _draftSave),
+      error: _error,
+      loading: _saving,
+      absorbing: _saving,
+      children: [
           generateSection(
             title: context.tr('Name'),
             items: [
@@ -174,24 +175,23 @@ class _AutoSelectorPageState extends State<AutoSelectorPage>
             footer: context.tr('The selector is created only when you save.'),
           ),
         ],
-      );
+    );
     }
     if (_loading) {
-      return FormPage(
-        title: 'Auto selector',
-        onSave: () {},
-        saving: true,
-        children: const [],
-      );
+      return BoxPage(
+      title: 'Auto selector',
+      confirmationAction: IconButtonData(glyph: AppGlyphs.check, tooltip: context.tr('Save'), isLoading: true, onPressed: true ? null : () {}),
+      loading: true,
+      absorbing: true,
+      children: const [],
+    );
     }
     final groups = (_info['groups'] as List? ?? const [])
         .map((e) => json(e))
         .toList();
-    return FormPage(
+    return BoxPage(
       title: 'Auto selector',
-      saving: _saving,
-      onSave: _save,
-      error: _error,
+      confirmationAction: IconButtonData(glyph: AppGlyphs.check, tooltip: context.tr('Save'), isLoading: _saving, onPressed: _saving ? null : _save),
       actions: [
         IconButtonData(
           glyph: AppGlyphs.refresh,
@@ -199,6 +199,9 @@ class _AutoSelectorPageState extends State<AutoSelectorPage>
           onPressed: _load,
         ),
       ],
+      error: _error,
+      loading: _saving,
+      absorbing: _saving,
       children: [
         ..._statusSection(context),
         generateSection(

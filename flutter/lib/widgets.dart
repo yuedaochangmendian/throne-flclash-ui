@@ -89,14 +89,25 @@ class BoxMenu extends StatelessWidget {
   );
 }
 
+/// The one page shell: title bar, optional validation line, and a scrolling
+/// body. Forms, settings screens and plain lists all use it.
 class BoxPage extends StatelessWidget {
-  const BoxPage({super.key, required this.title, required this.children, this.actions = const [], this.menuItems = const [], this.primaryAction, this.confirmationAction, this.loading = false});
+  const BoxPage({super.key, required this.title, required this.children, this.actions = const [], this.menuItems = const [], this.primaryAction, this.confirmationAction, this.loading = false, this.error, this.absorbing = false});
   final String title;
   final List<Widget> children;
   final List<IconButtonData> actions;
   final List<PopupMenuItem> menuItems;
   final IconButtonData? primaryAction, confirmationAction;
   final bool loading;
+
+  /// A validation or save failure shown above the body. Kept at a stable index
+  /// so the children below it keep their state when the message appears.
+  final String? error;
+
+  /// Blocks interaction with the body without unmounting it (a form saving in
+  /// the background keeps its scroll position and focus).
+  final bool absorbing;
+
   @override
   Widget build(BuildContext context) => Scaffold(
     title: context.tr(title),
@@ -105,9 +116,19 @@ class BoxPage extends StatelessWidget {
     primaryAction: primaryAction,
     confirmationAction: confirmationAction,
     isLoading: loading,
-    body: ListView(
-      padding: EdgeInsets.fromLTRB(16, context.contentTopPadding, 16, 24 + context.bottomInset),
-      children: children,
+    body: AbsorbPointer(
+      absorbing: absorbing,
+      child: ListView(
+        padding: EdgeInsets.fromLTRB(16, context.contentTopPadding, 16, 24 + context.bottomInset),
+        children: [
+          if (error != null)
+            Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Text(error!, style: context.listCaptionStyle.copyWith(color: context.colorScheme.error)))
+          else
+            const SizedBox.shrink(),
+          ...children,
+        ],
+      ),
     ),
   );
 }
