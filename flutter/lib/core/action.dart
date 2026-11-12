@@ -38,6 +38,13 @@ enum ActionMethod {
   saveGlobalRules,
   setGlobalRuleDisabled,
   deleteGlobalRule,
+
+  // Phase 3d PR-3: profile reads. Go answers these from the JSON documents;
+  // methods that need the Kotlin outbound model (share links, full config) stay on the channel.
+  profileStats,
+  profileNodeInfo,
+  profileNodeConfig,
+  profileNodeTuningInfo,
 }
 
 /// `message` is the tag of an unsolicited Go->Dart push. It never appears in

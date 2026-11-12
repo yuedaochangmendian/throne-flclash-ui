@@ -20,6 +20,9 @@ Future<bool> _kernelOp(BoxController box, Future<void> Function() body) async {
 }
 
 extension ProfilesApi on BoxController {
+  // Profile reads that Go answers from the JSON documents (ADR 0002 phase 3d, PR-3).
+  // When the FFI driver is attached these go through the action bus; the channel
+  // fallback keeps editor screens working before the VPN starts.
   Future<dynamic> profileDecodeIntent(String uri) =>
       call('profiles.decodeIntent', {'uri': uri});
   Future<dynamic> profileAutoSelectorInfo(dynamic id) =>
@@ -57,12 +60,18 @@ extension ProfilesApi on BoxController {
       call('profiles.nodeLink', {'group': group, 'tag': tag, 'json': nodeJson});
   Future<dynamic> profileNodeDelete(dynamic id) =>
       call('profiles.nodeDelete', {'id': id});
-  Future<dynamic> profileNodeConfig(dynamic id) =>
-      call('profiles.nodeConfig', {'id': id});
+  Future<dynamic> profileNodeConfig(dynamic id) async {
+    final k = kernel.attached;
+    if (k != null) return k.invoke<Object?>(ActionMethod.profileNodeConfig, data: {'id': id});
+    return call('profiles.nodeConfig', {'id': id});
+  }
   Future<dynamic> profileNodeUpdate(dynamic id, String name, String content) =>
       call('profiles.nodeUpdate', {'id': id, 'name': name, 'content': content});
-  Future<dynamic> profileNodeTuningInfo(dynamic id) =>
-      call('profiles.nodeTuningInfo', {'id': id});
+  Future<dynamic> profileNodeTuningInfo(dynamic id) async {
+    final k = kernel.attached;
+    if (k != null) return k.invoke<Object?>(ActionMethod.profileNodeTuningInfo, data: {'id': id});
+    return call('profiles.nodeTuningInfo', {'id': id});
+  }
   Future<dynamic> profileNodeTuningSave(dynamic id, Json value) =>
       call('profiles.nodeTuningSave', {'id': id, 'value': value});
   Future<dynamic> profileRead(dynamic id) => call('profiles.read', {'id': id});

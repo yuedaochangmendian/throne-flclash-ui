@@ -314,7 +314,11 @@ class BoxController extends ChangeNotifier {
     }, {'visible': _dataOwners[data]?.isNotEmpty == true}));
   }
 
-  Future<Json> profileStats(int id) => _profileStats.putIfAbsent(id, () async => json(await call('profiles.stats', {'id': id})));
+  Future<Json> profileStats(int id) => _profileStats.putIfAbsent(id, () async {
+    final k = kernel.attached;
+    if (k != null) return json(await k.invoke<Object?>(ActionMethod.profileStats, data: {'id': id}));
+    return json(await call('profiles.stats', {'id': id}));
+  });
 
   Future<Uint8List?> appIcon(String package) => appIcons.putIfAbsent(package, () async {
     try { return await call('apps.icon', {'package': package}) as Uint8List?; }
