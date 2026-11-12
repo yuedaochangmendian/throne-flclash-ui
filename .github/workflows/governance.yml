@@ -1,17 +1,10 @@
 name: Repository governance
 on:
   schedule:
-    # Monday 03:23 UTC. Repository governance changes are also checked on push.
+    # Monday 03:23 UTC. A push-time check duplicated CI's workflow-path
+    # validation; the audit reads remote repo state, so weekly + manual is enough.
     - cron: '23 3 * * 1'
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - 'tools/diagnostics/github_governance.py'
-      - 'tools/diagnostics/github_governance_baseline.json'
-      - '.github/workflows/governance.yml'
-      - 'docs/github-workflow.md'
 concurrency:
   group: governance
   cancel-in-progress: true

@@ -36,6 +36,9 @@ concurrency:
   cancel-in-progress: false
 permissions:
   contents: write
+  # Download the build-inputs artifact produced by the CI run that triggered
+  # this release (cross-workflow artifact access requires actions: read).
+  actions: read
 jobs:
   release:
     name: Build and publish a release
@@ -213,6 +216,51 @@ jobs:
         env:
           NOTES_VERSION: ${{ steps.version.outputs.notes_version }}
         run: bash buildScript/release_notes.sh "$NOTES_VERSION" > /dev/null
+      # CI already built the Gradle inputs for this exact commit. Reuse them
+      # instead of rebuilding the Flutter AAR, ThroneCore, routeprofiles and
+      # dashboard. Only the automatic preview path has a triggering CI run;
+      # manual dispatch and tag pushes still build everything. A missing or
+      # expired artifact falls back to a full build (see android-build).
+      #
+      # The artifact is treated as untrusted input (CodeQL's "artifact
+      # poisoning" class): it is never executed, and the next step refuses it
+      # unless the CI run it came from built the same commit this job checked
+      # out. Only build outputs are read back, never scripts.
+      - name: Reuse CI build inputs
+        id: reuse
+        if: ${{ github.event_name == 'workflow_run' && steps.version.outputs.skip != 'true' }}
+        continue-on-error: true
+        uses: actions/download-artifact@v7
+        with:
+          name: build-inputs
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: build-inputs
+      - name: Resolve reused inputs
+        id: inputs
+        if: ${{ steps.version.outputs.skip != 'true' }}
+        run: |
+          set -euo pipefail
+          ok=false
+          if [ "${{ github.event_name }}" = "workflow_run" ] && [ "${{ steps.reuse.outcome }}" = "success" ]; then
+            # The artifact is only usable when it was produced by the CI run of
+            # the commit under build. Anything else is discarded.
+            ci_sha='${{ github.event.workflow_run.head_sha }}'
+            head_sha=$(git rev-parse HEAD)
+            if [ "$ci_sha" = "$head_sha" ]; then
+              # Copy the artifact's app/ and flutter/ trees over the checkout;
+              # the paths are build outputs inside directories that already exist.
+              cp -a build-inputs/. .
+              rm -rf build-inputs
+              ok=true
+              echo "Reusing build inputs built from $ci_sha."
+            else
+              echo "::warning::CI artifact is from $ci_sha but this build is $head_sha; discarding it."
+              rm -rf build-inputs
+            fi
+          fi
+          echo "ok=$ok" >> "$GITHUB_OUTPUT"
+          [ "$ok" = true ] || echo "::notice::CI build inputs unavailable; running a full build."
       - name: Build
         if: steps.version.outputs.skip != 'true'
         uses: ./.github/actions/android-build
@@ -221,6 +269,7 @@ jobs:
           channel: ${{ steps.version.outputs.channel }}
           build-number: ${{ steps.version.outputs.build_number }}
           sign: 'true'
+          reuse-inputs: ${{ steps.inputs.outputs.ok }}
       - name: Release assets
         if: steps.version.outputs.skip != 'true'
         run: python3 buildScript/release_assets.py app/build/outputs/apk/oss/release dist ${{ steps.version.outputs.channel }}

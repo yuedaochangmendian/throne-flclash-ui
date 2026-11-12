@@ -16,7 +16,7 @@ Flutter module 位于 `flutter/`，Gradle 主工程在仓库根目录；发布�
 
 ## 2. 本地验证命令
 
-CI（`ci.yml`）在每次 push 与 PR 上运行以下检查，提交前建议在本地跑一遍（Flutter 命令在 `flutter/` 目录，其余在仓库根目录）：
+CI（`ci.yml`）在功能分支的 PR 与 `main` 的 push 上运行以下检查，提交前建议在本地跑一遍（Flutter 命令在 `flutter/` 目录，其余在仓库根目录）：
 
 ```bash
 # Flutter 静态分析与测试
@@ -50,7 +50,7 @@ CI 还会用 NDK 的 clang 检查 cgo preamble，并要求 `flutter analyze --fa
 
 > GitHub 分支、发版、tag、release 与更新器的完整规则见 [docs/github-workflow.md](docs/github-workflow.md)；本节是日常提交细则。
 
-- 从最新 `main` 创建**功能分支**，在分支上提交并推送；CI 对每次 push 与 PR 都会运行。
+- 从最新 `main` 创建**功能分支**，在分支上提交并推送；CI 通过 Pull Request 验证功能分支，`main` 另有 push CI。
 - 通过 **Pull Request** 合并，合并前需 CI 全绿；**不要直接向 `main` 推送提交**。`main` 的推进与发版由维护者按 `docs/release-runbook.md` 执行。
 - 提交信息写清改动目的；涉及行为规范变更时按第 4 节同步 `openspec/`。
 - PR 请填写 `.github/PULL_REQUEST_TEMPLATE.md` 的验证清单；涉及运行时行为时对照 `docs/device-checklist.md`。

@@ -20,6 +20,13 @@ inputs:
     description: sign release builds (true/false)
     required: false
     default: 'false'
+  reuse-inputs:
+    description: >-
+      Skip the four input-preparation steps (Flutter AAR, ThroneCore, routeprofiles,
+      dashboard) because Release downloaded the CI-built inputs. Fails fast if any
+      input is missing, so a partial artifact can never produce a broken APK.
+    required: false
+    default: 'false'
 runs:
   using: composite
   steps:
@@ -58,6 +65,7 @@ runs:
         flutter-version: '3.47.9'
         cache: true
     - name: Flutter AAR
+      if: inputs.reuse-inputs != 'true'
       shell: bash
       run: |
         set -euo pipefail
@@ -65,15 +73,37 @@ runs:
         flutter pub get
         flutter build aar --no-debug --no-profile
     - name: ThroneCore AAR and schema
+      if: inputs.reuse-inputs != 'true'
       uses: ./.github/actions/throne-core
     - name: Fetch routeprofiles snapshot
+      if: inputs.reuse-inputs != 'true'
       uses: ./.github/actions/routeprofiles
     - name: Fetch sing-box dashboard
+      if: inputs.reuse-inputs != 'true'
       uses: ./.github/actions/sing-box-dashboard
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v6
       with:
         cache-provider: basic
+    - name: Verify reused build inputs
+      if: inputs.reuse-inputs == 'true'
+      shell: bash
+      run: |
+        set -euo pipefail
+        missing=0
+        check() {
+          if [ ! -e "$1" ]; then
+            echo "::error::reused build input is missing: $1"
+            missing=1
+          fi
+        }
+        check flutter/build/host/outputs/repo
+        check app/libs/ThroneCore.aar
+        check app/src/main/assets/schema/sing-box.json
+        check app/src/main/assets/routeprofiles/srslist.h
+        check app/src/main/assets/sb-dashboard
+        [ "$missing" = 0 ] || exit 1
+        echo "Reused CI build inputs are complete."
     - name: Gradle build
       shell: bash
       env:

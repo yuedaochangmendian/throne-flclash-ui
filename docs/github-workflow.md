@@ -2,7 +2,7 @@
 
 本文是仓库在 GitHub 上的**唯一流程基准**：分支、PR、发版、tag、release、更新器契约与 CI 职责。`CONTRIBUTING.md` 第 3 节与 `docs/release-runbook.md` 是它的执行细则，冲突时以本文为准。配置真源是仓库内文件（`nb4a.properties`、`.github/workflows/`、`buildScript/`），本文不复制具体数值，只固定规则。
 
-配套自动校验：`tools/diagnostics/github_governance.py`（`Repository governance` workflow 每周运行，治理文件改动时也会立即运行）。**新增违规会阻断，历史遗留列在 `github_governance_baseline.json`，修复一项就从基线删一项。**
+配套自动校验：`tools/diagnostics/github_governance.py`（`Repository governance` workflow 每周运行，也可手动触发）。**新增违规会阻断，历史遗留列在 `github_governance_baseline.json`，修复一项就从基线删一项。**
 
 ## 1. 分支模型
 
@@ -20,7 +20,7 @@
 ## 2. Pull Request
 
 - 填写 `.github/PULL_REQUEST_TEMPLATE.md` 的全部验证清单；涉及桥接方法／事件时同步 Dart 与 Kotlin 两端并核对 `docs/bbox-bridge.md`、`Capabilities.kt`。
-- 合并前 CI 全绿（`ci.yml`：Kotlin 单测与 debug 构建、Flutter analyze / test / 覆盖率下限、`channel_audit`、`symbol_audit`、`settings_audit`、`ffi_regression_test`、`generated_models_check`、`py_syntax_check`、cgo preamble、AAR API 扫描、Prism drift）。
+- 合并前 CI 全绿（`ci.yml`：Kotlin 单测与 debug 构建、Flutter analyze / test / 覆盖率下限、`channel_audit`、`symbol_audit`、`settings_audit`、`settings_contract`、`ffi_regression_test`、`generated_models_check`、`py_syntax_check`、cgo preamble、AAR API 与通道审计）。
 - 依赖升级由 `dependabot.yml` 每周发起；合并前确认不引入 SDK / AGP / Kotlin 版本跨越，关闭时不留分支。
 - CI 因外部依赖故障变红**不等于代码不合格**；按第 7 节处理，不得为凑绿而跳过签名、校验或直接推送 `main`。
 
@@ -63,17 +63,18 @@
 
 | workflow | 触发 | 职责 | 对外产物 |
 |---|---|---|---|
-| `ci.yml` | push `main` / PR to `main` | 轻量变更检测后运行静态分析、单测、契约审计；文档-only 变更走快速成功路径，artifact 只在失败或 main 上传 | 无（按需报告 artifact） |
-| `release.yml` | CI `workflow_run` / `workflow_dispatch` / push `v*` tag | CI 成功后，仅在存在应用或构建输入变化时自动发布 preview；同时统一处理手动 preview/stable、签名、资产和 release | GitHub release / prerelease |
-| `governance.yml` | 每周 / 手动 / 治理文件改动 | 校验仓库状态是否符合本文 | Step Summary |
+| `ci.yml` | push `main` / PR to `main` | 轻量变更检测后运行静态分析、单测、契约审计；文档-only 变更走全跳过成功路径 | `build-inputs`（仅 `main` 的 push：Flutter AAR、ThroneCore、schema、routeprofiles、dashboard，供 Release 复用）/ `flutter-coverage`（仅 main 或失败） |
+| `release.yml` | CI `workflow_run` / `workflow_dispatch` / push `v*` tag | CI 成功后，仅在存在应用或构建输入变化时自动发布 preview；自动路径复用 CI 的 `build-inputs`、只重跑 release Gradle 任务，其余路径完整构建；统一处理手动 preview/stable、签名、资产和 release | GitHub release / prerelease |
+| `governance.yml` | 每周 / 手动 | 校验仓库状态是否符合本文 | Step Summary |
 
-仅涉及文档的 PR 会由 `Detect changed areas` 识别，两个必需 Job 以轻量成功路径结束，不启动 Android/Flutter 构建；同样的文档-only 提交合并到 `main` 后也不会生成新的 preview。
+仅涉及文档的 PR 会由 `Detect changed areas` 识别，两个必需 Job 的所有步骤被跳过、以成功结束，不启动 Android/Flutter 构建；同样的文档-only 提交合并到 `main` 后也不会生成新的 preview。
 
 `release.yml` 的自动、dispatch 和 tag 路径都会处理 preview：自动/dispatch 按距最近 stable tag 的提交数计算 `-pre.N`，tag 路径使用 tag 中的 `-pre.N`。自动路径只在触发提交仍是当前 `main` 时运行，并在 tag 已存在时安全跳过；手动路径在 tag 已存在时拒绝复用。所有 preview 都不得占用 `releases/latest`，也不得携带 `throne-update.json`。
 
 ## 7. 降级路径（外部依赖故障）
 
 - GitHub releases 下载端点可能返回 504（2026-11-08 的 `kotlin-compiler-embeddable-2.2.21.jar` 持续故障），导致 `ci.yml` / `release.yml` 的 Gradle 构建失败。**这是外部故障，不是代码问题**；`Repository governance` 不依赖 Gradle/NDK/Flutter，仍可运行。
+- 自动 preview 复用 CI 的 `build-inputs` artifact（仅 `main` push 的 CI 上传；按触发 CI run id 下载，并校验该 run 的 `head_sha` 与本次构建的 `HEAD` 完全一致，不一致即丢弃、回退完整构建）。artifact 只被当作构建输入读取、从不执行其中任何脚本；`android-build` 的 `reuse-inputs` 断言保证不会用残缺输入打出 APK。
 - 已构建并签名的产物由 `publish_release.sh` 保留为 `Flrone-<tag>-publish-failed` artifact；按 `docs/release-runbook.md` 的本地补发路径收口（草稿按 release id 查询、`target_commitish` 写目标 sha、资产走 `uploads.github.com`）。
 - 需要读取 release 资产时，`api.github.com/repos/.../releases/assets/<id>` 的 302 `Location`（`release-assets.githubusercontent.com` 签名直连）通常仍可用，可配合 HTTP Range；不要因为 `github.com/.../releases/download/` 返回 504 就判定资产丢失。
 - **就地转正**仅作为 CI 完全不可用时的临时手段，且必须：补 `throne-update.json`、改 `prerelease=false` + `make_latest=true`、重写发行说明并明确标注 APK 仍是 preview 构建；CDN 恢复后补发标准 stable 版本并在 CHANGELOG 补对应段落。
