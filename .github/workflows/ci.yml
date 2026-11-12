@@ -81,6 +81,13 @@ jobs:
         run: |
           CLANG="$ANDROID_HOME/ndk/28.2.13676358/toolchains/llvm/prebuilt/linux-x86_64/bin/clang"
           python3 tools/diagnostics/check_preamble.py
+      # A preamble that compiles still links nothing if the .c providing those
+      # declarations lives outside the package directory: Android accepts an .so
+      # with undefined symbols and the app then dies at dlopen. This gate is what
+      # three green prereleases were missing (see cgo_linkage.py).
+      - name: Check cgo C linkage
+        if: ${{ needs.changes.outputs.code == 'true' }}
+        run: python3 tools/diagnostics/cgo_linkage.py
       # Gradle's build inputs are identical for debug and release. Release
       # reuses them (see release.yml) instead of rebuilding Flutter AAR,
       # ThroneCore, routeprofiles and the dashboard on the same commit.

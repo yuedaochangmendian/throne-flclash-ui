@@ -9,8 +9,16 @@
 // The Room invalidation tracker does not observe writes from outside Room, so
 // Dart asks the host for `data.refresh` after each mutation (see box_api.dart).
 //
-// The SQLite amalgamation in ./sqlite3 is compiled into the gomobile .so by
-// cgo; there is no runtime shared-library dependency and no Go module change.
+// The SQLite amalgamation beside this file is compiled into the gomobile .so by
+// cgo, which builds every .c file in the package directory; there is no runtime
+// shared-library dependency and no Go module change.
+//
+// It has to sit in this directory, not a subdirectory: cgo compiles the C files
+// of the Go package it is invoked for, and an include path alone only lets the
+// preamble compile. Putting sqlite3.c under sqlite3/ made the preamble resolve
+// its declarations while the definitions were never linked, and the .so came out
+// with undefined sqlite3_* symbols that only fail at dlopen on the device —
+// an UnsatisfiedLinkError at app startup, not a build error.
 //
 // The vendored amalgamation is unmodified upstream, currently 3.54.1 (published
 // 2026-10-16, SHA3-256 of sqlite-amalgamation-3540100.zip verified). Upgrade it
@@ -21,7 +29,7 @@
 package mobile
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/sqlite3 -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_ENABLE_FTS4 -DSQLITE_ENABLE_FTS5
+#cgo CFLAGS: -DSQLITE_THREADSAFE=1 -DSQLITE_OMIT_LOAD_EXTENSION -DSQLITE_ENABLE_FTS4 -DSQLITE_ENABLE_FTS5
 #include <stdlib.h>
 #include <string.h>
 #include "sqlite3.h"

@@ -51,7 +51,6 @@ def main() -> int:
         out_c.write_bytes(c_body.encode("utf-8"))
         cmd = [clang, "-fsyntax-only", "-I", str(PATCH),
                "-I", str(PATCH / "dartbridge" / "include"),
-               "-I", str(PATCH / "sqlite3"),
                *target, "-std=c11", "-Werror", str(out_c)]
         r = subprocess.run(cmd, capture_output=True, text=True)
         print(f"{go_file.name}: {'OK' if r.returncode == 0 else 'FAIL'}")
