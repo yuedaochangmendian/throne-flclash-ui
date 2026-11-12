@@ -63,10 +63,9 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
     try {
       final profiles = widget.profileId > 0
           ? [
-              {
-                'id': widget.profileId,
-                'name': widget.profileName,
-              },
+              // The single-profile case reads the kernel's own metadata so the
+              // read-only flag is real, not assumed from the caller's parameters.
+              json(await box.routeGetProfile(widget.profileId)),
             ]
           : rows(json(await box.routeProfiles.list())['profiles']);
       final byProfile = <int, List<Json>>{};
@@ -281,6 +280,58 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
     }
   }
 
+  /// Batch add and reset-to-defaults: the two write paths the list itself does
+  /// not own. `batchAddRules` takes one rule per text line; `resetRouteRules`
+  /// replaces the profile's whole rule set with the Default chain's.
+  List<PopupMenuItem> _menu(BuildContext context) {
+    final canWrite = widget.profileId > 0 && !_readOnly.contains(widget.profileId);
+    return [
+      PopupMenuItem(
+        glyph: AppGlyphs.add,
+        label: context.tr('Batch add rules'),
+        onPressed: canWrite && !_loading ? _batchAdd : null,
+      ),
+      PopupMenuItem(
+        glyph: AppGlyphs.reset,
+        label: context.tr('Reset rules to defaults'),
+        danger: true,
+        onPressed: canWrite && !_loading ? _resetRules : null,
+      ),
+    ];
+  }
+
+  Future<void> _batchAdd() async {
+    final text = await showDialog<String>(
+      context: context,
+      builder: (context) => const _BatchAddDialog(),
+    );
+    if (text == null || text.trim().isEmpty || !mounted) return;
+    final box = context.box;
+    try {
+      await box.routeBatchAddRules(widget.profileId, text);
+      if (mounted) await _load();
+    } catch (error) {
+      if (mounted) box.report(error);
+    }
+  }
+
+  Future<void> _resetRules() async {
+    final ok = await confirm(
+      context,
+      'Reset rules to defaults?',
+      message: context.tr('Every rule in this profile is replaced by the Default chain.'),
+      action: 'Reset',
+    );
+    if (!ok || !mounted) return;
+    final box = context.box;
+    try {
+      await box.routeResetRules(widget.profileId);
+      if (mounted) await _load();
+    } catch (error) {
+      if (mounted) box.report(error);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final filtered = _filtered;
@@ -291,6 +342,7 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
         onSearch: (query) => setState(() => _query = query),
         query: _query,
       ),
+      titleMenuItems: _menu(context),
       iconActions: [
         if (_selecting) ...[
           IconButtonData(
@@ -421,6 +473,53 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
                   );
                 },
               ),
+      ),
+    );
+  }
+}
+
+/// The batch-add sheet: one rule per line, the same `prefix:value -> outbound`
+/// format the profile's text view uses. Pops the raw text so the caller runs
+/// the server-side parser and reports per-line errors.
+class _BatchAddDialog extends StatefulWidget {
+  const _BatchAddDialog();
+  @override
+  State<_BatchAddDialog> createState() => _BatchAddDialogState();
+}
+
+class _BatchAddDialogState extends State<_BatchAddDialog> {
+  final _controller = TextEditingController();
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: context.tr('Batch add rules'),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(context.tr('Cancel')),
+        ),
+        FilledButton(
+          onPressed: () => Navigator.pop(context, _controller.text),
+          child: Text(context.tr('Add')),
+        ),
+      ],
+      child: SizedBox(
+        width: 360,
+        child: TextField(
+          controller: _controller,
+          maxLines: 8,
+          minLines: 4,
+          decoration: InputDecoration(
+            hintText: 'domain:example.com -> proxy\nip:1.2.3.4 -> direct',
+            helperText: context.tr('One rule per line.'),
+          ),
+        ),
       ),
     );
   }

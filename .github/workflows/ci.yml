@@ -106,14 +106,14 @@ jobs:
       # The vendored Prism UI copy is measured against the upstream commit it was
       # actually taken from, so drift is visible on every code push. Two failures
       # are possible and both are deliberate: an upstream file dropped locally
-      # (never intended), and more than the one recorded local patch
-      # (banner.dart).
+      # (never intended), and a diverged set that is not the patch set recorded
+      # below (see docs/prism-upstream.md).
       - name: Prism UI drift check
         if: ${{ needs.changes.outputs.code == 'true' }}
         run: |
           python3 tools/diagnostics/prism_drift.py check --json prism_drift.json \
-            --fail-on removed --max-diverged 4 \
-            --expect-diverged banner.dart,card.dart,card_surface.dart,press_surface.dart
+            --fail-on removed --max-diverged 6 \
+            --expect-diverged banner.dart,card.dart,card_surface.dart,press_surface.dart,prism_list.dart,route_motion_hold.dart
       - name: Upload Prism UI drift report
         if: ${{ always() && needs.changes.outputs.code == 'true' && (github.event_name == 'push' || failure()) }}
         uses: actions/upload-artifact@v7

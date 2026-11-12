@@ -142,21 +142,17 @@ object RouteManager {
         }
     }
 
-    /** Inserts when [p] has no id (and assigns it), else upserts the row; the rules are replaced in list order. */
+    /**
+     * Insert/upsert a profile and replace its rules in list order.
+     *
+     * ADR 0002 phase 3c: once the kernel has established the JSON documents it is the ONLY
+     * writer, so this throws rather than writing Room behind its back — a second writer is
+     * how one side silently loses the other's edit. Callers reach the kernel through the
+     * action bus; `RouteManager` keeps the synchronous reads that `ConfigGenerator` needs.
+     */
     fun save(p: RouteProfile): Long {
-        if (RouteJsonStore.ready) {
-            val entity = RouteProfileEntity.of(p)
-            if (p.id <= 0L) {
-                entity.id = 0L
-                p.id = RouteJsonStore.insertProfile(entity)
-            } else if (RouteJsonStore.updateProfile(entity) == 0) {
-                RouteJsonStore.insertProfile(entity)
-            }
-            RouteJsonStore.deleteRules(p.id)
-            RouteJsonStore.insertRules(
-                p.rules.mapIndexed { index, rule -> RouteRuleEntity.of(p.id, index, rule) },
-            )
-            return p.id
+        check(!RouteJsonStore.ready) {
+            "route documents are kernel-owned; save through the action bus, not Room"
         }
         SagerDatabase.instance.runInTransaction {
             val entity = RouteProfileEntity.of(p)
@@ -179,12 +175,8 @@ object RouteManager {
      * routed by it follow the global profile again, and the group owning it stops importing (RoutesRepo::forgetDeleted).
      */
     fun delete(id: Long): Boolean {
-        if (RouteJsonStore.ready) {
-            val ids = RouteJsonStore.allIds()
-            if (id !in ids || ids.size <= 1) return false
-            RouteJsonStore.deleteProfile(id)
-            if (DataStore.currentRouteId == id) DataStore.currentRouteId = (ids - id).first()
-            return true
+        check(!RouteJsonStore.ready) {
+            "route documents are kernel-owned; delete through the action bus, not Room"
         }
         val remaining = SagerDatabase.instance.runInTransaction(Callable {
             val ids = dao.allIds()
@@ -199,10 +191,9 @@ object RouteManager {
     }
 
     fun ensureDefault() {
-        if (RouteJsonStore.ready) {
-            if (RouteJsonStore.count() == 0L) save(RouteProfile.defaultProfile())
-            return
-        }
+        // The kernel seeds its own Default profile when the document set is empty
+        // (handleGetRouteProfiles), so there is nothing to do on this side.
+        if (RouteJsonStore.ready) return
         SagerDatabase.instance.runInTransaction {
             if (dao.count() == 0L) save(RouteProfile.defaultProfile())
         }

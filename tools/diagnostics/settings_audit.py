@@ -155,6 +155,14 @@ def camel_to_snake(name: str) -> str:
     return re.sub(r"(?<!^)(?=[A-Z])", "_", name).lower()
 
 
+def go_schema_keys() -> set[str]:
+    """Bridge keys from the generated settings_schema.go."""
+    go_file = REPO_ROOT / "buildScript/core-patch/core/mobile/settings_schema.go"
+    if not go_file.exists():
+        return set()
+    return set(re.findall(r'bridgeKey: "([A-Za-z0-9_]+)"', go_file.read_text(encoding="utf-8")))
+
+
 def read(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
@@ -224,12 +232,18 @@ def main() -> int:
         key for key in ui_controls if key not in bridge and key not in NON_SETTING and key not in OVERLAY_SETTING)
     restored_missing_control = sorted(key for key in ui_restored if key not in ui_controls)
 
+    # Go schema column: the generated settings_schema.go must cover the same bridge keys.
+    go_missing = sorted(key for key in bridge if key not in go_schema_keys())
+    go_extra = sorted(key for key in go_schema_keys() if key not in bridge)
+
     gaps = {
         "registry store keys with no schema entry": registry_missing,
         "Key constants with no schema entry": constants_missing,
         "schema bridge keys with no Setting* control": bridge_missing_ui,
         "Setting* keys with no schema entry": ui_missing_bridge,
         "restoreDefaults keys with no control on the page": restored_missing_control,
+        "schema keys missing from Go settings_schema.go": go_missing,
+        "Go settings_schema.go keys not in Kotlin schema": go_extra,
     }
 
     if args.summary:

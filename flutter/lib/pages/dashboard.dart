@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
+// ignore: unnecessary_import — widgets.dart only re-exports ScrollCacheExtent on newer SDKs.
 import 'package:flutter/rendering.dart' show ScrollCacheExtent;
 import '../widgets.dart';
 import '../components/dashboard_editor.dart';

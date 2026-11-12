@@ -42,6 +42,7 @@ import io.flrone.bridge.BboxBackup
 import io.flrone.bridge.BboxBridge
 import io.flrone.bridge.BboxCommands
 import io.flrone.bridge.RoomToJsonMigration
+import io.flrone.bridge.UiDocuments
 import io.flrone.bridge.BboxEgress
 import io.flrone.bridge.BboxGroupsWire
 import io.flrone.bridge.BboxKernel
@@ -52,7 +53,6 @@ import io.flrone.bridge.BboxMode
 import io.flrone.bridge.BboxProbeSession
 import io.flrone.bridge.BboxProfileWire
 import io.flrone.bridge.BboxProfiles
-import io.flrone.bridge.BboxRoutes
 import io.flrone.bridge.BboxScanChunks
 import io.flrone.bridge.BboxSpeedTest
 import io.flrone.bridge.BboxTestSession
@@ -953,18 +953,46 @@ class ThroneBoxBridge(
                     result.respondIo {
                         val file = activity.getDatabasePath(Key.DB_PROFILE)
                         val version = SagerDatabase.instance.openHelper.readableDatabase.version
-                        // ADR 0002 phase 3b: the JSON route documents live beside the
-                        // database. Publishing the directory here is what lets
-                        // RouteManager prefer them; without it every read stays on Room.
-                        RouteJsonStore.directory = java.io.File(file.parentFile, "documents")
+                        // ADR 0002 phase 3c: the kernel owns the route documents and writes
+                        // them under its base path, which the host sets to filesDir in
+                        // CoreRuntime.setup. This side only reads, so the two must name the
+                        // same directory or every read would silently fall back to Room.
+                        RouteJsonStore.directory =
+                            java.io.File(activity.filesDir, "documents")
                         mapOf("path" to file.absolutePath, "version" to version)
                     }
                 }
                 // ADR 0002 phase 2: the one-time Room -> JSON export. Read-only
                 // and idempotent; Dart writes the documents atomically and keeps
                 // Room as its fallback until all seven files parse.
+                // ADR 0002 phase 3c: seed the kernel's route documents from Room.
+                //
+                // The kernel is the ONLY writer once the documents exist, so this runs at
+                // most once: if either file is already there the answer is a plain "no",
+                // and the kernel's copy wins. Old-version compatibility is deliberately
+                // dropped here — the seed copies Room's own columns, so a fresh install
+                // and an upgrade produce the same document set.
                 "data.documents" -> result.respondIo {
-                    mapOf("json" to RoomToJsonMigration.export())
+                    val dir = java.io.File(activity.filesDir, "documents")
+                    val profiles = java.io.File(dir, "route_profiles.json")
+                    val rules = java.io.File(dir, "route_rules.json")
+                    if (profiles.isFile || rules.isFile) {
+                        // Seed the UI documents (per-file skip) on every attach.
+                        RoomToJsonMigration.seedUiDocuments(dir,
+                            preferences.getString("settings", null),
+                            preferences.getString("value", null))
+                        UiDocuments.directory = dir
+                        publishHostFacts(dir)
+                        mapOf("seeded" to false)
+                    } else {
+                        RoomToJsonMigration.seed(dir)
+                        RoomToJsonMigration.seedUiDocuments(dir,
+                            preferences.getString("settings", null),
+                            preferences.getString("value", null))
+                        UiDocuments.directory = dir
+                        publishHostFacts(dir)
+                        mapOf("seeded" to true)
+                    }
                 }
                 "ffi.mode" -> {
                     val enabled = call.argument<Boolean>("enabled") == true
@@ -1587,9 +1615,14 @@ class ThroneBoxBridge(
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && DataStore.serviceMode == Key.MODE_VPN
 
     private fun batteryExempt(): Boolean = runCatching {
-        val power = app.getSystemService(Context.POWER_SERVICE) as PowerManager
-        power.isIgnoringBatteryOptimizations(app.packageName)
+        val power = activity.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+        power.isIgnoringBatteryOptimizations(activity.packageName)
     }.getOrDefault(false)
+
+    /** Publishes host facts (batteryExempt) so Go's settingsWire can read them. */
+    private fun publishHostFacts(dir: java.io.File) {
+        UiDocuments.writeHostFacts(mapOf("batteryExempt" to batteryExempt()))
+    }
 
     /**
      * The share / open-with payload, delivered once per intent: the first `intent.take` after an
@@ -1741,7 +1774,8 @@ class ThroneBoxBridge(
      */
     private fun settingsWire(): Map<String, Any?> {
         val result = LinkedHashMap<String, Any?>()
-        result.putAll(readJsonMap(SETTINGS_KEY))
+        // Overlay layer: UiDocuments (Go-owned) with prefs fallback for bridge mode.
+        result.putAll(UiDocuments.readUiSettings().ifEmpty { readJsonMap(SETTINGS_KEY) })
         result.putAll(ThroneSettings.read())
         result["fontSize"] = (result["fontSize"] as? Number)?.toInt() ?: 0
         result["perAppManaged"] = false

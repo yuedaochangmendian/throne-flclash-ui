@@ -23,6 +23,44 @@ enum ActionMethod {
   cancelSpeedTest,
   speedTestServers,
   speedTestOutbounds,
+
+  // Phase 3c: routing. Go owns the route documents; Kotlin keeps a read-only view.
+  getRouteProfiles,
+  getRouteProfile,
+  saveRouteProfile,
+  deleteRouteProfile,
+  setCurrentRoute,
+  getRouteRules,
+  saveRouteRules,
+  batchAddRules,
+  resetRouteRules,
+  getGlobalRules,
+  saveGlobalRules,
+  setGlobalRuleDisabled,
+  deleteGlobalRule,
+
+  // Phase 3d PR-3: profile reads. Go answers these from the JSON documents;
+  // methods that need the Kotlin outbound model (share links, full config) stay on the channel.
+  profileStats,
+  profileNodeInfo,
+  profileNodeConfig,
+  profileNodeTuningInfo,
+
+  // Phase 3d PR-4: simple profile mutations. Complex writes (save, createNode,
+  // commitNode, updateNode, groupSettings, autoSelector) need the Kotlin outbound
+  // model and stay on the channel.
+  profileReorder,
+  profileNodeDelete,
+  profileClearTestResults,
+  profileClearTraffic,
+
+  // Phase 3e PR-3: settings mutations. Go reads/writes the Room settings table
+  // and the UI documents, returning the full wire map after every mutation.
+  settingsGet,
+  settingsSet,
+  settingsPatch,
+  settingsReset,
+  preferencesSet,
 }
 
 /// `message` is the tag of an unsolicited Go->Dart push. It never appears in

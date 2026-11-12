@@ -20,6 +20,9 @@ Future<bool> _kernelOp(BoxController box, Future<void> Function() body) async {
 }
 
 extension ProfilesApi on BoxController {
+  // Profile reads that Go answers from the JSON documents (ADR 0002 phase 3d, PR-3).
+  // When the FFI driver is attached these go through the action bus; the channel
+  // fallback keeps editor screens working before the VPN starts.
   Future<dynamic> profileDecodeIntent(String uri) =>
       call('profiles.decodeIntent', {'uri': uri});
   Future<dynamic> profileAutoSelectorInfo(dynamic id) =>
@@ -55,21 +58,36 @@ extension ProfilesApi on BoxController {
 
   Future<dynamic> profileNodeLink(String group, String tag, dynamic nodeJson) =>
       call('profiles.nodeLink', {'group': group, 'tag': tag, 'json': nodeJson});
-  Future<dynamic> profileNodeDelete(dynamic id) =>
-      call('profiles.nodeDelete', {'id': id});
-  Future<dynamic> profileNodeConfig(dynamic id) =>
-      call('profiles.nodeConfig', {'id': id});
+  Future<dynamic> profileNodeDelete(dynamic id) async {
+    final k = kernel.attached;
+    if (k != null) return k.invoke<Object?>(ActionMethod.profileNodeDelete, data: {'id': id});
+    return call('profiles.nodeDelete', {'id': id});
+  }
+  Future<dynamic> profileNodeConfig(dynamic id) async {
+    final k = kernel.attached;
+    if (k != null) return k.invoke<Object?>(ActionMethod.profileNodeConfig, data: {'id': id});
+    return call('profiles.nodeConfig', {'id': id});
+  }
   Future<dynamic> profileNodeUpdate(dynamic id, String name, String content) =>
       call('profiles.nodeUpdate', {'id': id, 'name': name, 'content': content});
-  Future<dynamic> profileNodeTuningInfo(dynamic id) =>
-      call('profiles.nodeTuningInfo', {'id': id});
+  Future<dynamic> profileNodeTuningInfo(dynamic id) async {
+    final k = kernel.attached;
+    if (k != null) return k.invoke<Object?>(ActionMethod.profileNodeTuningInfo, data: {'id': id});
+    return call('profiles.nodeTuningInfo', {'id': id});
+  }
   Future<dynamic> profileNodeTuningSave(dynamic id, Json value) =>
       call('profiles.nodeTuningSave', {'id': id, 'value': value});
   Future<dynamic> profileRead(dynamic id) => call('profiles.read', {'id': id});
-  Future<bool> profileClearTestResults(dynamic id) =>
-      act('profiles.clearTestResults', {'id': id});
-  Future<bool> profileClearTraffic(dynamic id) =>
-      act('profiles.clearTraffic', {'id': id});
+  Future<bool> profileClearTestResults(dynamic id) async {
+    final k = kernel.attached;
+    if (k != null) { await k.invoke<Object?>(ActionMethod.profileClearTestResults, data: {'id': id}); return true; }
+    return act('profiles.clearTestResults', {'id': id});
+  }
+  Future<bool> profileClearTraffic(dynamic id) async {
+    final k = kernel.attached;
+    if (k != null) { await k.invoke<Object?>(ActionMethod.profileClearTraffic, data: {'id': id}); return true; }
+    return act('profiles.clearTraffic', {'id': id});
+  }
   Future<bool> profileDelete(dynamic id) => act('profiles.delete', {'id': id});
   Future<bool> profileSwitchRelative(int step) async {
     if (kernel.ffiMode) {
@@ -95,8 +113,11 @@ extension ProfilesApi on BoxController {
   Future<dynamic> profileNodeCreate(Json value) =>
       call('profiles.nodeCreate', value);
   Future<dynamic> profileSave(Json value) => call('profiles.save', value);
-  Future<bool> profileReorder(List<dynamic> ids) =>
-      act('profiles.reorder', {'ids': ids});
+  Future<bool> profileReorder(List<dynamic> ids) async {
+    final k = kernel.attached;
+    if (k != null) { await k.invoke<Object?>(ActionMethod.profileReorder, data: {'ids': ids}); return true; }
+    return act('profiles.reorder', {'ids': ids});
+  }
   Future<bool> profileScanClose(dynamic session) =>
       act('profiles.scan.close', {'session': session});
   Future<dynamic> profileScan(dynamic session, String text) =>
@@ -128,31 +149,129 @@ extension ProfilesApi on BoxController {
 }
 
 extension RoutesApi on BoxController {
-  // The route surface after the Routing page became the rule list.
+  // The route surface, ADR 0002 phase 3c.
   //
-  // `routes.list` survives (RouteProfilesSource falls back to it, and the
-  // per-profile rule screen resolves profile names through it), and
-  // `setGlobalRuleDisabled` survives because the pool rule's sheet still lets a
-  // single configuration keep a rule off. The rest of the profile CRUD
-  // (presets/addPreset/get/save/delete/setCurrent/resetRules/batchAddRules) lost
-  // its only caller with the profile screens. The host handlers all stay: the
-  // tables and the default profile they manage are still what the builder reads.
-  Future<dynamic> routeList() => call('routes.list');
-  Future<dynamic> routeRules(dynamic id) => call('routes.rules', {'id': id});
-  Future<dynamic> routeSaveRules(dynamic id, dynamic rules) =>
-      call('routes.saveRules', {'id': id, 'rules': rules});
+  // The kernel owns the route documents and is their only writer, so every call goes
+  // through the JSON action bus. The channel arms are gone: without the FFI driver there is
+  // no route store to answer from, and old-version compatibility was dropped deliberately.
+  // Two entries stay on the channel because they are not route data: `routes.presets` /
+  // `routes.addPreset` read the bundled snapshot and fetch remote profiles, and
+  // `routes.ruleSets` searches the local rule-set catalog.
+  ThroneKernel _routeKernel() =>
+      kernel.attached ??
+      (throw StateError(
+        'the route store needs the FFI driver; start the VPN first',
+      ));
+
+  Future<dynamic> routeList() =>
+      _routeKernel().invoke<Object?>(ActionMethod.getRouteProfiles);
+
+  Future<dynamic> routeRules(dynamic id) =>
+      _routeKernel().invoke<Object?>(ActionMethod.getRouteRules, data: {'id': id});
+
+  Future<dynamic> routeSaveRules(dynamic id, dynamic rules) => _routeKernel()
+      .invoke<Object?>(ActionMethod.saveRouteRules, data: {'id': id, 'rules': rules});
+
   Future<dynamic> routeRuleSets(String query, int limit) =>
       call('routes.ruleSets', {'query': query, 'limit': limit});
-  Future<dynamic> routeGlobalRules(dynamic profileId) =>
-      call('routes.globalRules', {'profileId': profileId});
+
+  Future<dynamic> routeGlobalRules(dynamic profileId) => _routeKernel()
+      .invoke<Object?>(ActionMethod.getGlobalRules, data: {'profileId': profileId});
+
   Future<dynamic> routeSaveGlobalRules(dynamic rules) =>
-      call('routes.saveGlobalRules', {'rules': rules});
+      _routeKernel().invoke<Object?>(ActionMethod.saveGlobalRules, data: {'rules': rules});
+
   Future<dynamic> routeSetGlobalRuleDisabled(
     dynamic profileId,
     List<dynamic> ids,
-  ) => call('routes.setGlobalRuleDisabled', {'profileId': profileId, 'ids': ids});
+  ) => _routeKernel().invoke<Object?>(ActionMethod.setGlobalRuleDisabled, data: {
+    'profileId': profileId,
+    'ids': ids,
+  });
+
   Future<dynamic> routeDeleteGlobalRule(dynamic id) =>
-      call('routes.deleteGlobalRule', {'id': id});
+      _routeKernel().invoke<Object?>(ActionMethod.deleteGlobalRule, data: {'id': id});
+
+  // --- profile CRUD (ADR 0002 phase 3d, PR-1) --------------------------------
+
+  /// Returns one profile's metadata and its simple-rule text.
+  Future<dynamic> routeGetProfile(dynamic id) =>
+      _routeKernel().invoke<Object?>(ActionMethod.getRouteProfile, data: {'id': id});
+
+  /// Creates or updates a route profile. Absent fields are left untouched.
+  Future<dynamic> routeSaveProfile({
+    dynamic id,
+    String? name,
+    String? defaultOutbound,
+    bool? isRemote,
+    String? remoteUrl,
+    bool? autoUpdate,
+    List<int>? endpointIds,
+    String? rules,
+  }) => _routeKernel().invoke<Object?>(ActionMethod.saveRouteProfile, data: {
+    'id': id,
+    'name': name,
+    'defaultOutbound': defaultOutbound,
+    'isRemote': isRemote,
+    'remoteUrl': remoteUrl,
+    'autoUpdate': autoUpdate,
+    'endpointIds': endpointIds,
+    'rules': rules,
+  });
+
+  /// Deletes a route profile and its rules.
+  Future<dynamic> routeDeleteProfile(dynamic id) =>
+      _routeKernel().invoke<Object?>(ActionMethod.deleteRouteProfile, data: {'id': id});
+
+  /// Marks a profile as the active route.
+  Future<dynamic> routeSetCurrent(dynamic id) =>
+      _routeKernel().invoke<Object?>(ActionMethod.setCurrentRoute, data: {'id': id});
+
+  /// Adds one rule per text line (`prefix:value -> outbound`).
+  Future<dynamic> routeBatchAddRules(dynamic id, String text) =>
+      _routeKernel().invoke<Object?>(ActionMethod.batchAddRules, data: {'id': id, 'text': text});
+
+  /// Resets a profile's rules to the Default chain's.
+  Future<dynamic> routeResetRules(dynamic id) =>
+      _routeKernel().invoke<Object?>(ActionMethod.resetRouteRules, data: {'id': id});
+}
+
+// Settings mutations, ADR 0002 phase 3e. Bus-first with channel fallback:
+// settings must work when the FFI driver is not attached (bridge mode).
+extension SettingsApi on BoxController {
+  Future<dynamic> settingsGet() async {
+    final k = kernel.attached;
+    if (k != null) return k.invoke<Object?>(ActionMethod.settingsGet);
+    return call('settings.get', {});
+  }
+
+  Future<dynamic> settingsSet(String key, dynamic value, {bool restart = false}) async {
+    final k = kernel.attached;
+    if (k != null) {
+      return k.invoke<Object?>(ActionMethod.settingsSet, data: {
+        'key': key, 'value': value, if (restart) 'restart': true,
+      });
+    }
+    return call('settings.set', {'key': key, 'value': value, if (restart) 'restart': true});
+  }
+
+  Future<dynamic> settingsPatch(Map<String, dynamic> values) async {
+    final k = kernel.attached;
+    if (k != null) return k.invoke<Object?>(ActionMethod.settingsPatch, data: {'value': values});
+    return call('settings.patch', {'value': values});
+  }
+
+  Future<dynamic> settingsReset(List<String> keys) async {
+    final k = kernel.attached;
+    if (k != null) return k.invoke<Object?>(ActionMethod.settingsReset, data: {'keys': keys});
+    return call('settings.reset', {'keys': keys});
+  }
+
+  Future<dynamic> preferencesSet(Map<String, dynamic> values) async {
+    final k = kernel.attached;
+    if (k != null) return k.invoke<Object?>(ActionMethod.preferencesSet, data: {'value': values});
+    return call('preferences.set', {'value': values});
+  }
 }
 
 /// The one channel call the data plane still needs: the host answers with the
@@ -161,20 +280,14 @@ extension RoutesApi on BoxController {
 extension DataApi on BoxController {
   Future<dynamic> dataPath() => call('data.path');
 
-  /// The one-time Room -> JSON export (ADR 0002, phase 2). Read-only on the
-  /// host; safe to call on every start because the store is idempotent.
-  Future<dynamic> dataDocuments() => call('data.documents');
-
-  /// Builds the document store from the `data.path` answer and migrates if the
-  /// snapshot is missing. Returns null when the host has not answered yet, so
-  /// callers keep the channel fallback instead of guessing a database path.
-  Future<DocumentStore?> ensureDocumentStore() async {
-    final raw = normalizePlatformValue(await dataPath());
-    final path = raw is Map ? raw['path'] : null;
-    if (path is! String || path.isEmpty) return null;
-    final store = DocumentStore(documentDirectoryOf(path));
-    await store.migrateFromRoom(this);
-    return store;
+  /// Seeds the kernel's route documents from Room (ADR 0002, phase 3c).
+  ///
+  /// The kernel is the only writer once the documents exist, so the host answers
+  /// `{"seeded": false}` and does nothing when they are already there. Called once
+  /// per attach: the kernel cannot seed itself, because Room is Android-only.
+  Future<bool> dataSeedDocuments() async {
+    final raw = normalizePlatformValue(await call('data.documents'));
+    return raw is Map && raw['seeded'] == true;
   }
 }
 

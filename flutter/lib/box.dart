@@ -13,7 +13,6 @@ import 'core/action.dart';
 import 'core/kernel_service.dart';
 import 'core/platform_value.dart';
 import 'core/throne_kernel.dart';
-import 'data/document_store.dart';
 import 'data/route_profiles_source.dart';
 
 part 'box_api.dart';
@@ -315,7 +314,11 @@ class BoxController extends ChangeNotifier {
     }, {'visible': _dataOwners[data]?.isNotEmpty == true}));
   }
 
-  Future<Json> profileStats(int id) => _profileStats.putIfAbsent(id, () async => json(await call('profiles.stats', {'id': id})));
+  Future<Json> profileStats(int id) => _profileStats.putIfAbsent(id, () async {
+    final k = kernel.attached;
+    if (k != null) return json(await k.invoke<Object?>(ActionMethod.profileStats, data: {'id': id}));
+    return json(await call('profiles.stats', {'id': id}));
+  });
 
   Future<Uint8List?> appIcon(String package) => appIcons.putIfAbsent(package, () async {
     try { return await call('apps.icon', {'package': package}) as Uint8List?; }
@@ -438,6 +441,16 @@ class BoxController extends ChangeNotifier {
       // An AppRestart-level write or reset from before this attach; a reload does not clear it.
       applyRequired = result['applyRequired'] as String?;
       ready = true;
+      // ADR 0002 phase 3c: hand the route documents to the kernel once. The host no-ops
+      // when they already exist, so this is safe on every attach; it runs before the first
+      // route read because that read now goes to Go, which needs a document to answer from.
+      try {
+        await dataSeedDocuments();
+      } catch (error) {
+        // A failed seed is not fatal: the kernel answers an empty set and the routing
+        // screen shows the Default profile it creates.
+        report(error);
+      }
       for (final data in _dataOwners.keys) { _syncData(data); }
     } catch (error) {
       startupError = describe(error);
@@ -478,7 +491,7 @@ class BoxController extends ChangeNotifier {
 
   Future<bool> setPreferences(Json values) async {
     try {
-      preferences = json(await call('preferences.set', {'value': values}));
+      preferences = json(await preferencesSet(values));
       _notify([BoxAspect.state, BoxAspect.appearance]);
       return true;
     } catch (error) {
@@ -495,8 +508,7 @@ class BoxController extends ChangeNotifier {
       _notify([BoxAspect.state]);
     }
     try {
-      final saved = json(await call('settings.set', {'key': key, 'value': value,
-        if (restartService) 'restart': true}));
+      final saved = json(await settingsSet(key, value, restart: restartService));
       if (!_disposed) {
         settings = saved;
         if (restartService) {
@@ -516,7 +528,7 @@ class BoxController extends ChangeNotifier {
 
   Future<bool> setSettings(Json values, {bool restart = true}) async {
     try {
-      settings = json(await call('settings.patch', {'value': values}));
+      settings = json(await settingsPatch(values));
       if (restart && running && !remote) applyRequired = 'Restart';
       _notify([BoxAspect.state]);
       return true;
@@ -528,7 +540,7 @@ class BoxController extends ChangeNotifier {
   /// actually changed needs it, and a reset that changed nothing leaves the running core alone.
   Future<bool> resetSettings(List<String> keys) async {
     try {
-      settings = json(await call('settings.reset', {'keys': keys}));
+      settings = json(await settingsReset(keys));
       _notify([BoxAspect.state]);
       return true;
     } catch (error) { report(error); return false; }

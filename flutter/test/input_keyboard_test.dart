@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'package:flrone/core/action.dart';
 import 'package:flrone/main.dart';
 import 'package:flrone/widgets.dart';
 import 'package:flrone/pages/profiles.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'support/errors.dart';
+import 'support/fake_route_kernel.dart';
 
 /// A rule as BboxRoutes.ruleToMap emits it: metadata, the string fields, every list field and the booleans.
 Map<String, Object?> rule({String name = '', String type = 'custom', String action = 'route'}) => {
@@ -63,26 +65,30 @@ void main() {
             'version': 'test', 'coreVersion': 'test', 'preferences': {'locale': 'en'},
             'dashboard': {'status': 'Stopped'},
           };
-        case 'routes.get':
-          return {
-            'id': 1, 'name': 'Default', 'defaultOutbound': 'direct', 'isRemote': false,
-            'remoteUrl': '', 'autoUpdate': false, 'isRaw': false, 'endpointIds': <int>[],
-            'rules': '', 'ruleCount': 1,
-          };
-        case 'routes.list':
-          return {
-            'currentId': 1,
-            'profiles': [
-              {'id': 1, 'name': 'Default', 'current': true, 'isRemote': false, 'isRaw': false,
-                'ruleCount': 1, 'simpleRuleCount': 0},
-            ],
-          };
-        case 'routes.rules':
-          return {'rules': [rule(name: 'Direct LAN')]};
       }
       return null;
     });
     final box = BoxController(channel: channel, events: events.stream);
+    // ADR 0002 phase 3c: the route surface is answered by the action bus.
+    box.kernel.debugAttach(
+      FakeRouteKernel((method, data) => switch (method) {
+        ActionMethod.getRouteProfile => {
+            'id': 1, 'name': 'Default', 'defaultOutbound': 'direct',
+            'isRemote': false, 'remoteUrl': '', 'autoUpdate': false,
+            'isRaw': false, 'endpointIds': <int>[], 'rules': '', 'ruleCount': 1,
+          },
+        ActionMethod.getRouteProfiles => {
+            'currentId': 1,
+            'profiles': [
+              {'id': 1, 'name': 'Default', 'current': true, 'isRemote': false,
+                'isRaw': false, 'ruleCount': 1, 'simpleRuleCount': 0},
+            ],
+          },
+        ActionMethod.getRouteRules => {'rules': [rule(name: 'Direct LAN')]},
+        _ => null,
+      }),
+      NoopKernelWorker(),
+    );
     await tester.pumpWidget(BoxApp(controller: box));
     await tester.pumpAndSettle();
     addTearDown(() async {

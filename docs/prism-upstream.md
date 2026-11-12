@@ -13,7 +13,7 @@ the widgets it ships. Flrone is not such an app:
 * Flrone adds **18 files** that do not exist upstream (a JSON-schema editor, QR
   rendering, a bespoke scaffold, custom glyph icons, a fonts barrel, and the
   top-level `ui.dart`). These are product features, not upstream contributions.
-* Flrone **patches one file** in place (`banner.dart`, see below). A `pub`
+* Flrone **patches six files** in place (see the recorded patch set below). A `pub`
   dependency would force us to either give the fix up or carry a patch layer.
 * The shader assets move from `packages/prism_ui/shaders/...` to `shaders/...`
   because the kit is compiled into the app, not resolved from a package namespace.
@@ -47,8 +47,8 @@ Measured with `python3 tools/diagnostics/prism_drift.py check`:
 
 | Category  | Count | Meaning                                                       |
 | --------- | ----- | ------------------------------------------------------------- |
-| identical | 144   | present in both, byte-identical after normalization            |
-| diverged  | 1     | present in both, content differs (our patch, see table)        |
+| identical | 139   | present in both, byte-identical after normalization            |
+| diverged  | 6     | present in both, content differs (our patches, see table)      |
 | added     | 18    | local-only — Flrone extensions, not in upstream                |
 | removed   | 0     | upstream files we have dropped (should stay 0)                 |
 
@@ -56,15 +56,21 @@ Normalization ignores the package rename (`package:prism_ui/` ≡ `package:flron
 the shader asset move (`packages/prism_ui/shaders/` ≡ `shaders/`) and CRLF/LF, so
 none of them counts as drift.
 
-## The one patched file
+## The recorded patch set
 
-| File          | Δ     | Why it differs                                                                                                        |
-| ------------- | ----- | --------------------------------------------------------------------------------------------------------------------- |
-| `banner.dart` | 1 → 3 | `ignoring: !widget.visible` becomes `ignoring: !widget.visible \|\| widget.onTap == null`: a notice with no action must not stand between a press and the page under it. |
+| File                     | Δ        | Why it differs                                                                                                        |
+| ------------------------ | -------- | --------------------------------------------------------------------------------------------------------------------- |
+| `banner.dart`            | 1 → 3    | `ignoring: !widget.visible` becomes `ignoring: !widget.visible \|\| widget.onTap == null`: a notice with no action must not stand between a press and the page under it. |
+| `card.dart`              | existing | Pre-existing local patch, recorded in CI's `--expect-diverged`.                                                       |
+| `card_surface.dart`      | existing | Pre-existing local patch, recorded in CI's `--expect-diverged`.                                                       |
+| `press_surface.dart`     | existing | Pre-existing local patch, recorded in CI's `--expect-diverged`.                                                       |
+| `prism_list.dart`        | +1       | An `// ignore: unnecessary_import` before the explicit `rendering.dart` import. Flutter 3.47.9 re-exports rendering from `widgets.dart`, while 3.47.8 still needs the import. |
+| `route_motion_hold.dart` | +1       | The same SDK-compatibility ignore comment before its explicit `rendering.dart` import.                               |
 
-This is the only intentional divergence, and CI enforces that it stays the only one
-(`--max-diverged 1`). A new local edit either gets reverted or raises that budget
-together with an entry in this table.
+CI enforces this exact set with `--max-diverged 6` and `--expect-diverged` in
+`ci.yml` (the diverged set must match exactly, not merely fit the budget). A new
+local edit either gets reverted or raises that budget together with an entry in
+this table.
 
 ## Upstream changes we have not taken
 
