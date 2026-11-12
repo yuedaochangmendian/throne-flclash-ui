@@ -322,11 +322,10 @@ func handleProfileReorder(data json.RawMessage) (any, error) {
 		return nil, err
 	}
 
-	path, err := roomDBPath()
+	groups, err := readRoomGroups()
 	if err != nil {
 		return nil, err
 	}
-	groups := readRoomGroups(path)
 	ordered := orderedGroupIDs(groups, payload.IDs)
 
 	var sql strings.Builder

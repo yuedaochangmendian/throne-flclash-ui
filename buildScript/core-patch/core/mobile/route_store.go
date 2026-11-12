@@ -222,6 +222,10 @@ func intOf(value any) int {
 		return int(typed)
 	case int:
 		return typed
+	// The kernel's own writes store int64 (a JSON document it re-encoded keeps
+	// no float64), so a reader of its own output needs this branch.
+	case int64:
+		return int(typed)
 	}
 	return 0
 }

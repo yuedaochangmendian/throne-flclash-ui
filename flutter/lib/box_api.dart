@@ -33,8 +33,21 @@ extension ProfilesApi on BoxController {
       call('profiles.autoSelectorPin', {'id': id, 'memberId': memberId});
   Future<dynamic> profileAutoSelectorRecheck() =>
       call('profiles.autoSelectorRecheck', {});
-  Future<dynamic> profileAutoSelectorSave(dynamic id, Json value) =>
-      call('profiles.autoSelectorSave', {'id': id, 'value': value});
+  Future<dynamic> profileAutoSelectorSave(dynamic id, Json value) async {
+    final k = kernel.attached;
+    if (k != null) {
+      final info = await k.invoke<Object?>(
+        ActionMethod.autoSelectorSave,
+        data: {'id': id, 'value': value},
+      );
+      // The selector is a profiles row, so the catalog Dart renders is stale
+      // until the host re-reads it: Room's invalidation tracker does not see an
+      // external writer.
+      await _refreshAfterKernelWrite();
+      return info;
+    }
+    return call('profiles.autoSelectorSave', {'id': id, 'value': value});
+  }
   Future<dynamic> profileAutoSelectorCreate(dynamic groupId, {String? name}) =>
       call('profiles.autoSelectorCreate', {'groupId': groupId, 'name': ?name});
   Future<dynamic> profileConfig(dynamic id) =>

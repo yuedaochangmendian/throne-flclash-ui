@@ -39,20 +39,32 @@ enum ActionMethod {
   setGlobalRuleDisabled,
   deleteGlobalRule,
 
-  // Phase 3d PR-3: profile reads. Go answers these from the JSON documents;
-  // methods that need the Kotlin outbound model (share links, full config) stay on the channel.
+  // Phase 3d PR-3: profile reads. Go answers these from Room — the same
+  // database GroupRepo and ProfileManager write (see room_db.go) — because the
+  // JSON-document store this phase started with answered stale rows. Methods
+  // that need the Kotlin outbound model (share links, full config) stay on the
+  // channel.
   profileStats,
   profileNodeInfo,
   profileNodeConfig,
   profileNodeTuningInfo,
 
   // Phase 3d PR-4: simple profile mutations. Complex writes (save, createNode,
-  // commitNode, updateNode, groupSettings, autoSelector) need the Kotlin outbound
-  // model and stay on the channel.
+  // commitNode, updateNode, groupSettings) need the Kotlin outbound model and
+  // stay on the channel.
   profileReorder,
   profileNodeDelete,
   profileClearTestResults,
   profileClearTraffic,
+
+  // Phase 3d PR-5: the auto-selector editor's save. The one write in the
+  // profiles surface with no outbound model in the way: the selector is a flat
+  // JSON document in `profiles.outbound_json`, and Go merges the form's values
+  // into it. The runtime fields (`pool`, `last_built`, `history`) survive
+  // because the merge never names them — rebuilding from the form would drop
+  // them. The selector's read path, pin and recheck need AutoSelectorRuntime
+  // and stay on the channel.
+  autoSelectorSave,
 }
 
 /// `message` is the tag of an unsolicited Go->Dart push. It never appears in
