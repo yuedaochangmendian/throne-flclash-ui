@@ -1,7 +1,6 @@
 // One route rule as a form: the match attributes on top, the action fields
 // below, exactly the members the stored Rule carries.
 
-import 'package:material_ui/material_ui.dart' as material;
 import '../widgets.dart';
 import '../components/form.dart';
 

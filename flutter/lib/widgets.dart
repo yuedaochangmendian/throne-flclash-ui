@@ -1,4 +1,3 @@
-import 'package:material_ui/material_ui.dart' as material;
 import 'package:material_ui/material_ui.dart'
   hide
     AlertDialog,

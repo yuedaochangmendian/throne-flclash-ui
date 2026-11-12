@@ -1,4 +1,3 @@
-import 'package:material_ui/material_ui.dart' as material;
 import '../widgets.dart';
 
 // Hero and link badges adapted from FlClash v0.9.2 views/about.dart.

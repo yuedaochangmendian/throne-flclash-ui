@@ -2,7 +2,6 @@ import 'dart:async';
 import 'dart:ui' show PlatformDispatcher;
 import 'package:flutter/foundation.dart' show FlutterError, LicenseRegistry, LicenseEntryWithLineBreaks, defaultTargetPlatform;
 import 'package:flutter/services.dart';
-import 'package:material_ui/material_ui.dart' as material;
 import 'widgets.dart';
 import 'pages/dashboard.dart';
 import 'pages/backup.dart';

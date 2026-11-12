@@ -1,4 +1,3 @@
-import 'package:material_ui/material_ui.dart' as material;
 import 'package:collection/collection.dart';
 import 'package:flutter/services.dart';
 import '../widgets.dart';

@@ -9,7 +9,6 @@ import '../common/singbox_rules.dart';
 import '../components/form.dart';
 import '../ui/json/engine/json_tree.dart';
 import '../widgets.dart';
-import 'package:material_ui/material_ui.dart' as material;
 
 /// Imports a sing-box JSON fragment. From a route profile it takes route rules into the profile and
 /// DNS rules into the DNS object; from Settings, DNS it takes the DNS rules alone and says where a
@@ -131,8 +130,14 @@ class _RuleImportPageState extends State<RuleImportPage> {
   @override
   Widget build(BuildContext context) {
     final result = _result;
-    return material.Dialog(
-      child: ConstrainedBox(
+    return Surface(
+      color: SurfaceLevel.floatingOf(context.colorScheme).colorOf(context.colorScheme),
+      shape: AppShape.all(AppCorner.alert),
+      // A Material pane under the content: the paste field is still Material's,
+      // and it asserts without one. It leaves with those fields in stage 7.
+      child: Material(
+        type: MaterialType.transparency,
+        child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: 600, maxHeight: MediaQuery.sizeOf(context).height * .82),
         child: Padding(
           padding: const EdgeInsets.all(20),
@@ -167,6 +172,7 @@ class _RuleImportPageState extends State<RuleImportPage> {
             ]),
           ]),
         ),
+      ),
       ),
     );
   }

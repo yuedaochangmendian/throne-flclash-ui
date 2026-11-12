@@ -1,4 +1,3 @@
-import 'package:material_ui/material_ui.dart' as material;
 import 'package:flutter/services.dart';
 import '../widgets.dart';
 import 'terminal_settings.dart';
@@ -99,9 +98,9 @@ class _TerminalPageState extends State<TerminalPage> {
           const SizedBox(height: 20), FilledButton(onPressed: _busy ? null : _start, child: Text(context.tr('Connect'))),
         ]) : active == null ? EmptyState('No terminal sessions',
           message: _error, action: FilledButton(onPressed: _newSession, child: Text(context.tr('New session')))) : Column(children: [
-          if (active['phase'] == 'CONNECTING' || progress.isNotEmpty) material.LinearProgressIndicator(
+          if (active['phase'] == 'CONNECTING' || progress.isNotEmpty) LinearProgressIndicator(
             value: active['phase'] == 'CONNECTING' || progress['percent'] == null ? null : (progress['percent'] as num).toDouble() / 100,
-            color: progress['state'] == 'ERROR' ? context.colorScheme.error : null),
+            backgroundColor: progress['state'] == 'ERROR' ? context.colorScheme.errorContainer : null),
           if (active['banner'] != null) Padding(padding: const EdgeInsets.all(12), child: SelectableText(active['banner'].toString())),
           Expanded(child: _covered ? const SizedBox() : GhosttySurface(sessionId: active['id'] as String, settingsRevision: _settingsRevision)),
           if (active['phase'] == 'FINISHED') TextButton(onPressed: () => box.sshClose(active!['id']), child: Text(context.tr('Close session'))),
@@ -166,9 +165,9 @@ class _GhosttySurfaceState extends State<GhosttySurface> {
       creationParamsCodec: const StandardMessageCodec(), onPlatformViewCreated: _created)),
     if (!widget.preview) SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
       for (final key in const ['Esc', 'Tab', 'Ctrl', 'Alt', '↑', '↓', '←', '→', 'Home', 'End', 'PgUp', 'PgDn', 'Paste', 'Keyboard'])
-        material.TextButton(onPressed: _channel == null ? null : () => _key(key),
+        TextButton(onPressed: _channel == null ? null : () => _key(key),
           style: _modifiers[key.toLowerCase()] == 'ARMED' || _modifiers[key.toLowerCase()] == 'LOCKED'
-            ? material.TextButton.styleFrom(backgroundColor: context.colorScheme.primaryContainer) : null,
+            ? ButtonStyle.from(backgroundColor: context.colorScheme.primaryContainer) : null,
           child: Text(context.tr(key) + (_modifiers[key.toLowerCase()] == 'LOCKED' ? ' •' : ''))),
     ])),
   ]);
