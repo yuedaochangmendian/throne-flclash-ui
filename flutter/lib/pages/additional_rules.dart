@@ -136,18 +136,10 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
         context.box.report(StateError(context.tr('No route profiles yet')));
         return;
       }
-      final picked = await showDialog<int>(
+      final picked = await showOptionSheet<int>(
         context: context,
-        builder: (context) => SimpleDialog(
-          title: Text(context.tr('Route profile')),
-          children: [
-            for (final id in ids)
-              SimpleDialogOption(
-                onPressed: () => Navigator.pop(context, id),
-                child: Text(_profileName(id)),
-              ),
-          ],
-        ),
+        title: context.tr('Route profile'),
+        options: [for (final id in ids) (id, _profileName(id))],
       );
       if (picked == null || !mounted) return;
       await _openEditor(picked, -1, const {});

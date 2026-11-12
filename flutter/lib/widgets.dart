@@ -14,6 +14,8 @@ import 'package:material_ui/material_ui.dart'
     ExpandIcon,
     FilledButton,
     IconButton,
+    InputBorder,
+    InputDecoration,
     LinearProgressIndicator,
     NavigationBar,
     NavigationDestination,
@@ -29,6 +31,8 @@ import 'package:material_ui/material_ui.dart'
     TabBarView,
     TabController,
     TextButton,
+    TextField,
+    TextFormField,
     Theme,
     ThemeData,
     ThemeMode;
@@ -55,6 +59,8 @@ export 'package:material_ui/material_ui.dart'
     ExpandIcon,
     FilledButton,
     IconButton,
+    InputBorder,
+    InputDecoration,
     LinearProgressIndicator,
     NavigationBar,
     NavigationDestination,
@@ -70,11 +76,14 @@ export 'package:material_ui/material_ui.dart'
     TabBarView,
     TabController,
     TextButton,
+    TextField,
+    TextFormField,
     Theme,
     ThemeData,
     ThemeMode;
 export 'box.dart';
 export 'l10n.dart';
+export 'components/option_sheet.dart';
 export 'components/settings_controls.dart';
 export 'pages/settings_pages.dart';
 export 'pages/route_texts.dart';

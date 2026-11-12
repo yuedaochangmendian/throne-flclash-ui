@@ -1,4 +1,3 @@
-import 'package:material_ui/material_ui.dart' as material;
 import 'package:flutter/services.dart';
 import '../widgets.dart';
 
@@ -170,7 +169,7 @@ class FormRowTextField extends StatelessWidget {
       cursorWidth: _cursorWidth,
       showCursor: showCursor,
       decoration: InputDecoration.collapsed(
-        border: material.InputBorder.none,
+        border: NoInputBorder(),
         hintText: null,
         hint: hintText == null
             ? null

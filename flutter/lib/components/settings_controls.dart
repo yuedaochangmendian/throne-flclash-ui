@@ -124,7 +124,7 @@ class _JsonEditorState extends State<_JsonEditor> {
         controller: _controller, minLines: 6, maxLines: 16, autocorrect: false,
         keyboardType: TextInputType.multiline,
         style: const TextStyle(fontFamily: 'JetBrainsMono'),
-        decoration: const InputDecoration(border: OutlineInputBorder()),
+        decoration: const InputDecoration(border: AppShape.input),
       ),
     ]),
     actions: [
@@ -187,7 +187,7 @@ class _DnsServerDialogState extends State<_DnsServerDialog> {
         TextField(
           controller: _controller, autocorrect: false,
           keyboardType: TextInputType.text,
-          decoration: const InputDecoration(border: OutlineInputBorder()),
+          decoration: const InputDecoration(border: AppShape.input),
         ),
         if (widget.suggestions.isNotEmpty) Flexible(
           child: ListView(shrinkWrap: true, children: [
@@ -301,7 +301,7 @@ class _LinesEditorState extends State<_LinesEditor> {
       TextField(
         controller: _controller, minLines: 3, maxLines: 10, autocorrect: false,
         keyboardType: TextInputType.multiline,
-        decoration: const InputDecoration(border: OutlineInputBorder()),
+        decoration: const InputDecoration(border: AppShape.input),
       ),
     ]),
     actions: [
