@@ -11,6 +11,7 @@ import 'package:flrone/ui/text.dart';
 import 'package:flrone/ui/text_selection_controls.dart';
 import 'package:flrone/ui/theme_cross_fade.dart';
 import 'package:flrone/ui/theme_data.dart';
+import 'package:flrone/ui/view_scope.dart';
 
 const _unstyledText = TextStyle(
   color: Color(0xD0FF0000),
@@ -47,6 +48,7 @@ class PrismApp extends StatefulWidget {
     this.emojiFont,
     this.stackedBanners = false,
     this.bannerTopInset = 0,
+    this.bannerKey,
     this.remoteFocus = false,
     this.floatingKeyboard,
     this.debugShowCheckedModeBanner = true,
@@ -76,6 +78,10 @@ class PrismApp extends StatefulWidget {
   final ({String family, Pattern pattern})? emojiFont;
   final bool stackedBanners;
   final double bannerTopInset;
+
+  /// Lets the app reach the banner host directly to push notices from a
+  /// controller outside the widget tree.
+  final GlobalKey<BannerHostState>? bannerKey;
   final bool remoteFocus;
   final ValueListenable<bool>? floatingKeyboard;
   final bool debugShowCheckedModeBanner;
@@ -121,6 +127,7 @@ class _PrismAppState extends State<PrismApp> {
     final glass = widget.liquidGlass;
     final emojiFont = widget.emojiFont;
     Widget app = BannerHost(
+      key: widget.bannerKey,
       stacked: widget.stackedBanners,
       topInset: widget.bannerTopInset,
       child: builder == null
@@ -221,11 +228,17 @@ class _TextScaler extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    final size = media.size;
     return MediaQuery(
-      data: MediaQuery.of(
-        context,
-      ).copyWith(textScaler: TextScaler.linear(factor)),
-      child: child,
+      data: media.copyWith(textScaler: TextScaler.linear(factor)),
+      // The viewport scope every PrismScaffold, sheet and dock branches on.
+      // PrismApp derives it from the window so an app cannot forget it.
+      child: ViewScope(
+        size: size,
+        isMobile: size.width < 600,
+        child: child,
+      ),
     );
   }
 }

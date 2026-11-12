@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:flrone/ui/theme_data.dart';
 import 'package:flrone/ui/ui.dart';
 
 class TestUiLocalizations implements UiLocalizations {

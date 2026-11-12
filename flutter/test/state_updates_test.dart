@@ -73,7 +73,7 @@ void main() {
   testWidgets('the application root survives telemetry and responds to appearance changes', (tester) async {
     await tester.pumpWidget(BoxApp(controller: box));
     await tester.pumpAndSettle();
-    final app = tester.widget<MaterialApp>(find.byType(MaterialApp));
+    final app = tester.widget<PrismApp>(find.byType(PrismApp));
     for (final (type, value) in <(String, Object)>[
       ('rates', {'upload': 1024, 'download': 2048}),
       ('memory', {'total': 100}),
@@ -86,11 +86,11 @@ void main() {
       await tester.pumpAndSettle();
       // Let the coalesced list events deliver too, so the check is not trivially true.
       await tester.pump(BoxController.batchWindow + const Duration(milliseconds: 50));
-      expect(identical(app, tester.widget<MaterialApp>(find.byType(MaterialApp))), isTrue, reason: type);
+      expect(identical(app, tester.widget<PrismApp>(find.byType(PrismApp))), isTrue, reason: type);
     }
     events.add({'type': 'preferences', 'value': {'theme': 'dark'}});
     await tester.pumpAndSettle();
-    expect(tester.widget<MaterialApp>(find.byType(MaterialApp)).themeMode, ThemeMode.dark);
+    expect(tester.widget<PrismApp>(find.byType(PrismApp)).themeMode, ThemeMode.dark);
     expect(tester.takeException(), isNull);
     await tester.pumpWidget(const SizedBox());
   });

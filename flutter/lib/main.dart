@@ -53,8 +53,7 @@ class _BoxAppState extends State<BoxApp> with WidgetsBindingObserver {
     WidgetsBinding.instance.addObserver(this);
     _messages = widget.controller.messages.listen((message) {
       _banner.currentState?.show(message);
-    });
-    // A subscription update's change window (SubscriptionReportDialog): the report body selectable,
+    });    // A subscription update's change window (SubscriptionReportDialog): the report body selectable,
     // a copy action beside OK.
     _reports = widget.controller.subscriptionReports.listen((report) {
       final context = _banner.currentState?.context;
@@ -84,7 +83,7 @@ class _BoxAppState extends State<BoxApp> with WidgetsBindingObserver {
     super.dispose();
   }
 
-  final _themes = <String, ({material.ThemeData material, ThemeData prism})>{};
+  final _themes = <String, ThemeData>{};
 
   @override void didChangeLocales(List<Locale>? locales) => setState(_themes.clear);
 
@@ -100,30 +99,19 @@ class _BoxAppState extends State<BoxApp> with WidgetsBindingObserver {
     }
   }
 
-  /// Both layers the app draws with: Material's, for the widgets it still
-  /// carries (forms, snackbars, dialogs), and prism's, which every page and
-  /// component in `lib/ui` reads.
-  ({material.ThemeData material, ThemeData prism}) _theme(Brightness brightness) {
+  /// Prism's theme is the only one: every page, component and control in this
+  /// app reads it, so there is no parallel Material scheme to keep in sync.
+  ThemeData _theme(Brightness brightness) {
     final prefs = widget.controller.preferences;
     final scheme = appColorScheme(widget.controller, brightness);
     final family = prefs['fontFamily'] as String?;
     final key = "$brightness:${scheme.hashCode}:$family";
     final fallback = appFontFamilyFallback(platform: defaultTargetPlatform, locales: WidgetsBinding.instance.platformDispatcher.locales, fontFamily: family);
-    return _themes.putIfAbsent(key, () => (
-      material: material.ThemeData(
-        useMaterial3: true,
-        // Material's widgets follow the same surfaces prism's do, pure black included.
-        colorScheme: material.ColorScheme.fromSeed(seedColor: appAccentColor(widget.controller), brightness: brightness)
-          .copyWith(surface: scheme.surface, onSurface: scheme.onSurface, primary: scheme.primary),
-        fontFamily: family,
-        fontFamilyFallback: fallback,
-      ),
-      prism: ThemeData(
-        colorScheme: scheme,
-        fontFamily: family,
-        fontFamilyFallback: fallback,
-        elevatedColorScheme: brightness == Brightness.dark ? scheme.elevated : null,
-      ),
+    return _themes.putIfAbsent(key, () => ThemeData(
+      colorScheme: scheme,
+      fontFamily: family,
+      fontFamilyFallback: fallback,
+      elevatedColorScheme: brightness == Brightness.dark ? scheme.elevated : null,
     ));
   }
 
@@ -133,49 +121,27 @@ class _BoxAppState extends State<BoxApp> with WidgetsBindingObserver {
     child: Builder(
       builder: (context) {
         final prefs = BoxScope.of(context, aspect: BoxAspect.appearance).preferences;
-        return MaterialApp(
+        final media = MediaQuery.of(context);
+        final scale = appTextScale(prefs, media.textScaler.scale(1)).clamp(.8, 1.4);
+        final glass = (prefs['liquidGlass'] ?? 'none');
+        return PrismApp(
           title: 'Flrone',
           debugShowCheckedModeBanner: false,
-          theme: _theme(Brightness.light).material,
-          darkTheme: _theme(Brightness.dark).material,
+          theme: _theme(Brightness.light),
+          darkTheme: _theme(Brightness.dark),
           themeMode: ThemeMode.values.firstWhere((mode) => mode.name == prefs['theme'], orElse: () => ThemeMode.system),
           supportedLocales: const [Locale('en'), Locale('zh')],
           localizationsDelegates: const [
             BoxUiDelegate(), ...GlobalMaterialLocalizations.delegates,
           ],
-          builder: (context, child) {
-            final media = MediaQuery.of(context);
-            final scale = appTextScale(prefs, media.textScaler.scale(1));
-            final glass = (prefs['liquidGlass'] ?? 'none') != 'none';
-            final brightness = material.Theme.of(context).brightness;
-            return BannerHost(
-              key: _banner,
-              stacked: media.size.width >= 600,
-              // Banners hang below the page bar so they never cover its buttons.
-              topInset: media.padding.top + pageToolbarHeight,
-              child: Theme(
-              data: _theme(brightness).prism,
-              child: MeasureScope(
-              measure: Measure.of(context, scale.clamp(.8, 1.4)),
-              child: ViewScope(
-              size: media.size,
-              isMobile: media.size.width < 600,
-              child: MediaQuery(
-                data: media.copyWith(textScaler: TextScaler.linear(scale.clamp(.8, 1.4))),
-                child: AnnotatedRegion<SystemUiOverlayStyle>(
-                  value: SystemUiOverlayStyle(
-                    statusBarColor: Colors.transparent, systemNavigationBarColor: Colors.transparent,
-                    statusBarIconBrightness: brightness == Brightness.dark ? Brightness.light : Brightness.dark,
-                    systemNavigationBarIconBrightness: brightness == Brightness.dark ? Brightness.light : Brightness.dark,
-                  ),
-                  child: LiquidGlassScope(enabled: glass,
-                    quality: prefs['liquidGlass'] == 'ultra' ? LiquidGlassQuality.ultra : LiquidGlassQuality.standard,
-                    child: LiquidGlassHost(enabled: glass, child: child!)),
-                ),
-              ),
-            ),
-            )));
-          },
+          textScale: scale,
+          minTextScale: .8,
+          maxTextScale: 1.4,
+          liquidGlass: glass == 'none' ? null : (glass == 'ultra' ? LiquidGlassQuality.ultra : LiquidGlassQuality.standard),
+          stackedBanners: media.size.width >= 600,
+          // Banners hang below the page bar so they never cover its buttons.
+          bannerTopInset: media.padding.top + pageToolbarHeight,
+          bannerKey: _banner,
           home: widget.controller.ready ? const HomePage() : material.Scaffold(
             body: SafeArea(child: Center(child: widget.controller.startupError == null
                 ? const CircularProgressIndicator()

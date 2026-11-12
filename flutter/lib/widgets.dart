@@ -27,7 +27,8 @@ import 'package:material_ui/material_ui.dart'
     Switch,
     TextButton,
     Theme,
-    ThemeData;
+    ThemeData,
+    ThemeMode;
 import 'box.dart';
 import 'l10n.dart';
 import 'ui/ui.dart';
@@ -63,7 +64,8 @@ export 'package:material_ui/material_ui.dart'
     Switch,
     TextButton,
     Theme,
-    ThemeData;
+    ThemeData,
+    ThemeMode;
 export 'box.dart';
 export 'l10n.dart';
 export 'pages/throne.dart';

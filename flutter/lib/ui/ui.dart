@@ -1,6 +1,5 @@
-// The app still takes these from Material, so the prism layer keeps them to
-// itself: its own TextField, text chrome and bar widgets are used internally
-// through direct imports.
+// Prism is the only UI authority: the names below stay Material's until the
+// Material dependency leaves the app (stage 7 of the prism-native refactor).
 export 'prism_ui.dart'
   hide
     AppBar,
@@ -18,7 +17,6 @@ export 'prism_ui.dart'
     TabController,
     TextField,
     TextFormField,
-    ThemeMode,
     Tooltip,
     VisualDensity,
     kMinInteractiveDimension,
