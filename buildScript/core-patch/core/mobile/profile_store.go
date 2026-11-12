@@ -60,17 +60,6 @@ func findProfileByID(rows []row, id int64) row {
 	return nil
 }
 
-// nextProfileID returns MAX(id) + 1, matching Room's autoGenerate.
-func nextProfileID(rows []row) int64 {
-	var max int64
-	for _, r := range rows {
-		if id := rowInt64(r, "id"); id > max {
-			max = id
-		}
-	}
-	return max + 1
-}
-
 // --- groups ------------------------------------------------------------------
 
 // sortedGroups orders by display_order then id, matching ProxyGroup.Dao.allGroups().

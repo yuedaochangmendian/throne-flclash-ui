@@ -25,7 +25,7 @@ const (
 )
 
 // settingsStoreMu serialises read-modify-write on the settings documents.
-var settingsStoreMu = sync.Mutex
+var settingsStoreMu sync.Mutex
 
 // --- row store accessor -------------------------------------------------------
 
@@ -256,9 +256,9 @@ func settingsReset(store rowStore, keys []string) (map[string]any, int) {
 	if len(keys) == 0 {
 		// Reset all.
 		for _, spec := range settingSpecs {
-			before := decodeRow(spec, rowMapOf(store))
-			deleteSpecRows(store, spec)
-			after := decodeRow(spec, rowMapOf(store))
+			before := decodeRow(*spec, rowMapOf(store))
+			deleteSpecRows(store, *spec)
+			after := decodeRow(*spec, rowMapOf(store))
 			if !wireEqual(before, after) && spec.apply > maxApply {
 				maxApply = spec.apply
 			}
@@ -269,9 +269,9 @@ func settingsReset(store rowStore, keys []string) (map[string]any, int) {
 			if spec == nil {
 				continue
 			}
-			before := decodeRow(spec, rowMapOf(store))
-			deleteSpecRows(store, spec)
-			after := decodeRow(spec, rowMapOf(store))
+			before := decodeRow(*spec, rowMapOf(store))
+			deleteSpecRows(store, *spec)
+			after := decodeRow(*spec, rowMapOf(store))
 			if !wireEqual(before, after) && spec.apply > maxApply {
 				maxApply = spec.apply
 			}
