@@ -217,59 +217,44 @@ func stringOf(value any) string {
 	return ""
 }
 
-// intOf narrows a JSON number to int, saturating rather than wrapping.
+// intOf reads a JSON number as int64.
 //
-// The saturation matters on 32-bit devices (armeabi-v7a, i686), where int is
-// 32 bits and a stored int64 exceeds it: a plain conversion would wrap a large
-// selector interval into a negative and hand the form a value it never stored.
-func intOf(value any) int {
+// int64 rather than int on purpose: every caller puts the result into the
+// map[string]any a handler answers, and Dart reads a JSON number as num, so a
+// wider type costs nothing. Narrowing to int would mean a bound check whose
+// upper half is unreachable on 64-bit builds (where int and int64 are the same
+// width) and whose lower half only exists on the 32-bit ABIs — a conversion
+// carrying a hazard for no gain.
+func intOf(value any) int64 {
 	switch typed := value.(type) {
 	case float64:
-		return narrowToInt(typed)
+		return floatToInt64(typed)
 	case int:
-		return typed
-	// The kernel's own writes store int64 (a JSON document it re-encoded keeps
-	// no float64), so a reader of its own output needs this branch.
+		return int64(typed)
+	// The kernel's own writes store int64: a document it re-encoded holds no
+	// float64, so a reader of its own output needs this branch.
 	case int64:
-		return int64ToInt(typed)
+		return typed
 	}
 	return 0
 }
 
-// int64ToInt narrows an int64 to int without wrapping.
+// floatToInt64 converts a JSON number, clamping instead of wrapping.
 //
-// The clamp is expressed as a bit-width comparison rather than against
-// math.MaxInt: on a 64-bit build every int64 fits, so the only interesting case
-// is the narrower one, and saying so directly keeps the upper bound visible —
-// `value > math.MaxInt` is vacuously false there, which reads as "no check".
-func int64ToInt(value int64) int {
-	const intBits = 32 << (^uint(0) >> 63)
-	if intBits < 64 {
-		if value > math.MaxInt32 {
-			return math.MaxInt32
-		}
-		if value < math.MinInt32 {
-			return math.MinInt32
-		}
-	}
-	return int(value)
-}
-
-// narrowToInt clamps a float64 to the platform int range, refusing NaN and
-// infinities. The comparison is against math.MaxInt/math.MinInt — the int
-// bounds themselves, not a constant that only matches on one word size — so a
-// value past the range saturates instead of wrapping.
-func narrowToInt(value float64) int {
+// Go leaves an out-of-range float-to-int conversion undefined, and JSON has no
+// integer type: a hand-edited document could hold 1e30. NaN and the infinities
+// read as zero, past-range values saturate.
+func floatToInt64(value float64) int64 {
 	if value != value || math.IsInf(value, 0) {
 		return 0
 	}
-	if value >= float64(math.MaxInt) {
-		return math.MaxInt
+	if value >= math.MaxInt64 {
+		return math.MaxInt64
 	}
-	if value <= float64(math.MinInt) {
-		return math.MinInt
+	if value <= math.MinInt64 {
+		return math.MinInt64
 	}
-	return int(value)
+	return int64(value)
 }
 
 func int64Of(value any) int64 {
