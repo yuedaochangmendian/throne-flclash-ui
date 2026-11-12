@@ -247,6 +247,13 @@ class DetailRows extends StatelessWidget {
   ]);
 }
 
+/// A floating content block above the page surface.
+///
+/// Prism separates depth with colour steps, not drop shadows, so this is a
+/// card-level surface at the alert corner radius — the same shape the sheets
+/// and dialogs above it use — rather than the hand-rolled shadow stack it used
+/// to be. A press, when present, runs through prism's card so the ripple and
+/// the selection state match every other pressable row.
 class BoxPanel extends StatelessWidget {
   const BoxPanel({super.key, required this.child, this.onTap, this.padding = const EdgeInsets.symmetric(horizontal: 20, vertical: 18), this.clipBehavior = Clip.antiAlias});
   final Widget child;
@@ -255,27 +262,17 @@ class BoxPanel extends StatelessWidget {
   final Clip clipBehavior;
   @override
   Widget build(BuildContext context) {
-    final dark = context.colorScheme.brightness == Brightness.dark;
-    BoxShadow shadow(int alpha, double y, double blur, [double spread = 0]) => BoxShadow(
-      color: Color.fromARGB(alpha, 0, 0, 0), offset: Offset(0, y),
-      blurRadius: blur <= 1 ? 0 : (blur / 2 - .5) / .57735, spreadRadius: spread,
-    );
-    return Container(
-      decoration: ShapeDecoration(
-        color: SurfaceLevel.card.colorOf(context.colorScheme),
-        shape: AppShape.all(34),
-        shadows: dark ? [shadow(0x80, 1, 2), shadow(0x8c, 10, 28, -6)]
-            : [shadow(0x0d, .5, 1), shadow(0x0a, 2, 6), shadow(0x17, 12, 32, -6)],
-      ),
-      child: Material(
-        type: MaterialType.transparency,
-        shape: AppShape.all(34),
-        clipBehavior: clipBehavior,
-        child: onTap == null ? Padding(padding: padding, child: child) : InkWell(
-          customBorder: AppShape.all(34), onTap: onTap, child: Padding(padding: padding, child: child),
-        ),
-      ),
-    );
+    final surface = SurfaceLevel.card.colorOf(context.colorScheme);
+    final shape = AppShape.all(AppCorner.alert);
+    final inset = padding is EdgeInsets ? padding as EdgeInsets : const EdgeInsets.symmetric(horizontal: 20, vertical: 18);
+    return onTap == null
+        ? Surface(color: surface, shape: shape, clipBehavior: clipBehavior, child: Padding(padding: padding, child: child))
+        : Card(
+            onPressed: onTap,
+            radius: AppCorner.alert,
+            padding: inset,
+            child: child,
+          );
   }
 }
 
