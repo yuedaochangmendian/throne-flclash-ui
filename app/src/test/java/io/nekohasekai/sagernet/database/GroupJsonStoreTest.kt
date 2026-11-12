@@ -159,4 +159,31 @@ class GroupJsonStoreTest {
         assertTrue(group.sortDescending)
         assertTrue(group.importSubRoute)
     }
+
+    // The regression this file exists for: before the directory was mounted, the kernel's
+    // reorder wrote groups.json and no reader ever saw it, so the tab order silently
+    // stayed put. These pin the two halves of that fix -- the store sees a kernel write,
+    // and display_order is what orders the list.
+    @Test
+    fun `a kernel reorder is visible through the store`() {
+        write("groups", listOf(
+            groupRow(1, "A").plus("display_order" to 0L),
+            groupRow(2, "B").plus("display_order" to 1L),
+        ))
+        assertEquals(listOf(1L, 2L), GroupJsonStore.all()!!.map { it.id })
+
+        // The kernel renumbers 0..n-1 after a reorder; B first now.
+        write("groups", listOf(
+            groupRow(1, "A").plus("display_order" to 1L),
+            groupRow(2, "B").plus("display_order" to 0L),
+        ))
+        assertEquals(listOf(2L, 1L), GroupJsonStore.all()!!.map { it.id })
+    }
+
+    @Test
+    fun `reports ready when the kernel has written the document`() {
+        assertFalse(GroupJsonStore.ready)
+        write("groups", listOf(groupRow(1)))
+        assertTrue(GroupJsonStore.ready)
+    }
 }
