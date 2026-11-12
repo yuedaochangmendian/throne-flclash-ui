@@ -236,15 +236,21 @@ func intOf(value any) int {
 	return 0
 }
 
-// int64ToInt narrows an int64 to int without wrapping: the value is compared to
-// the platform int bounds before it is converted, so a stored number past them
-// saturates instead of coming back negative.
+// int64ToInt narrows an int64 to int without wrapping.
+//
+// The clamp is expressed as a bit-width comparison rather than against
+// math.MaxInt: on a 64-bit build every int64 fits, so the only interesting case
+// is the narrower one, and saying so directly keeps the upper bound visible —
+// `value > math.MaxInt` is vacuously false there, which reads as "no check".
 func int64ToInt(value int64) int {
-	if value > math.MaxInt {
-		return math.MaxInt
-	}
-	if value < math.MinInt {
-		return math.MinInt
+	const intBits = 32 << (^uint(0) >> 63)
+	if intBits < 64 {
+		if value > math.MaxInt32 {
+			return math.MaxInt32
+		}
+		if value < math.MinInt32 {
+			return math.MinInt32
+		}
 	}
 	return int(value)
 }
