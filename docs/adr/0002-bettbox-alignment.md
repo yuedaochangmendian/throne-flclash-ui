@@ -78,6 +78,56 @@ Go/Dart。对齐架构就必须同时换掉存储层，这正是 0001 估算的 
 > 那条路径没有第二个写者。判定标准的第二次应用：**权威在哪，写者就在哪**；不能既让
 > Room 当权威又让 Go 写别处。
 
+### 迁移边界：`profiles.*` 与 `groups.*` 的剩余部分不再迁
+
+两个域各被调查过一轮，结论是剩下的动作都**不应该**搬过去。这不是「还没做」，是
+「不该做」——写下来是为了下一个人不必重复调研，也不必把「还有几十个 channel 动作」
+当成技术债。
+
+**`profiles.*`：31 个 channel 动作，8 个已有 Go handler 作 fallback，23 个只有 Kotlin。**
+
+| 阻塞物 | 动作 |
+| --- | --- |
+| `parseOutbounds` / `OutboundFactory` / `validate` | `save`、`nodeCreate`、`nodeUpdate`、`delete`、`importFile`、`scan` |
+| `ProfileJson`（出站模型 ↔ JSON） | `nodeConfig`、`config`、`read`、`write` |
+| 反射 `Mux`/`Tls` 字段 + `saveMuxState` | `nodeTuningSave` |
+| `exportLink` / 分享链接生成 | `nodeInfo`、`nodeLink` |
+| `AutoSelectorRuntime`（运行中的选择器） | `autoSelectorInfo`、`Pin`、`Recheck`、`Status` |
+| 控制面：选中节点、服务重载、订阅队列 | `list`、`select`、`switchRelative`、`update` |
+
+已迁完的 9 个是 `stats`、`nodeInfo`、`nodeConfig`、`nodeTuningInfo`、`reorder`、
+`nodeDelete`、`clearTestResults`、`clearTraffic`、`autoSelectorSave`；其余 22 个动作
+都落在上表。
+
+搬任何一个，都要把**整个出站协议模型**搬进 Go。那样出站协议就有两份实现，
+而它们必然漂移 —— 这正是本 ADR 存在的理由（决策 3：保留 424 个 typed 导出而不重写）。
+`autoSelectorSave` 是唯一例外，因为它只改一个扁平 JSON 的标量键，不碰模型
+（phase 3d PR-5）。
+
+**`groups.*`：10 个动作，全部是控制面或 UI 快照。**
+
+| 性质 | 动作 |
+| --- | --- |
+| 向运行中的 sing-box 发 RPC（切换节点、测速） | `select`、`test` |
+| 跨进程会话 + 进度回推 | 6 个 `testSession.*` |
+| payload 形状开关（切换时重置缓存基线） | `visible` |
+| 读 `BboxBridge.state` 内存快照 | `nodes` |
+| 五类权威混合（Room + DataStore + Android 资源 + `RouteManager` + `RequestIdentity`） | `groupSettings.get/set` |
+
+决策 5 已写明 Kotlin 最终保留「VpnService 与 TUN fd、通知、`state.stats`、`wifi.watch`、
+`apps.*`、SAF 备份、`data.path`、`ffi.mode`/`ffi.handle` 交接」—— 控制面与 UI 快照
+属于这个保留集，不是待迁移项。
+
+**判据的统一表述**（三次应用的归纳）：
+
+1. `settings.*`（回到 channel）：权威不在 Go → 不迁。
+2. `profiles.*` / `groups`（直写 Room）：权威在 Room，于是给 Go 开同一条数据库 → 迁。
+3. `profiles.*` 剩余 / `groups.*`（本节）：迁移要求把**第二个实现**带进来（出站模型、
+   控制面、UI 快照）→ 不迁，即使权威可达。
+
+第 3 条是本节的增量：**「能读到数据」不等于「该由 Go 处理」**。判断一个动作该归谁，
+看的是它需要的**能力**属于哪一层，而不是它的数据在哪。
+
 ## 后果
 
 **正面**：与 Bettbox 的协议、存储、事件模型一致；新增能力只需在 Go 注册表加一个 handler；
