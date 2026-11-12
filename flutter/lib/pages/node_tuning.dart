@@ -51,18 +51,25 @@ class _NodeTuningPageState extends State<NodeTuningPage> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return FormPage(title: 'Node tuning', onSave: () {}, saving: true, children: const []);
+      return BoxPage(
+      title: 'Node tuning',
+      confirmationAction: IconButtonData(glyph: AppGlyphs.check, tooltip: context.tr('Save'), isLoading: true, onPressed: null),
+      loading: true,
+      absorbing: true,
+      children: const [],
+    );
     }
     final hasMux = _info['hasMux'] == true;
     final hasXrayMux = _info['hasXrayMux'] == true;
     final hasTls = _info['hasTls'] == true;
     final muxState = (_info['muxState'] as num?)?.toInt() ?? 0;
     final xrayMuxState = (_info['xrayMuxState'] as num?)?.toInt() ?? 0;
-    return FormPage(
+    return BoxPage(
       title: 'Node tuning',
-      saving: _saving,
-      onSave: _save,
+      confirmationAction: IconButtonData(glyph: AppGlyphs.check, tooltip: context.tr('Save'), isLoading: _saving, onPressed: _saving ? null : _save),
       error: _error,
+      loading: _saving,
+      absorbing: _saving,
       children: [
         if (!hasMux && !hasXrayMux && !hasTls)
           generateSection(items: [

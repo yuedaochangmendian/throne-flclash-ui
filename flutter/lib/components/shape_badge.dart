@@ -1,5 +1,5 @@
+import 'package:flutter/widgets.dart';
 import 'package:material_new_shapes/material_new_shapes.dart';
-import 'package:material_ui/material_ui.dart';
 
 class ShapeBadge extends StatelessWidget {
   const ShapeBadge({

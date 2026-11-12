@@ -1,4 +1,3 @@
-import 'package:material_ui/material_ui.dart' as material;
 import 'dart:math';
 
 import 'package:collection/collection.dart';
@@ -263,17 +262,10 @@ class _TabExtents {
     _TabExtents? previous,
   ) {
     final style = AppTextStyle.subheadline.of(context, emphasized: true);
-    final buttonStyle = material.FilledButtonTheme.of(context).style;
-    final defaults = const material.FilledButton(
-      onPressed: null,
-      child: null,
-    ).defaultStyleOf(context);
-    final minimumSize = (buttonStyle?.minimumSize ?? defaults.minimumSize)!
-        .resolve(const {})!;
-    final density = (buttonStyle?.visualDensity ?? defaults.visualDensity)!;
-    final adjustment = density.baseSizeAdjustment.dx;
-    final minWidth = max(0.0, minimumSize.width + adjustment);
-    final padding = 2 * (_tabPadding + max(0.0, adjustment));
+    // The chip's own padding, not a button theme's: the strip measures labels
+    // to know how far it can scroll before building an off-screen chip.
+    const minWidth = 0.0;
+    final padding = 2 * (_tabPadding + minWidth);
     final names = [for (final group in groups) group['tag'].toString()];
     final key = (
       _NamesKey(names),

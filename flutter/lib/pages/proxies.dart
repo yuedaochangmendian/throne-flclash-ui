@@ -12,7 +12,7 @@ class ProxiesPage extends StatefulWidget {
   State<ProxiesPage> createState() => _ProxiesPageState();
 }
 
-class _ProxiesPageState extends State<ProxiesPage> {
+class _ProxiesPageState extends State<ProxiesPage> with TickerProviderStateMixin {
   String _query = '';
   final _testing = <int>{};
   final _testLabels = <String>{};
@@ -24,6 +24,25 @@ class _ProxiesPageState extends State<ProxiesPage> {
   final _selectedOffsets = <String, double>{};
   String? _currentGroup;
   BoxController? _box;
+
+  /// Drives the group tab strip and its pages. Rebuilt when the group list
+  /// changes, because prism's controller owns a fixed length.
+  TabController? _tabs;
+  String _tabsSignature = '';
+
+  TabController _tabsFor(List<Json> groups) {
+    final signature = groups.map((group) => group['tag'].toString()).join('\u0000');
+    if (_tabs == null || signature != _tabsSignature) {
+      _tabs?.dispose();
+      _tabsSignature = signature;
+      _tabs = TabController(
+        length: groups.length,
+        initialIndex: groups.indexWhere((group) => group['tag'] == _currentGroup).clamp(0, groups.length - 1),
+        vsync: this,
+      );
+    }
+    return _tabs!;
+  }
 
   @override
   void didChangeDependencies() {
@@ -39,6 +58,7 @@ class _ProxiesPageState extends State<ProxiesPage> {
   @override
   void dispose() {
     _box?.groupsSetVisible(false);
+    _tabs?.dispose();
     for (final scroll in _scrolls.values) {
       scroll.dispose();
     }
@@ -456,42 +476,31 @@ class _ProxiesPageState extends State<ProxiesPage> {
                 cardBuilder: _card,
                 onTest: _testGroup,
               )
-            : DefaultTabController(
-                key: ValueKey(
-                  groups
-                      .map(
-                        (group) =>
-                            '${group['tag'].toString().length}:${group['tag']}',
-                      )
-                      .join(),
-                ),
-                initialIndex: groups
-                    .indexWhere((group) => group['tag'] == _currentGroup)
-                    .clamp(0, groups.length - 1),
-                length: groups.length,
-                child: Padding(
+            : Builder(
+                builder: (context) {
+                  final tabs = _tabsFor(groups);
+                  return Padding(
                   padding: EdgeInsets.only(top: context.contentTopPadding),
                   child: Column(
                     children: [
                       Padding(
                         padding: const EdgeInsets.only(bottom: 16),
-                        child: Builder(
-                          builder: (context) => GroupTabs(
-                            controller: DefaultTabController.of(context),
-                            groups: groups,
-                            onSelected: (index) {
-                              if (mounted) {
-                                setState(
-                                  () => _currentGroup =
-                                      groups[index]['tag'] as String,
-                                );
-                              }
-                            },
-                          ),
+                        child: GroupTabs(
+                          controller: tabs,
+                          groups: groups,
+                          onSelected: (index) {
+                            if (mounted) {
+                              setState(
+                                () => _currentGroup =
+                                    groups[index]['tag'] as String,
+                              );
+                            }
+                          },
                         ),
                       ),
                       Expanded(
                         child: TabBarView(
+                          controller: tabs,
                           children: [
                             for (final group in groups)
                               Column(
@@ -512,7 +521,8 @@ class _ProxiesPageState extends State<ProxiesPage> {
                       ),
                     ],
                   ),
-                ),
+                  );
+                },
               ),
       ),
     );

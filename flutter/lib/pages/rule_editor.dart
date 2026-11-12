@@ -1,7 +1,6 @@
 // One route rule as a form: the match attributes on top, the action fields
 // below, exactly the members the stored Rule carries.
 
-import 'package:material_ui/material_ui.dart' as material;
 import '../widgets.dart';
 import '../components/form.dart';
 
@@ -101,9 +100,9 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
       // the whole pool, which would renumber every other rule's id.
       final id = (widget.rule['id'] as num?)?.toInt();
       if (id == null) { context.safeNestedPop(false); return; }
-      final confirmed = await showDialog<bool>(context: context, builder: (context) => material.AlertDialog(
-        title: Text(context.tr('Delete rule?')),
-        content: Text(_rule['name']?.toString() ?? '#${widget.index + 1}'),
+      final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
+        title: context.tr('Delete rule?'),
+        child: Text(_rule['name']?.toString() ?? '#${widget.index + 1}'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: Text(context.tr('Cancel'))),
           TextButton(onPressed: () => Navigator.pop(context, true), child: Text(context.tr('Delete'))),
@@ -120,9 +119,9 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
       return;
     }
     if (widget.index < 0) { context.safeNestedPop(false); return; }
-    final confirmed = await showDialog<bool>(context: context, builder: (context) => material.AlertDialog(
-      title: Text(context.tr('Delete rule?')),
-      content: Text(_rule['name']?.toString() ?? '#${widget.index + 1}'),
+    final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(
+      title: context.tr('Delete rule?'),
+      child: Text(_rule['name']?.toString() ?? '#${widget.index + 1}'),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context, false), child: Text(context.tr('Cancel'))),
         TextButton(onPressed: () => Navigator.pop(context, true), child: Text(context.tr('Delete'))),
@@ -168,20 +167,21 @@ class _RuleEditorPageState extends State<RuleEditorPage> {
       : _isEndpoint ? 'Endpoint preferred by' : 'Custom';
 
   @override
-  Widget build(BuildContext context) => FormPage(
-    title: widget.index < 0 ? 'Add rule' : 'Edit rule',
-    saving: _saving,
-    onSave: _save,
-    error: _error,
-    actions: [
+  Widget build(BuildContext context) => BoxPage(
+      title: widget.index < 0 ? 'Add rule' : 'Edit rule',
+      confirmationAction: IconButtonData(glyph: AppGlyphs.check, tooltip: context.tr('Save'), isLoading: _saving, onPressed: _saving ? null : _save),
+      actions: [
       IconButtonData(glyph: AppGlyphs.delete, tooltip: 'Delete', onPressed: _delete),
     ],
-    children: [
+      error: _error,
+      loading: _saving,
+      absorbing: _saving,
+      children: [
       _ruleSection(),
       ..._simpleSections(),
       ..._customSections(),
     ],
-  );
+    );
 
   /// Throne's "Rule" category: name, state, type and target, then — for a
   /// custom rule — the action fields, which decide what the rule does rather
@@ -652,9 +652,9 @@ class _RuleValuesDialogState extends State<_RuleValuesDialog> {
   }
 
   @override
-  Widget build(BuildContext context) => material.AlertDialog(
-    title: Text(widget.title, style: AppTextStyle.title3.of(context, emphasized: true)),
-    content: SizedBox(
+  Widget build(BuildContext context) => AlertDialog(
+    title: widget.title,
+    child: SizedBox(
       width: 360,
       child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
         if (widget.hint != null) Padding(
@@ -689,9 +689,9 @@ class _MultiChoiceDialogState extends State<_MultiChoiceDialog> {
   late final _selected = widget.initial.toSet();
 
   @override
-  Widget build(BuildContext context) => material.AlertDialog(
-    title: Text(widget.title, style: AppTextStyle.title3.of(context, emphasized: true)),
-    content: Column(mainAxisSize: MainAxisSize.min, children: [
+  Widget build(BuildContext context) => AlertDialog(
+    title: widget.title,
+    child: Column(mainAxisSize: MainAxisSize.min, children: [
       for (final option in widget.options)
         ListItem.checkbox(
           value: _selected.contains(option),
@@ -756,9 +756,9 @@ class _RuleSetDialogState extends State<_RuleSetDialog> {
     setState(() => _values.text = selected.join(', '));
   }
 
-  @override Widget build(BuildContext context) => material.AlertDialog(
-    title: Text(context.tr('Throne preset rules'), style: AppTextStyle.title3.of(context, emphasized: true)),
-    content: SizedBox(
+  @override Widget build(BuildContext context) => AlertDialog(
+    title: context.tr('Throne preset rules'),
+    child: SizedBox(
       width: 420, height: 420,
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         TextField(

@@ -1,4 +1,3 @@
-import 'package:material_ui/material_ui.dart' as material;
 import 'package:flutter/services.dart';
 import '../widgets.dart';
 import '../components/form.dart';
@@ -264,8 +263,12 @@ class _GroupSettingsPageState extends State<GroupSettingsPage> {
     final routeChoices = rows(_data?['routeChoices']).map((choice) =>
       (choice['id']?.toString() ?? '-1', choice['label']?.toString() ?? '')).toList();
     // A refused save says why: without this the sheet stayed open and looked like a dead button.
-    return FormPage(
-      title: 'Group settings', saving: _saving, onSave: _save, error: issue?.message ?? _error,
+    return BoxPage(
+      title: 'Group settings',
+      confirmationAction: IconButtonData(glyph: AppGlyphs.check, tooltip: context.tr('Save'), isLoading: _saving, onPressed: _saving ? null : _save),
+      error: issue?.message ?? _error,
+      loading: _saving,
+      absorbing: _saving,
       children: [
         generateSection(items: [
           FormRow(title: context.tr('Name'), invalid: issue?.field == 'name',
@@ -321,9 +324,9 @@ class _GroupSettingsPageState extends State<GroupSettingsPage> {
           ], _options['httpVersion']?.toString() ?? '', (value) => _setOption('httpVersion', value.isEmpty ? null : int.tryParse(value)))),
           _menuRow(context.tr('Update interval'), _intervalLabel(), () async {
             final controller = TextEditingController(text: _updateInterval.text);
-            final picked = await showDialog<String>(context: context, builder: (context) => material.AlertDialog(
-              title: Text(context.tr('Update interval')),
-              content: TextField(controller: controller, autofocus: true, keyboardType: TextInputType.number,
+            final picked = await showDialog<String>(context: context, builder: (context) => AlertDialog(
+              title: context.tr('Update interval'),
+              child: TextField(controller: controller, autofocus: true, keyboardType: TextInputType.number,
                 inputFormatters: [FilteringTextInputFormatter.digitsOnly],
                 decoration: InputDecoration(hintText: context.tr('Keep default')),
                 onSubmitted: (value) => Navigator.pop(context, value)),

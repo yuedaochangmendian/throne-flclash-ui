@@ -14,3 +14,7 @@ linter:
     # The vendored prism layer keeps constructor bodies readable with named
     # parameters; upstream does not enforce this rule either.
     prefer_initializing_formals: false
+    # Prism's AlertDialog and BoxPage read title → actions → body, because the
+    # action row is part of the frame rather than trailing content. Ordering
+    # `child` last for the linter's sake would separate the two related halves.
+    sort_child_properties_last: false

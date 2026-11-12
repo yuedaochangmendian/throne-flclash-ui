@@ -79,7 +79,6 @@ export 'sortable.dart';
 export 'surface.dart';
 export 'switch.dart';
 export 'tab_view.dart';
-export 'table_layout.dart';
 export 'text.dart';
 export 'text_loupe.dart';
 export 'text_selection_menu.dart';

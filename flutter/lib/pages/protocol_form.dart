@@ -1458,11 +1458,12 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
     }
     final issue = _attempted ? _issue : null;
     final schemas = _schemas();
-    return FormPage(
+    return BoxPage(
       title: _draft ? 'New node' : 'Edit settings',
-      saving: _saving,
-      onSave: _save,
+      confirmationAction: IconButtonData(glyph: AppGlyphs.check, tooltip: context.tr('Save'), isLoading: _saving, onPressed: _saving ? null : _save),
       error: _error ?? issue?.message,
+      loading: _saving,
+      absorbing: _saving,
       children: [
         for (final section in schemas) ...[
           if (section.fields.any(_visible))

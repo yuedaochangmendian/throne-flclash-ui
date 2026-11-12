@@ -1,4 +1,3 @@
-import 'package:material_ui/material_ui.dart' as material;
 import 'package:material_ui/material_ui.dart'
   hide
     AlertDialog,
@@ -16,6 +15,8 @@ import 'package:material_ui/material_ui.dart'
     FilledButton,
     IconButton,
     LinearProgressIndicator,
+    NavigationBar,
+    NavigationDestination,
     OutlinedButton,
     PopupMenuItem,
     Scaffold,
@@ -25,9 +26,12 @@ import 'package:material_ui/material_ui.dart'
     SelectionArea,
     Slider,
     Switch,
+    TabBarView,
+    TabController,
     TextButton,
     Theme,
-    ThemeData;
+    ThemeData,
+    ThemeMode;
 import 'box.dart';
 import 'l10n.dart';
 import 'ui/ui.dart';
@@ -52,6 +56,8 @@ export 'package:material_ui/material_ui.dart'
     FilledButton,
     IconButton,
     LinearProgressIndicator,
+    NavigationBar,
+    NavigationDestination,
     OutlinedButton,
     PopupMenuItem,
     Scaffold,
@@ -61,12 +67,16 @@ export 'package:material_ui/material_ui.dart'
     SelectionArea,
     Slider,
     Switch,
+    TabBarView,
+    TabController,
     TextButton,
     Theme,
-    ThemeData;
+    ThemeData,
+    ThemeMode;
 export 'box.dart';
 export 'l10n.dart';
-export 'pages/throne.dart';
+export 'components/settings_controls.dart';
+export 'pages/settings_pages.dart';
 export 'pages/route_texts.dart';
 export 'pages/additional_rules.dart';
 export 'pages/global_rules.dart';
@@ -87,14 +97,25 @@ class BoxMenu extends StatelessWidget {
   );
 }
 
+/// The one page shell: title bar, optional validation line, and a scrolling
+/// body. Forms, settings screens and plain lists all use it.
 class BoxPage extends StatelessWidget {
-  const BoxPage({super.key, required this.title, required this.children, this.actions = const [], this.menuItems = const [], this.primaryAction, this.confirmationAction, this.loading = false});
+  const BoxPage({super.key, required this.title, required this.children, this.actions = const [], this.menuItems = const [], this.primaryAction, this.confirmationAction, this.loading = false, this.error, this.absorbing = false});
   final String title;
   final List<Widget> children;
   final List<IconButtonData> actions;
   final List<PopupMenuItem> menuItems;
   final IconButtonData? primaryAction, confirmationAction;
   final bool loading;
+
+  /// A validation or save failure shown above the body. Kept at a stable index
+  /// so the children below it keep their state when the message appears.
+  final String? error;
+
+  /// Blocks interaction with the body without unmounting it (a form saving in
+  /// the background keeps its scroll position and focus).
+  final bool absorbing;
+
   @override
   Widget build(BuildContext context) => Scaffold(
     title: context.tr(title),
@@ -103,9 +124,19 @@ class BoxPage extends StatelessWidget {
     primaryAction: primaryAction,
     confirmationAction: confirmationAction,
     isLoading: loading,
-    body: ListView(
-      padding: EdgeInsets.fromLTRB(16, context.contentTopPadding, 16, 24 + context.bottomInset),
-      children: children,
+    body: AbsorbPointer(
+      absorbing: absorbing,
+      child: ListView(
+        padding: EdgeInsets.fromLTRB(16, context.contentTopPadding, 16, 24 + context.bottomInset),
+        children: [
+          if (error != null)
+            Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Text(error!, style: context.listCaptionStyle.copyWith(color: context.colorScheme.error)))
+          else
+            const SizedBox.shrink(),
+          ...children,
+        ],
+      ),
     ),
   );
 }
@@ -201,18 +232,21 @@ class ErrorState extends StatelessWidget {
   );
 }
 
-Future<bool> confirm(BuildContext context, String title, {String? message, String action = 'Delete'}) async =>
-    await showDialog<bool>(
-      context: context,
-      builder: (context) => material.AlertDialog(
-        title: Text(context.tr(title)),
-        content: message == null ? null : Text(context.tr(message)),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: Text(context.tr('Cancel'))),
-          TextButton(onPressed: () => Navigator.pop(context, true), child: Text(context.tr(action))),
-        ],
-      ),
-    ) ?? false;
+Future<bool> confirm(BuildContext context, String title, {String? message, String action = 'Delete'}) async {
+  // The alert's own context is the one its navigator can pop.
+  final result = await showFloatingDialog<bool>(
+    context: context,
+    child: Builder(builder: (context) => AlertDialog(
+      title: context.tr(title),
+      child: message == null ? null : Text(context.tr(message)),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context, false), child: Text(context.tr('Cancel'))),
+        TextButton(onPressed: () => Navigator.pop(context, true), child: Text(context.tr(action))),
+      ],
+    )),
+  );
+  return result ?? false;
+}
 
 class DetailRows extends StatelessWidget {
   const DetailRows(this.values, {super.key});
@@ -224,6 +258,13 @@ class DetailRows extends StatelessWidget {
   ]);
 }
 
+/// A floating content block above the page surface.
+///
+/// Prism separates depth with colour steps, not drop shadows, so this is a
+/// card-level surface at the alert corner radius — the same shape the sheets
+/// and dialogs above it use — rather than the hand-rolled shadow stack it used
+/// to be. A press, when present, runs through prism's card so the ripple and
+/// the selection state match every other pressable row.
 class BoxPanel extends StatelessWidget {
   const BoxPanel({super.key, required this.child, this.onTap, this.padding = const EdgeInsets.symmetric(horizontal: 20, vertical: 18), this.clipBehavior = Clip.antiAlias});
   final Widget child;
@@ -232,27 +273,17 @@ class BoxPanel extends StatelessWidget {
   final Clip clipBehavior;
   @override
   Widget build(BuildContext context) {
-    final dark = context.colorScheme.brightness == Brightness.dark;
-    BoxShadow shadow(int alpha, double y, double blur, [double spread = 0]) => BoxShadow(
-      color: Color.fromARGB(alpha, 0, 0, 0), offset: Offset(0, y),
-      blurRadius: blur <= 1 ? 0 : (blur / 2 - .5) / .57735, spreadRadius: spread,
-    );
-    return Container(
-      decoration: ShapeDecoration(
-        color: SurfaceLevel.card.colorOf(context.colorScheme),
-        shape: AppShape.all(34),
-        shadows: dark ? [shadow(0x80, 1, 2), shadow(0x8c, 10, 28, -6)]
-            : [shadow(0x0d, .5, 1), shadow(0x0a, 2, 6), shadow(0x17, 12, 32, -6)],
-      ),
-      child: Material(
-        type: MaterialType.transparency,
-        shape: AppShape.all(34),
-        clipBehavior: clipBehavior,
-        child: onTap == null ? Padding(padding: padding, child: child) : InkWell(
-          customBorder: AppShape.all(34), onTap: onTap, child: Padding(padding: padding, child: child),
-        ),
-      ),
-    );
+    final surface = SurfaceLevel.card.colorOf(context.colorScheme);
+    final shape = AppShape.all(AppCorner.alert);
+    final inset = padding is EdgeInsets ? padding as EdgeInsets : const EdgeInsets.symmetric(horizontal: 20, vertical: 18);
+    return onTap == null
+        ? Surface(color: surface, shape: shape, clipBehavior: clipBehavior, child: Padding(padding: padding, child: child))
+        : Card(
+            onPressed: onTap,
+            radius: AppCorner.alert,
+            padding: inset,
+            child: child,
+          );
   }
 }
 

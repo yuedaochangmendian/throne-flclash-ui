@@ -14,33 +14,6 @@ extension ListRowValue on BuildContext {
       listTitleStyle.copyWith(color: colorScheme.onSurfaceVariant);
 }
 
-class FormPage extends StatelessWidget {
-  const FormPage({super.key, required this.title, this.onSave, required this.children,
-    this.error, this.saving = false, this.actions = const []});
-  final String title;
-  final VoidCallback? onSave;
-  final String? error;
-  final bool saving;
-  final List<Widget> children;
-  final List<IconButtonData> actions;
-
-  @override Widget build(BuildContext context) => Scaffold(
-    title: context.tr(title), iconActions: actions,
-    confirmationAction: onSave == null ? null : IconButtonData(glyph: AppGlyphs.check, tooltip: context.tr('Save'),
-      isLoading: saving, onPressed: saving ? null : onSave),
-    body: AbsorbPointer(absorbing: saving, child: ListView(shrinkWrap: true,
-      padding: EdgeInsets.fromLTRB(16, context.sectionsTopPadding, 16, 20 + context.bottomInset),
-      children: [
-        // Keep form children at stable indices when the validation message changes.
-        if (error != null) Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: Text(error!, style: context.listCaptionStyle.copyWith(color: context.colorScheme.error)))
-        else const SizedBox.shrink(),
-        ...children,
-      ],
-    )),
-  );
-}
-
 class FormRow extends StatelessWidget {
   static const _spacing = 16.0;
   static const _titleMaxLines = 2;

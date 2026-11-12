@@ -22,9 +22,6 @@ local.properties
 # python bytecode
 __pycache__/
 
-# prism drift report (tools/diagnostics/prism_drift.py --json)
-/prism_drift.json
-
 # local release bundles (release_assets.py output)
 /dist*/
 

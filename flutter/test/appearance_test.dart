@@ -33,7 +33,7 @@ void main() {
     await tester.tap(find.text('Pure black'));
     await tester.pumpAndSettle();
     expect(stored['pureBlack'], true);
-    expect(tester.widget<MaterialApp>(find.byType(MaterialApp)).darkTheme!.colorScheme.surface, Colors.black);
+    expect(tester.widget<PrismApp>(find.byType(PrismApp)).darkTheme!.colorScheme.surface, Colors.black);
     await tester.scrollUntilVisible(find.text('Fade'), 200, scrollable: find.descendant(
       of: find.byType(AppearancePage), matching: find.byType(Scrollable)).first);
     await tester.pumpAndSettle();

@@ -1,7 +1,6 @@
 import 'package:material_ui/material_ui.dart' as material;
 import 'package:flutter/services.dart';
 import '../widgets.dart';
-import '../components/form.dart';
 import 'capture_domains.dart';
 
 class RequestSettingsPage extends StatefulWidget {
@@ -73,7 +72,13 @@ class _RequestSettingsPageState extends State<RequestSettingsPage> {
 
   @override Widget build(BuildContext context) {
     if (context.box.remote) return const BoxPage(title: 'Capture settings', children: [EmptyState('HTTP debugging is only available for the local service')]);
-    return BoxEditGuard(dirty: _dirty, busy: _busy, child: FormPage(title: 'Capture settings', saving: _busy, error: _error, onSave: _save, children: [
+    return BoxEditGuard(dirty: _dirty, busy: _busy, child: BoxPage(
+      title: 'Capture settings',
+      confirmationAction: IconButtonData(glyph: AppGlyphs.check, tooltip: context.tr('Save'), isLoading: _busy, onPressed: _busy ? null : _save),
+      error: _error,
+      loading: _busy,
+      absorbing: _busy,
+      children: [
       ListFooter(text: context.tr('Saved on this device. Capture stops when the local service restarts.')),
       generateSection(title: 'HTTPS / eBPF', items: [
         ListItem.toggle(title: Text(context.tr('Capture HTTPS with eBPF')), value: _https, onChanged: (value) => setState(() { _https = value; _dirty = true; })),
@@ -105,7 +110,8 @@ class _RequestSettingsPageState extends State<RequestSettingsPage> {
       ]),
       _field(_ports, 'Capture ports', hint: '80, 443, 8080, 8443', multiline: false,
         footer: 'Keeps up to 300 requests and 32 MiB. Large bodies keep a prefix. HTTPS ports use the HTTP authority when socket metadata is unavailable.'),
-    ]));
+    ],
+    ));
   }
 }
 

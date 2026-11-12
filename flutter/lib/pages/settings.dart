@@ -8,21 +8,6 @@ export 'access.dart';
 export 'about.dart';
 export 'backup.dart';
 
-/// A host setting rendered as a switch, as every service setting upstream is.
-class NativeToggle extends StatelessWidget {
-  const NativeToggle(this.title, this.setting, {super.key, this.restart = true, this.autoRestart = false});
-  final String title, setting;
-  final bool restart, autoRestart;
-  @override Widget build(BuildContext context) {
-    final box = context.box;
-    return ListItem.toggle(
-      title: Text(context.tr(title)), value: box.settings[setting] == true,
-      onChanged: box.serviceSettingsChanging || autoRestart && box.transitioning && !box.remote
-        ? null : (value) => box.setSetting(setting, value, restart: restart, autoRestart: autoRestart),
-    );
-  }
-}
-
 /// The settings entries in Throne's `global_preferences.xml` order. The Tools page lists them
 /// directly, so every setting is one tap from the drawer and there is no Settings page in between.
 ///
@@ -60,10 +45,10 @@ class NotificationPage extends StatelessWidget {
     return BoxPage(title: 'Notification', children: [
       generateSection(items: [
         // Both are read by the host on its next update, so they need no core restart.
-        const NativeToggle('Show group name in the notification', 'showGroupInNotification', restart: false),
-        const NativeToggle('Show proxy speed', 'showProxySpeed', restart: false),
-        const NativeToggle('Show direct speed', 'showDirectSpeed', restart: false),
-        const NativeToggle('Show traffic total', 'showTrafficTotal', restart: false),
+        const SettingToggle('Show group name in the notification', 'showGroupInNotification', restart: false),
+        const SettingToggle('Show proxy speed', 'showProxySpeed', restart: false),
+        const SettingToggle('Show direct speed', 'showDirectSpeed', restart: false),
+        const SettingToggle('Show traffic total', 'showTrafficTotal', restart: false),
         const SettingText('Notification title template', 'notificationTitleTemplate',
             hint: 'Use {title} for the profile name, for example 🚀 {title}', restart: false),
         const SettingText('Notification content template', 'notificationContentTemplate',
@@ -92,20 +77,20 @@ class GeneralPage extends StatelessWidget {
         ),
         // "Allow bypass" lives on the Access screen as the per-app mode; the private-range switch is
         // under TUN, because upstream keeps them in two different stores.
-        const NativeToggle('Always show the address', 'alwaysShowAddress', restart: false),
+        const SettingToggle('Always show the address', 'alwaysShowAddress', restart: false),
         // The notification rows are a page of their own on the settings list.
       ]),
       generateSection(title: context.tr('Connections'), items: [
-        const NativeToggle('Reset connections on network change', 'networkChangeResetConnections', restart: false),
-        const NativeToggle('Reset connections when waking up', 'wakeResetConnections', restart: false),
+        const SettingToggle('Reset connections on network change', 'networkChangeResetConnections', restart: false),
+        const SettingToggle('Reset connections when waking up', 'wakeResetConnections', restart: false),
       ]),
       generateSection(title: context.tr('Behaviour'), items: [
-        const NativeToggle('Connect after reboot', 'rememberEnable', restart: false),
-        const NativeToggle('Hide from recent apps', 'hideFromRecentApps', restart: false),
-        const NativeToggle('Treat the VPN as metered', 'meteredNetwork', autoRestart: true),
-        const NativeToggle('Skip delete confirmation', 'skipDeleteConfirmation', restart: false),
+        const SettingToggle('Connect after reboot', 'rememberEnable', restart: false),
+        const SettingToggle('Hide from recent apps', 'hideFromRecentApps', restart: false),
+        const SettingToggle('Treat the VPN as metered', 'meteredNetwork', autoRestart: true),
+        const SettingToggle('Skip delete confirmation', 'skipDeleteConfirmation', restart: false),
         // A failed rule-set download normally blocks a start; this lets the core come up anyway.
-        const NativeToggle('Start without rule sets', 'startWithoutRuleSets', restart: false),
+        const SettingToggle('Start without rule sets', 'startWithoutRuleSets', restart: false),
         ListItem(title: Text(context.tr('Battery optimization')),
           subtitle: Text(context.tr(context.box.settings['batteryExempt'] == true ? 'Unrestricted' : 'Allow background operation')),
           onTap: () => context.box.batteryOpen()),
