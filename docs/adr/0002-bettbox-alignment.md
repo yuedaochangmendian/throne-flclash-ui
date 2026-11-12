@@ -65,6 +65,18 @@ Go/Dart。对齐架构就必须同时换掉存储层，这正是 0001 估算的 
 > `settings_schema.go` / `settings_codec.go` 保留为纯契约（由 `settings_contract.py` 校验），
 > 待有真实 row store 实现时再迁。判定标准：**一个域只有在存储权威也在 Go 时才算迁完**，
 > 仅注册 handler 不算。
+>
+> **修订（profiles.\* / groups 改为直写 Room，决策 4 例外）**：决策 4 假定存储全部改成
+> 文件/JSON，但 `GroupRepo` 与 `ProfileManager` 是 Room 实现，配置生成、订阅刷新、备份
+> 导出都直接读 Room。phase 3d 让 Go 写 `profiles.json` / `groups.json` 之后，八个
+> `profiles.*` handler 的回答与 Kotlin 的读写互不可见 —— 改名或拖拽排序在下一次读取时
+> 变回旧值。把 JSON 文档挂成只读视图也修不了：只要 Kotlin 还在写 Room，跨写的读者立刻
+> 拿到陈旧数据。因此这两张表的权威留在 Room，由 kernel **直接打开
+> `databases/sager_net.db` 写入**：cgo 编入 SQLite amalgamation（无运行时共享库依赖），
+> WAL 下与 Room 的连接共存，`data.refresh` 补上 Room 观察不到的外部写入。路由三表
+> （`route_profiles` / `route_rules` / `global_route_rules`）仍是文件/JSON 权威 ——
+> 那条路径没有第二个写者。判定标准的第二次应用：**权威在哪，写者就在哪**；不能既让
+> Room 当权威又让 Go 写别处。
 
 ## 后果
 
