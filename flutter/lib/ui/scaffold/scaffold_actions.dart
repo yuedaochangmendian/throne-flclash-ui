@@ -121,6 +121,12 @@ class _OverflowMenuButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return PopupAnchor(
+      // Below the button, not over it. The default `overAnchorEnd` lays the card
+      // across the bar it was opened from, covering the title and the first rows
+      // of the page underneath — on a phone the menu then hides the very content
+      // the user opened it to act on. A list row's context menu already opens
+      // this way (context_menu.dart).
+      placement: PopupPlacement.belowPoint,
       targetBuilder: (open) => IconButton(
         tooltip: UiLocalizations.of(context).more,
         onPressed: open,
