@@ -11,6 +11,21 @@ Run from the repository root:
     uv run tools/diagnostics/i18n_coverage.py [--lang values-it] [--summary]
 
 Exit code 0 when every checked locale is clean, 1 when any issue is found.
+
+## The ratchet
+
+Nineteen locales have gaps (885 of them at the time this was added), so failing
+on any issue would block every unrelated change and the gate would be disabled
+within a week. Counting the gaps is not enough either: translating one string
+while adding another leaves the count identical, which is exactly the drift a
+gate exists to stop.
+
+`--ratchet` therefore compares the *set* of issues against
+`i18n_baseline.txt`: an issue that is not in the baseline fails the build, and
+an issue that was in the baseline but is gone is reported as progress. Adding
+translations is always allowed; only new gaps are refused.
+`--update-baseline` rewrites the file after a gap is fixed, so the ratchet
+tightens and can never loosen by accident.
 """
 
 from __future__ import annotations
@@ -24,6 +39,7 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_RES_DIR = REPO_ROOT / "app" / "src" / "main" / "res"
+DEFAULT_BASELINE = Path(__file__).resolve().parent / "i18n_baseline.txt"
 
 # CLDR plural quantities each locale MUST provide (superset allowed).
 REQUIRED_QUANTITIES: dict[str, set[str]] = {
@@ -218,6 +234,28 @@ def check_locale(
     return issues
 
 
+def read_baseline(path: Path) -> set[str] | None:
+    """The accepted issues, or None when there is no baseline yet."""
+    if not path.exists():
+        return None
+    return {
+        line.strip()
+        for line in path.read_text(encoding="utf-8").splitlines()
+        if line.strip() and not line.lstrip().startswith("#")
+    }
+
+
+def write_baseline(path: Path, issues: set[str]) -> None:
+    header = (
+        "# Accepted i18n gaps, one per line (tools/diagnostics/i18n_coverage.py --ratchet).\n"
+        "# This file is a ceiling, not a target: translating strings removes lines,\n"
+        "# adding an untranslated string adds one and fails CI until it is translated\n"
+        "# or this file is regenerated with --update-baseline (a deliberate act).\n"
+    )
+    path.write_text(header + "".join(f"{issue}\n" for issue in sorted(issues)),
+                    encoding="utf-8", newline="\n")
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--res-dir", type=Path, default=DEFAULT_RES_DIR,
@@ -225,6 +263,12 @@ def main() -> int:
     parser.add_argument("--lang", help="only check one locale dir, e.g. values-it")
     parser.add_argument("--summary", action="store_true",
                         help="print per-locale counts only, no item details")
+    parser.add_argument("--ratchet", action="store_true",
+                        help="fail only on gaps the baseline does not already accept")
+    parser.add_argument("--baseline", type=Path, default=DEFAULT_BASELINE,
+                        help="baseline file used by --ratchet")
+    parser.add_argument("--update-baseline", action="store_true",
+                        help="rewrite the baseline from the current gaps, then pass")
     args = parser.parse_args()
 
     res_dir: Path = args.res_dir
@@ -260,6 +304,7 @@ def main() -> int:
             return 1
 
     total_issues = 0
+    all_issues: set[str] = set()
     for locale_dir in locale_dirs:
         issues = check_locale(
             res_dir, locale_dir,
@@ -268,6 +313,7 @@ def main() -> int:
             nontranslatable_strings, nontranslatable_arrays,
         )
         total_issues += len(issues)
+        all_issues.update(issues)
         counts = Counter(
             "missing" if ": missing" in i else
             "extra" if (": extra" in i or "leak" in i) else
@@ -282,12 +328,40 @@ def main() -> int:
             f"placeholder={counts['placeholder']} plural_qty={counts['plural_qty']} "
             f"other={counts['other']} total={len(issues)}"
         )
-        if not args.summary:
+        if not args.summary and not args.ratchet:
             for line in issues:
                 print(f"  - {line}")
 
     print(f"checked {len(locale_dirs)} locale(s), {total_issues} issue(s)")
-    return 1 if total_issues else 0
+
+    if args.update_baseline:
+        write_baseline(args.baseline, all_issues)
+        print(f"baseline updated: {args.baseline.name} now lists {len(all_issues)} gap(s)")
+        return 0
+
+    if not args.ratchet:
+        return 1 if total_issues else 0
+
+    # The ratchet: a gap the baseline never accepted is a regression, even when
+    # another gap was fixed in the same change and the total did not move.
+    baseline = read_baseline(args.baseline)
+    if baseline is None:
+        print(f"FATAL: {args.baseline} is missing; run with --update-baseline once")
+        return 1
+    new_gaps = sorted(all_issues - baseline)
+    closed = sorted(baseline - all_issues)
+    for gap in new_gaps:
+        print(f"NEW: {gap}")
+    if closed:
+        print(f"closed {len(closed)} accepted gap(s) — run --update-baseline to tighten the ratchet")
+        for gap in closed[:10]:
+            print(f"  closed: {gap}")
+    if new_gaps:
+        print(f"FAIL: {len(new_gaps)} new i18n gap(s) beyond the {len(baseline)} accepted")
+        print("      translate them, or accept them deliberately with --update-baseline")
+        return 1
+    print(f"i18n ratchet OK: {len(all_issues)} gap(s), all within the accepted {len(baseline)}")
+    return 0
 
 
 if __name__ == "__main__":

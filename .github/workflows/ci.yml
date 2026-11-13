@@ -140,14 +140,16 @@ jobs:
           # The JVM accepts regexes Android's ICU rejects; see the pre.17 crash.
           python3 tools/diagnostics/kotlin_regex_audit.py
           python3 tools/diagnostics/py_syntax_check.py tools/diagnostics/*.py tools/bindgen/*.py buildScript/*.py
-      # Locale completeness is a report, not a gate: the 885 known gaps across 19
-      # locales predate this job and are burned down incrementally.
-      # `continue-on-error` keeps the list visible on every code push without
-      # blocking it.
-      - name: i18n coverage report
+      # Locale completeness is a ratchet, not a gate on the absolute count: 885
+      # known gaps across 19 locales predate this job, so failing on any gap
+      # would block every unrelated change. `--ratchet` compares the *set* of
+      # gaps against tools/diagnostics/i18n_baseline.txt, so translating a string
+      # while adding an untranslated one still fails even though the total did
+      # not move. Fixing gaps is always allowed; the accepted ceiling only goes
+      # down, via a deliberate --update-baseline.
+      - name: i18n coverage ratchet
         if: ${{ needs.changes.outputs.code == 'true' }}
-        run: python3 tools/diagnostics/i18n_coverage.py --summary
-        continue-on-error: true
+        run: python3 tools/diagnostics/i18n_coverage.py --ratchet
       - name: Set up Flutter
         if: ${{ needs.changes.outputs.code == 'true' }}
         uses: subosito/flutter-action@v2
