@@ -121,6 +121,7 @@ const _zh = <String, String>{
   "Expires": "到期时间",
   'Remote configuration': '远程配置', 'Scanning configuration': '正在扫描配置',
   'Dashboard': '仪表盘', 'Proxies': '代理', 'Profiles': '配置', 'Tools': '工具',
+  'Proxies settings': '代理显示设置',
   'Connections': '连接', 'Logs': '日志', 'Settings': '设置', 'Status': '状态',
   'Running': '运行中', 'Not running': '未运行', 'Starting': '启动中', 'Stopping': '停止中',
   'The kernel runs this selector directly; live ranking is not reported here':

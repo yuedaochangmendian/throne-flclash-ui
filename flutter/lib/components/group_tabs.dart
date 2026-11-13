@@ -138,26 +138,54 @@ class _GroupTabsState extends State<GroupTabs> {
     return TonalButtonTheme(
       size: TonalButtonSize.section,
       child: ElasticPress(
-        child: PopupAnchor(
-          targetBuilder: (open) => IconButton(
-            tooltip: context.tr('Proxy groups'),
-            onPressed: open,
-            icon: const GlyphIcon(AppGlyphs.chevronDown),
-          ),
-          popupBuilder: (_) => PopupMenu(
-            maxVisibleItems: 7,
-            items: [
-              for (final (index, group) in widget.groups.indexed)
-                PopupMenuItem(
-                  label: group['tag'].toString(),
-                  checked: index == widget.controller.index,
-                  onPressed: () => _select(index),
-                ),
-            ],
-          ),
+        child: IconButton(
+          tooltip: context.tr('Proxy groups'),
+          // FlClash's shape: a sheet of every group as chips, the active one
+          // filled. The old popup listed them as a vertical menu, which hid the
+          // current selection behind a scroll once there were many groups.
+          onPressed: _showGroupSheet,
+          icon: const GlyphIcon(AppGlyphs.chevronDown),
         ),
       ),
     );
+  }
+
+  Future<void> _showGroupSheet() async {
+    final picked = await showSheet<int>(
+      context: context,
+      builder: (sheetContext) => ListView(
+        shrinkWrap: true,
+        padding: EdgeInsets.fromLTRB(
+          16,
+          sheetContext.sectionsTopPadding,
+          16,
+          24 + sheetContext.bottomInset,
+        ),
+        children: [
+          generateSection(
+            title: sheetContext.tr('Proxy groups'),
+            items: [
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final (index, group) in widget.groups.indexed)
+                      ChoiceChip(
+                        label: Text(group['tag'].toString()),
+                        selected: index == widget.controller.index,
+                        onSelected: (_) => Navigator.pop(sheetContext, index),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+    if (picked != null && mounted) _select(picked);
   }
 
   Widget _buildTabs(_TabExtents extents, bool hasMore) {

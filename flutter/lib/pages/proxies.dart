@@ -4,6 +4,7 @@ import '../components/group_tabs.dart';
 import '../components/proxy_card.dart';
 import '../components/proxy_list.dart';
 import '../components/proxy_motion.dart';
+import '../components/proxies_setting.dart';
 import 'test_panel.dart';
 
 class ProxiesPage extends StatefulWidget {
@@ -12,7 +13,8 @@ class ProxiesPage extends StatefulWidget {
   State<ProxiesPage> createState() => _ProxiesPageState();
 }
 
-class _ProxiesPageState extends State<ProxiesPage> with TickerProviderStateMixin {
+class _ProxiesPageState extends State<ProxiesPage>
+    with TickerProviderStateMixin {
   String _query = '';
   final _testing = <int>{};
   final _testLabels = <String>{};
@@ -31,13 +33,17 @@ class _ProxiesPageState extends State<ProxiesPage> with TickerProviderStateMixin
   String _tabsSignature = '';
 
   TabController _tabsFor(List<Json> groups) {
-    final signature = groups.map((group) => group['tag'].toString()).join('\u0000');
+    final signature = groups
+        .map((group) => group['tag'].toString())
+        .join('\u0000');
     if (_tabs == null || signature != _tabsSignature) {
       _tabs?.dispose();
       _tabsSignature = signature;
       _tabs = TabController(
         length: groups.length,
-        initialIndex: groups.indexWhere((group) => group['tag'] == _currentGroup).clamp(0, groups.length - 1),
+        initialIndex: groups
+            .indexWhere((group) => group['tag'] == _currentGroup)
+            .clamp(0, groups.length - 1),
         vsync: this,
       );
     }
@@ -78,25 +84,6 @@ class _ProxiesPageState extends State<ProxiesPage> with TickerProviderStateMixin
       curve: proxyMotionCurve,
     );
   }
-
-  PopupMenuItem _options(
-    String label,
-    Glyph glyph,
-    String key,
-    List<String> values,
-    String fallback,
-  ) => PopupMenuItem(
-    glyph: glyph,
-    label: context.tr(label),
-    subItems: [
-      for (final value in values)
-        PopupMenuItem(
-          label: context.tr(value),
-          checked: (context.box.preferences[key] ?? fallback) == value,
-          onPressed: () => context.box.setPreference(key, value),
-        ),
-    ],
-  );
 
   // Testing and selecting both work with the service stopped: a test runs over its own instance of the
   // profile, and a selection is a stored preference the next start reads, so neither waits for the VPN.
@@ -213,6 +200,106 @@ class _ProxiesPageState extends State<ProxiesPage> with TickerProviderStateMixin
       nodes.sort((a, b) => delay(a).compareTo(delay(b)));
     }
     return nodes;
+  }
+
+  /// The pages below the bar: the empty state, the list style or the tab
+  /// style. Split out so [build] can stack the delay-test button over it.
+  Widget _proxiesBody(List<Json> groups, bool list, BoxController box) =>
+      groups.isEmpty
+      ? NullStatus(
+          label: context.tr(
+            box.running
+                ? 'No proxy groups in this configuration'
+                : 'Start the service to view proxy groups',
+          ),
+          illustration: NullStatusIllustration.proxies,
+        )
+      : list
+      ? ProxyListView(
+          key: ValueKey(
+            box.remote
+                ? 'remote:${box.dashboard['remote']}'
+                : 'local:${box.selectedProfileId}',
+          ),
+          profileKey: box.remote
+              ? 'remote:${box.dashboard['remote']}'
+              : 'local:${box.selectedProfileId}',
+          groups: [
+            for (final group in groups) ProxyListGroup(group, _nodes(group)),
+          ],
+          testing: _testLabels,
+          queued: Set.of(_queued),
+          cardBuilder: _card,
+          onTest: _testGroup,
+        )
+      : Builder(
+          builder: (context) {
+            final tabs = _tabsFor(groups);
+            return Padding(
+              padding: EdgeInsets.only(top: context.contentTopPadding),
+              child: Column(
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: GroupTabs(
+                      controller: tabs,
+                      groups: groups,
+                      onSelected: (index) {
+                        if (mounted) {
+                          setState(
+                            () =>
+                                _currentGroup = groups[index]['tag'] as String,
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                  Expanded(
+                    child: TabBarView(
+                      controller: tabs,
+                      children: [
+                        for (final group in groups)
+                          Column(
+                            children: [
+                              if (group['selectable'] != true)
+                                Padding(
+                                  padding: const EdgeInsets.only(top: 8),
+                                  child: Text(
+                                    context.tr('Automatic selection'),
+                                    style: context.listCaptionStyle,
+                                  ),
+                                ),
+                              Expanded(child: _grid(group)),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+
+  /// FlClash's DelayTestButton: the current group's latency run, over the list.
+  Widget _delayTestFab() {
+    final tag = _currentGroup;
+    if (tag == null) return const SizedBox.shrink();
+    return Positioned(
+      right: 16,
+      bottom: 16 + context.bottomInset,
+      child: FloatingActionButton.small(
+        tooltip: context.tr('Test latency'),
+        onPressed: _testLabels.contains(tag) ? null : () => _testGroup(tag),
+        child: _testLabels.contains(tag)
+            ? const SizedBox(
+                width: 18,
+                height: 18,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const GlyphIcon(AppGlyphs.bolt),
+      ),
+    );
   }
 
   Widget _card(BuildContext context, Json group, Json node) {
@@ -357,18 +444,6 @@ class _ProxiesPageState extends State<ProxiesPage> with TickerProviderStateMixin
         searchState: AppBarSearchState(
           onSearch: (query) => setState(() => _query = query),
         ),
-        primaryAction: list
-            ? null
-            : IconButtonData(
-                glyph: AppGlyphs.bolt,
-                tooltip: context.tr('Test latency'),
-                isLoading:
-                    _currentGroup != null &&
-                    _testLabels.contains(_currentGroup!),
-                onPressed: _currentGroup != null
-                    ? () => _testGroup(_currentGroup!)
-                    : null,
-              ),
         iconActions: [
           if (!list)
             IconButtonData(
@@ -378,40 +453,10 @@ class _ProxiesPageState extends State<ProxiesPage> with TickerProviderStateMixin
             ),
         ],
         menuItems: [
-          _options('Style', AppGlyphs.appsList, 'proxyLayout', const [
-            'Tabs',
-            'List',
-          ], 'Tabs'),
-          _options('Sort', AppGlyphs.sort, 'proxySort', const [
-            'Default',
-            'Latency',
-            'Name',
-          ], 'Default'),
-          _options('Layout', AppGlyphs.dashboard, 'proxyDensity', const [
-            'Tight',
-            'Standard',
-            'Loose',
-          ], 'Standard'),
-          _options('Size', AppGlyphs.textSize, 'proxyCardSize', const [
-            'Compact',
-            'Standard',
-            'Loose',
-          ], 'Standard'),
-          if (list)
-            _options('Icon style', AppGlyphs.iconTile, 'proxyIconStyle', const [
-              'Filled',
-              'Plain',
-              'Hidden',
-            ], 'Filled'),
           PopupMenuItem(
-            glyph: AppGlyphs.eyeOff,
-            label: context.tr('Hide timeout proxies'),
-            checked: box.preferences['hideTimeoutProxies'] == true,
-            section: const PopupMenuSection(),
-            onPressed: () => box.setPreference(
-              'hideTimeoutProxies',
-              box.preferences['hideTimeoutProxies'] != true,
-            ),
+            glyph: AppGlyphs.sliders,
+            label: context.tr('Proxies settings'),
+            onPressed: () => showProxiesSetting(context),
           ),
           PopupMenuItem(
             glyph: AppGlyphs.bolt,
@@ -438,92 +483,13 @@ class _ProxiesPageState extends State<ProxiesPage> with TickerProviderStateMixin
             label: context.tr('Test panel'),
             onPressed: () => openForm(context, const TestPanelPage()),
           ),
-          PopupMenuItem(
-            glyph: AppGlyphs.connections,
-            label: context.tr('Close connections after switching'),
-            checked: box.preferences['closeConnectionsOnSelect'] == true,
-            onPressed: () => box.setPreference(
-              'closeConnectionsOnSelect',
-              box.preferences['closeConnectionsOnSelect'] != true,
-            ),
-          ),
         ],
-        body: groups.isEmpty
-            ? NullStatus(
-                label: context.tr(
-                  box.running
-                      ? 'No proxy groups in this configuration'
-                      : 'Start the service to view proxy groups',
-                ),
-                illustration: NullStatusIllustration.proxies,
-              )
-            : list
-            ? ProxyListView(
-                key: ValueKey(
-                  box.remote
-                      ? 'remote:${box.dashboard['remote']}'
-                      : 'local:${box.selectedProfileId}',
-                ),
-                profileKey: box.remote
-                    ? 'remote:${box.dashboard['remote']}'
-                    : 'local:${box.selectedProfileId}',
-                groups: [
-                  for (final group in groups)
-                    ProxyListGroup(group, _nodes(group)),
-                ],
-                testing: _testLabels,
-                queued: Set.of(_queued),
-                cardBuilder: _card,
-                onTest: _testGroup,
-              )
-            : Builder(
-                builder: (context) {
-                  final tabs = _tabsFor(groups);
-                  return Padding(
-                  padding: EdgeInsets.only(top: context.contentTopPadding),
-                  child: Column(
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 16),
-                        child: GroupTabs(
-                          controller: tabs,
-                          groups: groups,
-                          onSelected: (index) {
-                            if (mounted) {
-                              setState(
-                                () => _currentGroup =
-                                    groups[index]['tag'] as String,
-                              );
-                            }
-                          },
-                        ),
-                      ),
-                      Expanded(
-                        child: TabBarView(
-                          controller: tabs,
-                          children: [
-                            for (final group in groups)
-                              Column(
-                                children: [
-                                  if (group['selectable'] != true)
-                                    Padding(
-                                      padding: const EdgeInsets.only(top: 8),
-                                      child: Text(
-                                        context.tr('Automatic selection'),
-                                        style: context.listCaptionStyle,
-                                      ),
-                                    ),
-                                  Expanded(child: _grid(group)),
-                                ],
-                              ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  );
-                },
-              ),
+        body: Stack(
+          children: [
+            Positioned.fill(child: _proxiesBody(groups, list, box)),
+            if (groups.isNotEmpty && !list) _delayTestFab(),
+          ],
+        ),
       ),
     );
   }
