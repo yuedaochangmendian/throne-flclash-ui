@@ -17,13 +17,6 @@ import 'dart:convert';
 enum ActionMethod {
   actionVersion,
 
-  // Phase 3a: the speed test. There is no `query` member on purpose — progress
-  // arrives as a `speedTest` push on the kernel's message port.
-  startSpeedTest,
-  cancelSpeedTest,
-  speedTestServers,
-  speedTestOutbounds,
-
   // Phase 3c: routing. Go owns the route documents; Kotlin keeps a read-only view.
   //
   // The routing UI now offers only "add a rule" against the shared pool, so the

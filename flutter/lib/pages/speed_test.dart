@@ -5,7 +5,6 @@ import '../widgets.dart';
 import '../components/speed_gauge.dart';
 import '../components/speed_outbound_card.dart';
 import '../components/speed_test_settings.dart';
-import '../core/throne_kernel.dart';
 import '../services/speed_test_history.dart';
 
 /// The kernel's speed test, laid out the way Bettbox's screen lays it out: the
@@ -35,6 +34,13 @@ class SpeedTestPage extends StatefulWidget {
   @override
   State<SpeedTestPage> createState() => _SpeedTestPageState();
 }
+
+/// TestSpec.KIND_SPEED: the native session's speed run.
+const _kindSpeed = 2;
+
+/// TestUiState's speed modes: -1 follows the Testing setting.
+const _speedModeDownloadOnly = 0;
+const _speedModeUploadOnly = 1;
 
 /// The providers the kernel knows, in the order the picker lists them.
 const _providers = <(String, String)>[
@@ -92,8 +98,12 @@ class _SpeedTestPageState extends State<SpeedTestPage>
       _coreRunning = box.running;
     });
     try {
-      final outbounds = await box.speedTestOutbounds();
-      if (mounted) setState(() => _outbounds = outbounds);
+      // The node list comes from the same catalog the rule editor's outbound
+      // picker reads, so there is one source for "what can be measured".
+      final nodes = await box.groupNodes();
+      if (mounted) {
+        setState(() => _outbounds = [for (final node in nodes) '${node['tag']}']);
+      }
     } catch (error) {
       if (mounted) setState(() => _error = BoxController.describe(error));
     }
@@ -106,13 +116,27 @@ class _SpeedTestPageState extends State<SpeedTestPage>
     });
   }
 
-  Map<String, dynamic> _params() => {
-    ..._settings.toJson(),
-    'outbound': _outbound,
-    // Only sent when narrowed: the kernel treats an absent flag as "run it".
-    if (!widget.download) 'testDownload': false,
-    if (!widget.upload) 'testUpload': false,
+  /// The arguments `groups.testSession.start` takes for a speed run.
+  ///
+  /// `kind` is TestSpec.KIND_SPEED; `speedMode` follows the Testing settings
+  /// (-1) unless the node card narrowed the run to one direction.
+  Map<String, dynamic> _sessionArgs() => {
+    'kind': _kindSpeed,
+    'profileIds': [for (final id in _profileIds) id],
+    'testCurrent': false,
+    'speedMode': !widget.download
+        ? _speedModeDownloadOnly
+        : !widget.upload
+            ? _speedModeUploadOnly
+            : -1,
   };
+
+  /// The ids the run measures. The page tests the started profile; when the
+  /// caller named an outbound, that node is the one.
+  List<int> get _profileIds {
+    final id = context.box.selectedProfileId;
+    return id > 0 ? [id] : const [];
+  }
 
   Future<void> _start() async {
     if (_starting || _running) return;
@@ -123,7 +147,10 @@ class _SpeedTestPageState extends State<SpeedTestPage>
     });
     _spin.repeat();
     try {
-      final started = await context.box.speedTestStart(_params());
+      // Throne's own test session: TestEngine runs SpeedTestRunner against the
+      // started profile, and the progress arrives as the same `testSession`
+      // event the batch panel draws.
+      final started = await context.box.groupTestSessionStartChecked(_sessionArgs());
       if (!mounted) return;
       if (!started) {
         setState(() {
@@ -148,55 +175,92 @@ class _SpeedTestPageState extends State<SpeedTestPage>
     }
   }
 
-  /// Follows the run. Under the FFI driver the kernel pushes a frame every
-  /// 200 ms (ADR 0002 phase 3a), so this subscribes instead of polling; with the
-  /// service-owned core there is no push channel and the 250 ms poll stays.
+  /// Subscribes to the test session.
+  ///
+  /// The session pushes a `testSession` event while it runs and one more when it
+  /// finishes, so this follows the event bus the rest of the app already listens
+  /// on — no polling, and no second progress channel.
   void _pollSession() {
     _poll?.cancel();
     _poll = null;
     _pushSub?.cancel();
     _pushSub = null;
-    final kernel = context.box.kernel.ffiMode ? ThroneKernel.ensure() : null;
-    if (kernel != null) {
-      _applyFrame(kernel.lastSpeedTestState, running: true);
-      _pushSub = kernel.speedTestStates.listen(
-        (frame) => _applyFrame(frame, running: false),
-        onError: _failSession,
-      );
-      return;
-    }
-    _poll = Timer.periodic(const Duration(milliseconds: 250), (_) async {
-      if (!mounted) return;
-      try {
-        final snapshot = await context.box.speedTestQuery();
-        if (!mounted) return;
-        final running = snapshot['running'] == true;
-        setState(() {
-          _state = json(snapshot['state']);
-          _running = running;
-        });
-        if (!running) _finishSession();
-      } catch (error) {
-        _failSession(error);
-      }
-    });
+    final box = context.box;
+    _applySession(box.testSession);
+    box.addListener(_onBoxChanged);
   }
 
-  /// Applies one pushed frame. The kernel's own `phase` says whether the run is
-  /// still going, so `running` only seeds the first frame.
-  void _applyFrame(Map<String, dynamic> frame, {required bool running}) {
-    if (!mounted || frame.isEmpty) return;
-    final phase = '${frame['phase'] ?? ''}';
-    final done = phase == 'done' || '${frame['error'] ?? ''}'.isNotEmpty;
+  void _onBoxChanged() {
+    if (!mounted) return;
+    _applySession(context.box.testSession);
+  }
+
+  void _stopFollowing() {
+    _pushSub?.cancel();
+    _pushSub = null;
+    _poll?.cancel();
+    _poll = null;
+    context.box.removeListener(_onBoxChanged);
+  }
+
+  /// Applies the session's current speed snapshot.
+  ///
+  /// The native snapshot carries the live rates, the ping and the samples; the
+  /// page's widgets were written against the Bettbox state's names, so this maps
+  /// between them and leaves the fields the native run does not measure at zero.
+  void _applySession(Json session) {
+    if (!mounted) return;
+    final speed = json(session['speed']);
+    if (speed.isEmpty) return;
+    final stage = '${speed['stage'] ?? ''}';
+    final finished = speed['finished'] == true || stage == 'complete';
+    final mapped = <String, dynamic>{
+      'phase': _phaseOf(stage, finished),
+      'download': (speed['dlBps'] as num? ?? 0).toDouble(),
+      'upload': (speed['ulBps'] as num? ?? 0).toDouble(),
+      'latency': (speed['pingMs'] as num? ?? 0).toDouble(),
+      'server': speed['server'],
+      'outbound': speed['name'],
+      'downloadCurve': _curveOf(speed['samples'], upload: false),
+      'uploadCurve': _curveOf(speed['samples'], upload: true),
+      if ('${speed['error'] ?? ''}'.isNotEmpty) 'error': speed['error'],
+    };
+    final failure = '${speed['error'] ?? ''}';
     setState(() {
-      _state = frame;
-      _running = done ? false : (_running || running || phase.isNotEmpty);
+      _state = mapped;
+      _running = !finished;
     });
-    if (done) _finishSession();
+    if (failure.isNotEmpty) {
+      _failSession(failure);
+    } else if (finished) {
+      _finishSession();
+    }
+  }
+
+  /// The Bettbox phase names the widgets know, from the native stage.
+  String _phaseOf(String stage, bool finished) {
+    if (finished) return 'done';
+    return switch (stage) {
+      'discovery' || 'latency' => 'latency',
+      'download' => 'download',
+      'upload' => 'upload',
+      _ => stage.isEmpty ? 'connecting' : 'connecting',
+    };
+  }
+
+  /// One curve's points: the samples carry [t, bps, isUpload].
+  List<double> _curveOf(dynamic samples, {required bool upload}) {
+    if (samples is! List) return const [];
+    return [
+      for (final sample in samples)
+        if (sample is List && sample.length >= 3 && (sample[2] == true) == upload)
+          (sample[1] as num? ?? 0).toDouble(),
+    ];
   }
 
   /// Stops following and records the run once.
   void _finishSession() {
+    _stopFollowing();
     _poll?.cancel();
     _poll = null;
     _pushSub?.cancel();
@@ -214,10 +278,7 @@ class _SpeedTestPageState extends State<SpeedTestPage>
   }
 
   void _failSession(Object error) {
-    _poll?.cancel();
-    _poll = null;
-    _pushSub?.cancel();
-    _pushSub = null;
+    _stopFollowing();
     _spin.stop();
     if (!mounted) return;
     setState(() {
@@ -246,12 +307,14 @@ class _SpeedTestPageState extends State<SpeedTestPage>
   }
 
   Future<void> _cancel() async {
-    await context.box.speedTestCancel();
-    _poll?.cancel();
-    _poll = null;
-    _pushSub?.cancel();
-    _pushSub = null;
-    _spin.stop();
+    // Read before the await: no BuildContext crosses the async gap.
+    final box = context.box;
+    try {
+      await box.groupTestSessionStop();
+    } catch (error) {
+      box.report(error);
+    }
+    _stopFollowing();
     if (mounted) setState(() => _running = false);
   }
 
