@@ -230,7 +230,7 @@ jobs:
         id: reuse
         if: ${{ github.event_name == 'workflow_run' && steps.version.outputs.skip != 'true' }}
         continue-on-error: true
-        uses: actions/download-artifact@v7
+        uses: actions/download-artifact@v8
         with:
           name: build-inputs
           run-id: ${{ github.event.workflow_run.id }}
