@@ -47,6 +47,23 @@ private fun wireguardDropBadAddresses(addresses: MutableList<String>): MutableLi
     return addresses.filterTo(ArrayList()) { acceptOptional("address", Validation.cidr(it), it) }
 }
 
+/**
+ * wireguard.cpp's full-tunnel test: a tunnel is "everything" not only at `0.0.0.0/0`
+ * but also as two halves (`0.0.0.0/1` + `128.0.0.0/1`) or as "everything except the
+ * LAN". Summing each prefix's share of the space catches all three — halves add up to
+ * one address space, a `0.0.0.0/0` is one on its own, and a LAN-sized exclusion leaves
+ * the sum above a half.
+ */
+private fun wireguardFullTunnel(allowedIps: List<String>): Boolean {
+    var v4 = 0.0
+    var v6 = 0.0
+    for (cidr in allowedIps) {
+        val (network, prefix) = VpnFileImport.parseSubnet(cidr) ?: continue
+        if (network.contains(':')) v6 += Math.scalb(1.0, -prefix) else v4 += Math.scalb(1.0, -prefix)
+    }
+    return v4 >= 0.5 || v6 >= 0.5
+}
+
 /** The Checks of wireguard.h, shared by the WireGuard editors (field text) and [WireGuard.validate] (profile fields). */
 object WireGuardChecks {
 
@@ -506,7 +523,7 @@ class WireGuard : Outbound("wireguard") {
             }
         }
         if (peers > 1) ParseDiag.warn("[Peer]", vtr(R.string.validation_wg_peer_sections, peers.toString()))
-        if (allowedIps.isNotEmpty() && "0.0.0.0/0" !in allowedIps) {
+        if (allowedIps.isNotEmpty() && !wireguardFullTunnel(allowedIps)) {
             ParseDiag.warn("AllowedIPs", vtr(R.string.validation_wg_allowed_ips_ignored), allowedIps.joinToString(", "))
         }
         fixAddress()
