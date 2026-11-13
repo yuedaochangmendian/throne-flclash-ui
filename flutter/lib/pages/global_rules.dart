@@ -52,6 +52,12 @@ class GlobalRulesController extends ChangeNotifier {
   Future<void> add() async => _state?.addRule();
   Future<void> importRules() async => _state?.importRules();
   Future<void> deleteSelected() async => _state?.deleteSelected();
+
+  /// Selection mode and the search field, driven from the host's toolbar.
+  void cancelSelection() => _state?.cancelSelectMode();
+  void selectAllVisible() => _state?.selectAllVisible();
+  void search(String query) => _state?.setQuery(query);
+  void startSelection() => _state?.startSelectMode();
 }
 
 class GlobalRulesBodyState extends State<GlobalRulesBody> {
@@ -60,12 +66,54 @@ class GlobalRulesBodyState extends State<GlobalRulesBody> {
   String? _error;
   final Set<int> _selected = {};
 
+  /// Selection mode, distinct from "something is selected".
+  ///
+  /// It used to be derived from `_selected.isNotEmpty`, which made the mode
+  /// unreachable: the first tick needs the mode already on. The Routing page's
+  /// "Delete selected" button was therefore never drawn. A long press enters the
+  /// mode with nothing ticked, which is how the per-profile rule list works.
+  bool _selectMode = false;
+
+  /// The filter the host's search field drives; empty shows everything.
+  String _query = '';
+
   bool get loading => _loading;
-  bool get selectionActive => _selected.isNotEmpty;
+  bool get selectionActive => _selectMode;
   Future<void> load() => _load();
   Future<void> addRule() => _add();
   Future<void> importRules() => _import();
   Future<void> deleteSelected() => _deleteSelected();
+
+  /// Entering with nothing ticked is deliberate: the user asked to pick, not to
+  /// act on a guess.
+  void startSelectMode() {
+    if (_selectMode) return;
+    setState(() => _selectMode = true);
+    widget.controller?.bodyChanged();
+  }
+
+  void cancelSelectMode() {
+    if (!_selectMode && _selected.isEmpty) return;
+    setState(() {
+      _selectMode = false;
+      _selected.clear();
+    });
+    widget.controller?.bodyChanged();
+  }
+
+  /// Ticks everything the filter currently shows, so "select all" cannot reach
+  /// rows the user cannot see.
+  void selectAllVisible() {
+    setState(() => _selected.addAll(_visible.map((ref) => ref.id)));
+    widget.controller?.bodyChanged();
+  }
+
+  void setQuery(String value) {
+    final next = value.trim();
+    if (next == _query) return;
+    setState(() => _query = next);
+    widget.controller?.bodyChanged();
+  }
 
   @override
   void initState() {
@@ -109,6 +157,22 @@ class GlobalRulesBodyState extends State<GlobalRulesBody> {
   }
 
   List<_PoolRef> get _sorted => _rules.toList();
+
+  /// The rules the search field lets through, in pool order.
+  ///
+  /// Reordering is disabled while a filter is on: a drag inside a subset would
+  /// have to translate its target index back into the full list, and guessing
+  /// that wrong silently reorders rules the user cannot see.
+  List<_PoolRef> get _visible {
+    if (_query.isEmpty) return _rules;
+    final needle = _query.toLowerCase();
+    return [
+      for (var i = 0; i < _rules.length; i++)
+        if (ruleName(_rules[i].rule, i).toLowerCase().contains(needle)) _rules[i],
+    ];
+  }
+
+  bool get _filtered => _query.isNotEmpty;
 
   Future<void> _edit(_PoolRef ref) async {
     final saved = await openPage<Json>(
@@ -175,13 +239,14 @@ class GlobalRulesBodyState extends State<GlobalRulesBody> {
     }
   }
 
-  /// Turns this pool rule off for one configuration.
+  /// Turns this pool rule on or off for one configuration.
   ///
   /// The per-profile switches used to live on the profile's override screen,
   /// which is gone, and `_disabled` is stored per profile on the host. Listing
-  /// the profiles here keeps the capability: without it a configuration that had
-  /// a rule off stays that way with no way to change its mind.
-  Future<void> _disableForProfile(_PoolRef ref) async {
+  /// the profiles here keeps the capability — and it takes both directions:
+  /// with only "disable", a configuration that had a rule off stayed that way
+  /// with no way to change its mind.
+  Future<void> _setDisabledForProfile(_PoolRef ref, {required bool disabled}) async {
     final box = context.box;
     List<Json> profiles;
     try {
@@ -198,7 +263,8 @@ class GlobalRulesBodyState extends State<GlobalRulesBody> {
     final picked = await showDialog<Json>(
       context: context,
       builder: (context) => SimpleDialog(
-        title: Text(context.tr('Disable for a profile')),
+        title: Text(context.tr(
+            disabled ? 'Disable for a profile' : 'Enable for a profile')),
         children: [
           for (final profile in profiles)
             SimpleDialogOption(
@@ -216,16 +282,23 @@ class GlobalRulesBodyState extends State<GlobalRulesBody> {
     if (profileId <= 0) return;
     try {
       final data = json(await box.routeGlobalRules(profileId));
-      final disabled = {
+      final current = {
         for (final rule in rows(data['rules']))
           if (rule['enabled'] != true) (rule['id'] as num?)?.toInt(),
       }..remove(null);
-      disabled.add(ref.id);
-      await box.routeSetGlobalRuleDisabled(profileId, disabled.toList());
+      // A set either way: the write replaces the whole disabled list, so the
+      // add and the remove are the same call with one member changed.
+      if (disabled) {
+        current.add(ref.id);
+      } else {
+        current.remove(ref.id);
+      }
+      await box.routeSetGlobalRuleDisabled(profileId, current.toList());
       if (mounted) {
         showAppBanner(
           context,
-          '${context.tr('Disabled for')} ${picked['name'] ?? context.tr('Untitled')}',
+          '${context.tr(disabled ? 'Disabled for' : 'Enabled for')} '
+          '${picked['name'] ?? context.tr('Untitled')}',
         );
       }
     } catch (error) {
@@ -283,7 +356,11 @@ class GlobalRulesBodyState extends State<GlobalRulesBody> {
   /// The list on its own, sized for a host that supplies its own scroll view
   /// (the Routing page's ListView). The standalone page stretches it.
   Widget _list({required bool shrinkWrap}) {
-    final selectionActive = _selected.isNotEmpty;
+    final visible = _visible;
+    final selectionActive = _selectMode;
+    // A filtered list cannot be dragged: the target index would be a position
+    // inside the subset, and applying it to the full pool moves the wrong rows.
+    final canReorder = !selectionActive && !_filtered;
     return ReorderableListView.builder(
       shrinkWrap: shrinkWrap,
       physics: shrinkWrap ? const NeverScrollableScrollPhysics() : null,
@@ -296,27 +373,27 @@ class GlobalRulesBodyState extends State<GlobalRulesBody> {
               16,
               24 + context.bottomInset,
             ),
-      itemCount: _rules.length,
-      onReorderItem: _reorder,
+      itemCount: visible.length,
+      onReorderItem: canReorder ? _reorder : (_, _) {},
       itemBuilder: (context, index) {
-        final ref = _rules[index];
+        final ref = visible[index];
         // DecorationListItem rounds its own corners from the row's position in
         // the group; a reorderable list is not built through generateGroup, so
         // without this the rows came out square while every other list on every
         // other page is a rounded card.
-        final position = ItemPosition.get(index, _rules.length);
+        final position = ItemPosition.get(index, visible.length);
         final Widget row = ItemPositionProvider(
           position: position,
           child: DecorationListItem(
             contentPadding: const EdgeInsets.only(left: 16),
-            title: Text(ruleName(ref.rule, index)),
+            title: Text(ruleName(ref.rule, _rules.indexOf(ref))),
             subtitle: ruleRowSubtitle(context, ref.rule),
             leading: GlyphIcon(
               selectionActive
                   ? (_selected.contains(ref.id) ? AppGlyphs.checkCircle : AppGlyphs.rules)
                   : AppGlyphs.rules,
             ),
-            trailing: selectionActive ? null : SortHandle(index: index),
+            trailing: canReorder ? SortHandle(index: index) : null,
             onPressed: () {
               if (selectionActive) {
                 _toggleSelected(ref);
@@ -326,7 +403,7 @@ class GlobalRulesBodyState extends State<GlobalRulesBody> {
             },
           ),
         );
-        if (selectionActive) {
+        if (selectionActive || !canReorder) {
           return KeyedSubtree(key: ObjectKey(ref.id), child: row);
         }
         return ReorderableDelayedDragStartListener(
@@ -345,7 +422,14 @@ class GlobalRulesBodyState extends State<GlobalRulesBody> {
               PopupMenuItem(
                 glyph: AppGlyphs.eyeOff,
                 label: context.tr('Disable for a profile'),
-                onPressed: () => _disableForProfile(ref),
+                onPressed: () => _setDisabledForProfile(ref, disabled: true),
+              ),
+              // The other half of that switch: before it, a rule turned off for a
+              // configuration could never be turned back on from here.
+              PopupMenuItem(
+                glyph: AppGlyphs.eye,
+                label: context.tr('Enable for a profile'),
+                onPressed: () => _setDisabledForProfile(ref, disabled: false),
               ),
               PopupMenuItem(
                 glyph: AppGlyphs.delete,

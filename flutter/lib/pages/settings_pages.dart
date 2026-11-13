@@ -202,25 +202,34 @@ class _RoutingPageState extends State<RoutingPage> {
       listenable: _controller,
       builder: (context, _) => Scaffold(
         title: context.tr('Routing'),
+        // The search field is the filter the pool body applies; the body owns
+        // the query, the bar owns the box.
+        searchState: AppBarSearchState(onSearch: _controller.search),
         iconActions: [
-          if (_controller.selectionActive)
+          if (_controller.selectionActive) ...[
+            IconButtonData(
+              glyph: AppGlyphs.selectAll,
+              tooltip: context.tr('Select all'),
+              onPressed: _controller.selectAllVisible,
+            ),
             IconButtonData(
               glyph: AppGlyphs.delete,
               tooltip: context.tr('Delete selected'),
               onPressed: _controller.deleteSelected,
-            )
-          else ...[
-            IconButtonData(
-              glyph: AppGlyphs.code,
-              tooltip: context.tr('Import rules from JSON'),
-              onPressed: _controller.loading ? null : _controller.importRules,
             ),
             IconButtonData(
-              glyph: AppGlyphs.add,
-              tooltip: context.tr('Add rule'),
-              onPressed: _controller.loading ? null : _controller.add,
+              glyph: AppGlyphs.close,
+              tooltip: context.tr('Cancel'),
+              onPressed: _controller.cancelSelection,
             ),
-          ],
+          ] else
+            // The way into selection mode. It had no entry before, so the
+            // "Delete selected" action above could never appear.
+            IconButtonData(
+              glyph: AppGlyphs.checkCircle,
+              tooltip: context.tr('Select'),
+              onPressed: _controller.loading ? null : _controller.startSelection,
+            ),
         ],
         menuItems: _menu(context),
         body: ListView(
@@ -231,16 +240,37 @@ class _RoutingPageState extends State<RoutingPage> {
             24 + context.bottomInset,
           ),
           children: [
-            GlobalRulesBody(controller: _controller),
-            const SizedBox(height: 8),
+            // The title card sits above the list, as FlClash's RuleTitle does,
+            // and carries this page's primary actions: the bar's icons moved
+            // here so "add" reads as part of the rule section rather than as a
+            // page-level action.
             generateSection(items: [
               ListItem(
                 leading: const GlyphIcon(AppGlyphs.rules),
                 title: Text(context.tr('Applied in front of every profile')),
                 subtitle: Text(context.tr(
                     'Drag to reorder; the first match wins.')),
+                trailing: _controller.loading
+                    ? null
+                    : Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          IconButton(
+                            icon: const GlyphIcon(AppGlyphs.code),
+                            tooltip: context.tr('Import rules from JSON'),
+                            onPressed: _controller.importRules,
+                          ),
+                          IconButton(
+                            icon: const GlyphIcon(AppGlyphs.add),
+                            tooltip: context.tr('Add rule'),
+                            onPressed: _controller.add,
+                          ),
+                        ],
+                      ),
               ),
             ]),
+            const SizedBox(height: 8),
+            GlobalRulesBody(controller: _controller),
           ],
         ),
       ),

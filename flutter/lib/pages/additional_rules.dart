@@ -15,6 +15,14 @@ class _RuleRef {
   final int profileId;
   final int index;
   final Json rule;
+
+  /// The identity a selection can key on.
+  ///
+  /// `index` is the row's position *inside its own profile*, so the same number
+  /// names a different rule in every profile — a selection of bare indexes
+  /// ticked unrelated rows across profiles, and a delete then removed the wrong
+  /// ones. The pair is what is unique.
+  String get key => '$profileId:$index';
 }
 
 class AdditionalRulesPage extends StatefulWidget {
@@ -44,7 +52,8 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
   /// Selection mode: rows turn into checkboxes and the app bar swaps to a
   /// select-all / delete-selected pair (FlClash's multi-delete).
   bool _selecting = false;
-  final Set<int> _selected = {};
+  /// Keyed by [_RuleRef.key]: a bare index is only unique inside one profile.
+  final Set<String> _selected = {};
 
   @override
   void initState() {
@@ -226,7 +235,7 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
   /// Deletes every selected rule, rebuilding each affected profile's list. The
   /// selection is cleared afterwards; an empty selection is a no-op.
   Future<void> _deleteSelected() async {
-    final refs = _filtered.where((ref) => _selected.contains(ref.index)).toList();
+    final refs = _filtered.where((ref) => _selected.contains(ref.key)).toList();
     if (refs.isEmpty) return;
     final ok = await confirm(
       context,
@@ -237,14 +246,22 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
     if (ok != true || !mounted) return;
     final box = context.box;
     try {
-      final byProfile = <int, List<Json>>{};
+      // Group first, then remove highest index first within each profile.
+      //
+      // The old loop rebuilt the list from `_byProfile` on every iteration, so
+      // of two selections in one profile only the last survived — the first
+      // removal was thrown away. Removing from one working copy, and descending,
+      // is what keeps the earlier indexes valid as the list shrinks.
+      final targets = <int, List<int>>{};
       for (final ref in refs) {
-        final ordered = List<Json>.of(_byProfile[ref.profileId] ?? const [])
-          ..removeAt(ref.index);
-        byProfile[ref.profileId] = ordered;
+        (targets[ref.profileId] ??= <int>[]).add(ref.index);
       }
-      for (final entry in byProfile.entries) {
-        await box.routeSaveRules(entry.key, entry.value);
+      for (final entry in targets.entries) {
+        final ordered = List<Json>.of(_byProfile[entry.key] ?? const []);
+        for (final index in entry.value..sort((a, b) => b.compareTo(a))) {
+          if (index >= 0 && index < ordered.length) ordered.removeAt(index);
+        }
+        await box.routeSaveRules(entry.key, ordered);
       }
       setState(() => _selected.clear());
       if (mounted) await _load();
@@ -343,7 +360,7 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
             onPressed: _loading ? null : () => setState(() {
               _selected.clear();
               for (final ref in _filtered) {
-                _selected.add(ref.index);
+                _selected.add(ref.key);
               }
             }),
           ),
@@ -422,7 +439,7 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
                     title: Text(ruleName(ref.rule, ref.index)),
                     subtitle: ruleRowSubtitle(context, ref.rule),
                     leading: _selecting
-                        ? GlyphIcon(_selected.contains(ref.index)
+                        ? GlyphIcon(_selected.contains(ref.key)
                             ? AppGlyphs.checkCircle
                             : AppGlyphs.rules)
                         : const GlyphIcon(AppGlyphs.rules),
@@ -430,10 +447,10 @@ class _AdditionalRulesPageState extends State<AdditionalRulesPage> {
                     onPressed: () {
                       if (_selecting) {
                         setState(() {
-                          if (_selected.contains(ref.index)) {
-                            _selected.remove(ref.index);
+                          if (_selected.contains(ref.key)) {
+                            _selected.remove(ref.key);
                           } else {
-                            _selected.add(ref.index);
+                            _selected.add(ref.key);
                           }
                         });
                         return;

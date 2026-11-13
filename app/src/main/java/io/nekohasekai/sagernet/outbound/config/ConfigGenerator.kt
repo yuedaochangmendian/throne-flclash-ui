@@ -133,12 +133,15 @@ class ConfigGenerator @JvmOverloads constructor(
      * same outbound (D12), so it also feeds the DNS and tun lists like any route rule.
      */
     private fun routeProfileForBuild(profile: RouteProfile): RouteProfile = profile.copy().also { copy ->
-        copy.rules.removeAll { it.disabled }
         // The global added-rules pool runs in front of the profile's own rules, minus the ids the
         // profile keeps off (FlClash's 控制全局附加规则): a user-level intent must win over a
         // profile catch-all, or it would never fire.
         copy.rules.addAll(0, RouteManager.globalRulesForBuild(copy.id))
-        for (rule in copy.rules) if (rule.action == "bypass") rule.action = "route"
+        // After the pool joins, not before: a pool rule carries its own `disabled` flag (the
+        // editor writes it, the list renders "Disabled"), and filtering only the profile's own
+        // rules left a switched-off pool rule running. The list has always shown it off; the
+        // build was the half that disagreed.
+        applyBuildRuleFilters(copy)
     }
 
     /**
@@ -1261,6 +1264,19 @@ class ConfigGenerator @JvmOverloads constructor(
         const val EMPTY_RULE_SET_PATH = "empty-rule-set.srs"
 
         private val SELECTOR_PREFIXES = listOf("ruleset:", "domain:", "suffix:", "keyword:", "regex:", "ip:")
+
+        /**
+         * The rule transformations a build applies, in one testable place.
+         *
+         * Inside the companion rather than as an instance method because it reads and writes
+         * nothing but the profile's rule list: the two halves that matter — the disabled filter
+         * and the `bypass` rewrite — are pure list work, while `routeProfileForBuild` itself
+         * needs `RouteManager` and therefore Android. The JVM tests drive this directly.
+         */
+        internal fun applyBuildRuleFilters(profile: RouteProfile) {
+            profile.rules.removeAll { it.disabled }
+            for (rule in profile.rules) if (rule.action == "bypass") rule.action = "route"
+        }
 
         /**
          * The JSON fields of the fork's RawRouteOptionsActionOptions (option/rule_action.go). network_type is a match
