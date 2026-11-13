@@ -208,4 +208,56 @@ class RouteJsonStoreTest {
 
         assertEquals(5L, RouteJsonStore.allProfiles()!!.single().id)
     }
+
+    // --- the global rule pool ---------------------------------------------------
+    //
+    // It is the one document whose reader was missing: the kernel has owned the pool all
+    // along, but RouteManager answered ConfigGenerator from the Room table the one-time seed
+    // filled and nothing has written since. These pin the document path that replaces it.
+
+    /** A pool row as the kernel writes it: `id`, no `route_profile_id`. */
+    private fun globalRuleRow(id: Long, order: Int, name: String = "global") = mapOf<String, Any?>(
+        "id" to id,
+        "rule_order" to order,
+        "name" to name,
+        "type" to 0,
+        "domain_suffix_json" to """["ads.example"]""",
+        "action" to "reject",
+        "outbound_id" to -1L,
+    )
+
+    @Test
+    fun `the global pool maps id onto ruleId`() {
+        // The kernel writes `id`; GlobalRouteRuleEntity's primary key is `rule_id`. Getting
+        // this wrong would make every pool rule look like id 0 and the per-profile disable
+        // set could never match.
+        write("global_route_rules", listOf(globalRuleRow(11, 0), globalRuleRow(12, 1)))
+
+        val pool = RouteJsonStore.allGlobalRules()!!
+        assertEquals(listOf(11L, 12L), pool.map { it.ruleId })
+        assertEquals(listOf(0, 1), pool.map { it.ruleOrder })
+        assertEquals("reject", pool.first().action)
+        assertEquals("""["ads.example"]""", pool.first().domainSuffixJson)
+    }
+
+    @Test
+    fun `a missing global pool reads as absent so Room stays authoritative`() {
+        // No document at all: null is what makes RouteManager fall back rather than answer an
+        // empty pool, which would silently drop rules the user still has.
+        assertNull(RouteJsonStore.allGlobalRules())
+    }
+
+    @Test
+    fun `a corrupt global pool reads as absent`() {
+        File(temp, "global_route_rules.json").writeText("{ broken")
+        assertNull(RouteJsonStore.allGlobalRules())
+    }
+
+    @Test
+    fun `the global pool alone makes the store ready`() {
+        // ready gates the reader, so a tree whose only document is the pool must still count:
+        // the three documents are written by the same hand-over.
+        write("global_route_rules", listOf(globalRuleRow(1, 0)))
+        assertTrue(RouteJsonStore.ready)
+    }
 }

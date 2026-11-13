@@ -328,17 +328,40 @@ object RouteManager {
      * The build's global rules: every pool rule except the ones [profileId] disables, in pool order.
      * A rule naming a server that no longer exists is left out (the share writer's rule), so a stale
      * pool entry cannot fail a build that would otherwise succeed.
+     *
+     * The kernel owns the pool (`route_actions.go`), so the JSON document wins exactly as it does
+     * for profiles and rules in [load]; Room is the fallback for a tree with no document yet.
+     * Reading Room unconditionally was a live bug: nothing writes that table after the one-time
+     * seed, so every edit made in the UI was invisible to the build.
      */
     fun globalRulesForBuild(profileId: Long): List<RouteRule> {
-        val pool = dao.globalRules().sortedBy { it.ruleOrder }
-        if (pool.isEmpty()) return emptyList()
+        val document = RouteJsonStore.allGlobalRules()
+        if (document != null) {
+            // A pool rule is identified by its `rule_id`, and the profile's disable list names
+            // those ids. Both come from the kernel, so they agree with each other.
+            val disabled = RouteProfileEntity.parseIdJson(
+                RouteJsonStore.getProfile(profileId)?.disabledGlobalRuleJson.orEmpty()
+            ).toSet()
+            val kept = document.sortedBy { it.ruleOrder }
+                .filterNot { it.ruleId in disabled }
+                .map { it.toModel() }
+            return dropStaleOutbounds(kept)
+        }
+        val rows = dao.globalRules().sortedBy { it.ruleOrder }
+        if (rows.isEmpty()) return emptyList()
         val disabled = RouteProfileEntity.parseIdJson(dao.disabledGlobalRuleJson(profileId)).toSet()
-        return pool.asSequence()
-            .filterNot { it.ruleId in disabled }
-            .map { it.toModel() }
-            .filter { it.outbound_id <= 0L || ProfileManager.getProfile(it.outbound_id) != null }
-            .toList()
+        return dropStaleOutbounds(rows.filterNot { it.ruleId in disabled }.map { it.toModel() })
     }
+
+    /**
+     * A rule naming an outbound that no longer exists cannot be part of a build.
+     *
+     * Internal so the JVM tests can drive the pool rules without Android: the two stores need
+     * Room and the filesystem, but this filter is what the build actually observes.
+     */
+    internal fun dropStaleOutbounds(rules: List<RouteRule>): List<RouteRule> =
+        rules.filter { it.outbound_id <= 0L || ProfileManager.getProfile(it.outbound_id) != null }
+
 
     private fun load(): List<RouteProfile> {
         // Phase 3b: the JSON document set wins when it parses; Room is the fallback.
