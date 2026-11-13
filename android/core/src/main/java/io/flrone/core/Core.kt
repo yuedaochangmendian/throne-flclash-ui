@@ -25,21 +25,6 @@ object Core {
     external fun closeInstance(handle: Long)
 
     /**
-     * The Bettbox speed test against the Dart-owned instance, through the
-     * numeric handle Dart registered over `ffi.handle` — the FFI twin of
-     * `Mobile.startBettboxSpeedTest`, which needs the AAR's `Instance` object
-     * that FFI mode never has. 1 started, 0 busy (a test is already running),
-     * -1 the handle has no live instance.
-     */
-    external fun startBettboxSpeedTest(handle: Long, params: String): Int
-
-    /** speedtest.net's server list, nearest first; "[]" without a live instance. */
-    external fun bettboxSpeedTestServers(handle: Long, outbound: String, search: String): String
-
-    /** The running box's outbound tags, the picker's list; "[]" likewise. */
-    external fun bettboxSpeedTestOutbounds(handle: Long): String
-
-    /**
      * A TunOptions handle as JSON (mtu, addresses, routes, dns, packages, http
      * proxy) — the fields VpnService.Builder needs when the kernel asks for the
      * VPN mid-start through CorePlatform.openTun.

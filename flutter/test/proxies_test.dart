@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flrone/main.dart';
 import 'package:flrone/pages/proxies.dart';
@@ -705,7 +704,7 @@ void main() {
   });
 
   testWidgets(
-    'dedicated speed page starts the kernel test and renders its snapshot',
+    'dedicated speed page starts the native session and renders its snapshot',
     (tester) async {
       reportFlutterErrors();
       tester.view.physicalSize = const Size(360, 900);
@@ -717,57 +716,24 @@ void main() {
       final calls = <MethodCall>[];
       final messenger =
           TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
-      // One test: started, then a finished snapshot with the kernel's fields.
-      var queried = 0;
       messenger.setMockMethodCallHandler(channel, (call) async {
         calls.add(call);
         if (call.method == 'ready') {
           return {
             'version': 'test',
             'coreVersion': 'test',
-            'dashboard': {'status': 'Started'},
+            'dashboard': {'status': 'Started', 'profile': {'id': 7}, 'selectedProfileId': 7},
             'preferences': {'locale': 'en'},
           };
         }
-        if (call.method == 'speedTest.outbounds') {
-          return {'outbounds': <String>['Node A', 'Node B']};
-        }
-        if (call.method == 'speedTest.start') return true;
-        if (call.method == 'speedTest.query') {
-          queried++;
-          return {
-            'running': false,
-            'state': {
-              'provider': 'apple',
-              'protocol': 'h1',
-              'phase': 'done',
-              'outbound': 'Node A',
-              'server': {
-                'host': 'speed.example',
-                'country': 'US',
-                'city': 'Ashburn',
-              },
-              'latency': 42,
-              'jitter': 5,
-              'download': 8000000,
-              'upload': 3000000,
-              'downloadLatency': 55,
-              'uploadLatency': 61,
-              'rpm': 980,
-              'downloadCurve': [1000, 4000000, 8000000],
-              'uploadCurve': [500000, 3000000],
-              'error': '',
-            },
-          };
-        }
+        if (call.method == 'groups.testSession.start') return true;
+        if (call.method == 'groups.testSession.stop') return true;
+        if (call.method == 'groups.testSession.visible') return null;
         return null;
       });
       addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
-      await tester.pumpWidget(
-        BoxApp(
-          controller: BoxController(channel: channel, events: events.stream),
-        ),
-      );
+      final box = BoxController(channel: channel, events: events.stream);
+      await tester.pumpWidget(BoxApp(controller: box));
       await tester.pumpAndSettle();
       openPage(
         tester.element(find.byType(HomePage)),
@@ -775,19 +741,46 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // The picked outbound is what the card shows and what the start sends.
-      expect(find.text('Node A'), findsWidgets);
       await tester.tap(find.text('Start'));
-      await tester.pumpAndSettle(const Duration(milliseconds: 400));
+      // The gauge spins while the run is live, so settle on frames rather than
+      // waiting for animations to stop.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
 
-      final start = calls.lastWhere((call) => call.method == 'speedTest.start');
-      final params = jsonDecode((start.arguments as Map)['params'] as String);
-      expect(params['outbound'], 'Node A');
-      expect(params['provider'], 'apple');
-      expect(params['protocol'], 'h1');
-      expect(queried, greaterThan(0));
+      // The run goes through Throne's own test session, as a speed run.
+      final start = calls.lastWhere(
+        (call) => call.method == 'groups.testSession.start',
+      );
+      final args = json(start.arguments);
+      expect(args['kind'], 2, reason: 'TestSpec.KIND_SPEED');
+      expect(args['profileIds'], isNotEmpty);
 
-      // The finished snapshot's figures land in the tiles.
+      // The session's speed snapshot drives the tiles.
+      events.add({
+        'type': 'testSession',
+        'value': {
+          'running': false,
+          'speed': {
+            'name': 'Node A',
+            'stage': 'complete',
+            'dlBps': 8000000,
+            'ulBps': 3000000,
+            'pingMs': 42,
+            'server': 'speed.example',
+            'serverCountry': 'US',
+            'finished': true,
+            'samples': [
+              [0, 1000, false],
+              [1, 4000000, false],
+              [2, 8000000, false],
+              [3, 500000, true],
+              [4, 3000000, true],
+            ],
+          },
+        },
+      });
+      await tester.pumpAndSettle();
+
       await tester.drag(find.byType(ListView).last, const Offset(0, -420));
       await tester.pumpAndSettle();
       expect(find.text('8.00 Mbps'), findsOneWidget);
@@ -800,7 +793,7 @@ void main() {
   );
 
   testWidgets(
-    'home speed page runs without a node and reports the stored outbound',
+    'home speed page runs the session without a named node',
     (tester) async {
       reportFlutterErrors();
       tester.view.physicalSize = const Size(360, 900);
@@ -818,17 +811,12 @@ void main() {
           return {
             'version': 'test',
             'coreVersion': 'test',
-            'dashboard': {'status': 'Started', 'selectedProfileId': 7},
+            'dashboard': {'status': 'Started', 'profile': {'id': 7}, 'selectedProfileId': 7},
             'preferences': {'locale': 'en'},
           };
         }
-        if (call.method == 'speedTest.outbounds') {
-          return {'outbounds': <String>['Node A']};
-        }
-        if (call.method == 'speedTest.start') return true;
-        if (call.method == 'speedTest.query') {
-          return {'running': false, 'state': const <String, dynamic>{}};
-        }
+        if (call.method == 'groups.testSession.start') return true;
+        if (call.method == 'groups.testSession.visible') return null;
         return null;
       });
       addTearDown(() => messenger.setMockMethodCallHandler(channel, null));
@@ -840,19 +828,25 @@ void main() {
       await tester.pumpAndSettle();
       openPage(tester.element(find.byType(HomePage)), const SpeedTestPage());
       await tester.pumpAndSettle();
+
       await tester.tap(find.text('Start'));
-      await tester.pumpAndSettle(const Duration(milliseconds: 400));
-      final start = calls.lastWhere((call) => call.method == 'speedTest.start');
-      final params = jsonDecode((start.arguments as Map)['params'] as String);
-      // No node was named, so the kernel measures through the box default.
-      expect(params['outbound'], '');
+      // The gauge spins while the run is live, so settle on frames rather than
+      // waiting for animations to stop.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      // No outbound was named, so the session measures the started profile.
+      final start = calls.lastWhere(
+        (call) => call.method == 'groups.testSession.start',
+      );
+      final args = json(start.arguments);
+      expect(args['kind'], 2);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
       await events.close();
     },
   );
 
-  // A group run must animate per node the way FlClash does: the row under test
   // spins, the rows still waiting show the clock. The batch marks every id in
   // one set so the action can be awaited once, and reading that set as "this
   // node is running" painted the whole group as spinning and made the session
