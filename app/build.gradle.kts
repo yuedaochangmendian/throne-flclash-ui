@@ -100,7 +100,7 @@ dependencies {
     implementation("com.jakewharton:process-phoenix:2.1.2")
 
     testImplementation("junit:junit:4.13.2")
-    testImplementation("org.json:json:20231013")
+    testImplementation("org.json:json:20260814")
 
     implementation("com.simplecityapps:recyclerview-fastscroll:2.0.1") {
         exclude(group = "androidx.recyclerview")
