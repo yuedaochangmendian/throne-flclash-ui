@@ -25,18 +25,16 @@ enum ActionMethod {
   speedTestOutbounds,
 
   // Phase 3c: routing. Go owns the route documents; Kotlin keeps a read-only view.
+  //
+  // The routing UI now offers only "add a rule" against the shared pool, so the
+  // profile CRUD, batch-add, reset and per-profile opt-out methods are gone with
+  // it. What remains is the pool's read/write/delete and the per-profile rule
+  // list the DNS import still appends to.
   getRouteProfiles,
-  getRouteProfile,
-  saveRouteProfile,
-  deleteRouteProfile,
-  setCurrentRoute,
   getRouteRules,
   saveRouteRules,
-  batchAddRules,
-  resetRouteRules,
   getGlobalRules,
   saveGlobalRules,
-  setGlobalRuleDisabled,
   deleteGlobalRule,
 
   // Phase 3d PR-3: profile reads. Go answers these from Room — the same

@@ -72,11 +72,6 @@ void main() {
     // ADR 0002 phase 3c: the route surface is answered by the action bus.
     box.kernel.debugAttach(
       FakeRouteKernel((method, data) => switch (method) {
-        ActionMethod.getRouteProfile => {
-            'id': 1, 'name': 'Default', 'defaultOutbound': 'direct',
-            'isRemote': false, 'remoteUrl': '', 'autoUpdate': false,
-            'isRaw': false, 'endpointIds': <int>[], 'rules': '', 'ruleCount': 1,
-          },
         ActionMethod.getRouteProfiles => {
             'currentId': 1,
             'profiles': [
@@ -85,6 +80,12 @@ void main() {
             ],
           },
         ActionMethod.getRouteRules => {'rules': [rule(name: 'Direct LAN')]},
+        ActionMethod.getGlobalRules => {
+            'rules': [
+              {'id': 1, 'name': 'Pool A', 'type': 'custom', 'disabled': false,
+                'action': 'route', 'outbound_id': -1},
+            ],
+          },
         _ => null,
       }),
       NoopKernelWorker(),
@@ -112,21 +113,15 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('the rule fields keep a keyboard that can paste', (tester) async {
+  testWidgets('the add-rule fields keep a keyboard that can paste', (tester) async {
     await mount(tester);
-    openPage(tester.element(find.byType(HomePage)), const AdditionalRulesPage(profileId: 1));
+    openPage(tester.element(find.byType(HomePage)), const RoutingPage());
     await tester.pumpAndSettle();
 
     await tester.tap(find.byTooltip('Add rule'));
     await tester.pumpAndSettle();
+    expect(find.text('Content'), findsWidgets);
     expectOrdinaryKeyboard(tester, 'add rule');
-
-    Navigator.of(tester.element(find.text('Add rule').first)).pop();
-    await tester.pumpAndSettle();
-
-    await tester.tap(find.text('Direct LAN'));
-    await tester.pumpAndSettle();
-    expectOrdinaryKeyboard(tester, 'edit rule');
     expect(tester.takeException(), isNull);
   });
 
