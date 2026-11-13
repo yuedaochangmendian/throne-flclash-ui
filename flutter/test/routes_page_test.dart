@@ -73,6 +73,11 @@ void main() {
   late List<String> dataPathCalls;
   late List<Map<String, Object?>> savedRules;
 
+  /// The global pool the fixture answers. Defaults to the single rule the
+  /// existing cases were written against; a test that cares about filtering or
+  /// multi-select replaces it.
+  late List<Map<String, Object?>> poolRules;
+
   /// The route shapes BboxRoutes returned, keyed by action.
   Map<String, Object?>? routeFixtures(ActionMethod method, Object? data) {
     switch (method) {
@@ -107,17 +112,9 @@ void main() {
       case ActionMethod.getRouteRules:
         return {'rules': rules};
       case ActionMethod.getGlobalRules:
-        return {
-          'rules': [
-            {
-              'id': 1,
-              'name': 'Pool A',
-              'type': 'route',
-              'outbound_id': -1,
-              'disabled': false,
-            },
-          ],
-        };
+        // Mutable so a test can distinguish which rows the filter let through;
+        // the default keeps the single-rule shape the existing cases expect.
+        return {'rules': poolRules};
       case ActionMethod.saveGlobalRules:
         return {'rules': <Object?>[]};
       case ActionMethod.setGlobalRuleDisabled:
@@ -139,13 +136,28 @@ void main() {
     }
   }
 
-  Future<void> mount(WidgetTester tester) async {
+  Future<void> mount(
+    WidgetTester tester, {
+    List<Map<String, Object?>>? pool,
+  }) async {
     tester.binding.platformDispatcher.localesTestValue = const [Locale('en')];
     addTearDown(tester.binding.platformDispatcher.clearLocalesTestValue);
     tester.view.physicalSize = const Size(360, 1400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
+    // Every case that does not care about the pool's contents gets the single
+    // rule the original assertions were written against; a case that does passes
+    // its own rows through [pool].
+    poolRules = pool ?? [
+      {
+        'id': 1,
+        'name': 'Pool A',
+        'type': 'route',
+        'outbound_id': -1,
+        'disabled': false,
+      },
+    ];
     const channel = MethodChannel('test.routes-page');
     events = StreamController<dynamic>.broadcast();
     dataPathCalls = <String>[];
@@ -493,8 +505,9 @@ void main() {
     openPage(tester.element(find.byType(HomePage)), const RoutingPage());
     await tester.pumpAndSettle();
 
-    // The pool is the page: its rules render inline, and the add/import
-    // actions sit in the app bar like every other page's primary actions.
+    // The pool is the page: its rules render inline. The add/import actions sit
+    // on the section's title card (FlClash's RuleTitle shape), so the tooltips
+    // are found there rather than on the app bar.
     expect(find.text('Pool A'), findsOneWidget);
     expect(find.byTooltip('Add rule'), findsOneWidget);
     expect(find.byTooltip('Import rules from JSON'), findsOneWidget);
@@ -532,6 +545,76 @@ void main() {
     expect(find.text('Inbound'), findsOneWidget);
     expect(find.text('Node presets'), findsOneWidget);
     expect(find.text('Subscriptions'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  // --- the interactions the Routing page borrows from FlClash ---------------
+
+  testWidgets('the search field filters the pool', (tester) async {
+    reportFlutterErrors();
+    rules = [];
+    await mount(tester, pool: [
+      {'id': 1, 'name': 'Keep me', 'type': 'route', 'outbound_id': -1, 'disabled': false},
+      {'id': 2, 'name': 'Hide me', 'type': 'route', 'outbound_id': -1, 'disabled': false},
+    ]);
+    openPage(tester.element(find.byType(HomePage)), const RoutingPage());
+    await tester.pumpAndSettle();
+
+    expect(find.text('Keep me'), findsOneWidget);
+    expect(find.text('Hide me'), findsOneWidget);
+
+    await tester.enterText(find.byType(TextField).first, 'Keep');
+    await tester.pumpAndSettle();
+
+    expect(find.text('Keep me'), findsOneWidget);
+    expect(find.text('Hide me'), findsNothing);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('selection mode opens from the bar and can delete', (tester) async {
+    reportFlutterErrors();
+    // The "Delete selected" action used to be unreachable: `selectionActive`
+    // was derived from a non-empty selection, and nothing could make the first
+    // tick. The Select action is what enters the mode.
+    rules = [];
+    await mount(tester, pool: [
+      {'id': 1, 'name': 'Doomed', 'type': 'route', 'outbound_id': -1, 'disabled': false},
+    ]);
+    openPage(tester.element(find.byType(HomePage)), const RoutingPage());
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Delete selected'), findsNothing);
+    await tester.tap(find.byTooltip('Select'));
+    await tester.pumpAndSettle();
+
+    expect(find.byTooltip('Delete selected'), findsOneWidget);
+    expect(find.byTooltip('Select all'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Select all'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Delete selected'));
+    await tester.pumpAndSettle();
+    // The confirmation dialog names the count.
+    expect(find.text('Delete selected'), findsWidgets);
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a pool rule offers both disable and enable for a profile', (tester) async {
+    reportFlutterErrors();
+    // Only "disable" existed, so a rule switched off for a configuration could
+    // never be switched back on from this screen.
+    rules = [];
+    await mount(tester, pool: [
+      {'id': 1, 'name': 'Toggle me', 'type': 'route', 'outbound_id': -1, 'disabled': false},
+    ]);
+    openPage(tester.element(find.byType(HomePage)), const RoutingPage());
+    await tester.pumpAndSettle();
+
+    await tester.longPress(find.text('Toggle me'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Disable for a profile'), findsOneWidget);
+    expect(find.text('Enable for a profile'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
