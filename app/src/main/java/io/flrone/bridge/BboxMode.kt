@@ -53,7 +53,14 @@ object BboxMode {
             default_outbound_id = if (mode == Mode.Global) OutboundIds.PROXY else OutboundIds.DIRECT
             rules = profile.rules.filter { it.action == "hijack-dns" }.mapTo(ArrayList()) { it.copy() }
         }
-        return RoutingInput(routed, input.catalog, input.selectors, input.memberCheck)
+        // `rulesReplacedByMode` is what stops the generator from prepending the global
+        // added-rules pool. Those rules live outside this profile, so clearing `rules` here was
+        // not enough: Global mode dropped the profile's own rules and the pool put routing
+        // straight back, which made the switch look like it did nothing.
+        return RoutingInput(
+            routed, input.catalog, input.selectors, input.memberCheck,
+            rulesReplacedByMode = true,
+        )
     }
 
     /** A one-line summary for the dashboard's mode card. */

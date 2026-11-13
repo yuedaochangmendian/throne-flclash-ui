@@ -13,6 +13,7 @@ import io.nekohasekai.sagernet.outbound.json.jsonObjectOf
 import io.nekohasekai.sagernet.outbound.types.AutoSelector
 import io.nekohasekai.sagernet.route.OutboundIds
 import io.nekohasekai.sagernet.route.RouteProfile
+import io.nekohasekai.sagernet.route.RouteRule
 import io.nekohasekai.sagernet.route.RuleSets
 import io.nekohasekai.sagernet.route.RuleType
 import io.nekohasekai.sagernet.validation.Empty
@@ -81,7 +82,7 @@ class ConfigGenerator @JvmOverloads constructor(
                 involvedProfileIds = reads.ids,
             )
         }
-        val route = routing.profile?.let(::routeProfileForBuild)
+        val route = routing.profile?.let { routeProfileForBuild(it, routing.rulesReplacedByMode) }
             ?: return GeneratedConfig.failure("Routing profile does not exist, try resetting the route profile in Routing Settings")
 
         // One plan serves the Xray decision and the build (the desktop plans twice, :446-452 and :1631).
@@ -132,17 +133,35 @@ class ConfigGenerator @JvmOverloads constructor(
      * desktop skips in every rule walk (23b5bfcb), and with the Linux-only `bypass` action turned into `route` to the
      * same outbound (D12), so it also feeds the DNS and tun lists like any route rule.
      */
-    private fun routeProfileForBuild(profile: RouteProfile): RouteProfile = profile.copy().also { copy ->
-        // The global added-rules pool runs in front of the profile's own rules, minus the ids the
-        // profile keeps off (FlClash's 控制全局附加规则): a user-level intent must win over a
-        // profile catch-all, or it would never fire.
-        copy.rules.addAll(0, RouteManager.globalRulesForBuild(copy.id))
+    private fun routeProfileForBuild(
+        profile: RouteProfile,
+        rulesReplacedByMode: Boolean = false,
+    ): RouteProfile = profile.copy().also { copy ->
+        // Global/Direct already decided where everything goes. The pool would undo that: it is
+        // prepended here, after the mode rewrote the profile, so its rules would route traffic
+        // again and the switch would look like it did nothing.
+        //
+        // The global added-rules pool otherwise runs in front of the profile's own rules, minus the
+        // ids the profile keeps off (FlClash's 控制全局附加规则): a user-level intent must win over
+        // a profile catch-all, or it would never fire.
+        copy.rules.addAll(
+            0,
+            pooledRulesForBuild(RouteManager.globalRulesForBuild(copy.id), rulesReplacedByMode),
+        )
         // After the pool joins, not before: a pool rule carries its own `disabled` flag (the
         // editor writes it, the list renders "Disabled"), and filtering only the profile's own
         // rules left a switched-off pool rule running. The list has always shown it off; the
         // build was the half that disagreed.
         applyBuildRuleFilters(copy)
     }
+
+    /**
+     * The pooled rules a build prepends, given the mode's verdict.
+     *
+     * Empty when the outbound mode replaced the profile's rules: Global/Direct send everything to
+     * one outbound, and prepending the pool afterwards routed traffic by it again — the switch
+     * looked like it did nothing. Split out so the decision is testable without Room.
+     */
 
     /**
      * calculatePrerequisites (:542-745) minus auxiliary endpoints, the DNS-server hijack and extra cores: the WARP
@@ -1273,6 +1292,17 @@ class ConfigGenerator @JvmOverloads constructor(
          * and the `bypass` rewrite — are pure list work, while `routeProfileForBuild` itself
          * needs `RouteManager` and therefore Android. The JVM tests drive this directly.
          */
+        /**
+         * The pooled rules a build prepends, given the mode's verdict.
+         *
+         * Empty when the outbound mode replaced the profile's rules: Global/Direct send
+         * everything to one outbound, and prepending the pool afterwards routed traffic by it
+         * again — the switch looked like it did nothing. Here rather than on the instance so it
+         * is testable without Room.
+         */
+        internal fun pooledRulesForBuild(pool: List<RouteRule>, rulesReplacedByMode: Boolean): List<RouteRule> =
+            if (rulesReplacedByMode) emptyList() else pool
+
         internal fun applyBuildRuleFilters(profile: RouteProfile) {
             profile.rules.removeAll { it.disabled }
             for (rule in profile.rules) if (rule.action == "bypass") rule.action = "route"

@@ -107,4 +107,31 @@ class ConfigGeneratorRuleFilterTest {
 
         assertFalse(profile.rules.isNotEmpty())
     }
+
+    // --- the outbound mode replaces routing ------------------------------------
+
+    @Test
+    fun `the pool is prepended in rule mode`() {
+        val pool = listOf(rule("pool"))
+        val kept = ConfigGenerator.pooledRulesForBuild(pool, rulesReplacedByMode = false)
+        assertEquals(listOf("pool"), kept.map { it.name })
+    }
+
+    @Test
+    fun `the pool is dropped when the mode replaced the rules`() {
+        // Global/Direct send everything to one outbound. The pool is prepended inside the
+        // generator, after BboxMode rewrote the profile, so leaving it in routed traffic by the
+        // pool again — the mode switch looked like it did nothing.
+        val pool = listOf(rule("pool-a"), rule("pool-b"))
+        val kept = ConfigGenerator.pooledRulesForBuild(pool, rulesReplacedByMode = true)
+        assertTrue("Global/Direct must not prepend the pool", kept.isEmpty())
+    }
+
+    @Test
+    fun `an empty pool is empty either way`() {
+        assertTrue(ConfigGenerator.pooledRulesForBuild(const(), rulesReplacedByMode = false).isEmpty())
+        assertTrue(ConfigGenerator.pooledRulesForBuild(const(), rulesReplacedByMode = true).isEmpty())
+    }
+
+    private fun const(): List<RouteRule> = emptyList()
 }

@@ -17,6 +17,16 @@ class RoutingInput @JvmOverloads constructor(
     @JvmField val selectors: SelectorStore = SelectorStore.NONE,
     /** Null skips the core check: members are then checked structurally only. */
     @JvmField val memberCheck: MemberCheck? = null,
+    /**
+     * The outbound mode replaced this profile's rules on purpose (Global/Direct), so the build
+     * must not add anything back.
+     *
+     * The global added-rules pool is prepended inside the generator, *after* this input is handed
+     * over, and `BboxMode.applyTo` only rewrites the profile it was given — it knows nothing about
+     * the pool. Without this flag Global mode cleared the profile's rules and the pool then put
+     * routing right back, so the switch looked like it did nothing.
+     */
+    @JvmField val rulesReplacedByMode: Boolean = false,
 ) {
     companion object {
         /** The built-in Default profile (RouteProfile::GetDefaultChain) and no rule-set names. */
