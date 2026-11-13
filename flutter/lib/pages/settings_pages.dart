@@ -231,7 +231,22 @@ class _RoutingPageState extends State<RoutingPage> {
               onPressed: _controller.loading ? null : _controller.startSelection,
             ),
         ],
-        menuItems: _menu(context),
+        // The engine switches, not rule content: they decide how the rules
+        // resolve and where the rule-set mirror comes from. They stay reachable
+        // here because removing them would drop features rather than align an
+        // interaction.
+        menuItems: [
+          PopupMenuItem(
+            glyph: AppGlyphs.rules,
+            label: context.tr('Route settings'),
+            onPressed: () => openPage(context, const _RouteSettingsPage()),
+          ),
+          PopupMenuItem(
+            glyph: AppGlyphs.sync,
+            label: context.tr('Automatic updates'),
+            onPressed: () => openPage(context, const _RouteUpdatePage()),
+          ),
+        ],
         body: ListView(
           padding: EdgeInsets.fromLTRB(
             16,
@@ -252,20 +267,10 @@ class _RoutingPageState extends State<RoutingPage> {
                     'Drag to reorder; the first match wins.')),
                 trailing: _controller.loading
                     ? null
-                    : Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          IconButton(
-                            icon: const GlyphIcon(AppGlyphs.code),
-                            tooltip: context.tr('Import rules from JSON'),
-                            onPressed: _controller.importRules,
-                          ),
-                          IconButton(
-                            icon: const GlyphIcon(AppGlyphs.add),
-                            tooltip: context.tr('Add rule'),
-                            onPressed: _controller.add,
-                          ),
-                        ],
+                    : IconButton(
+                        icon: const GlyphIcon(AppGlyphs.add),
+                        tooltip: context.tr('Add rule'),
+                        onPressed: _controller.add,
                       ),
               ),
             ]),
@@ -275,55 +280,6 @@ class _RoutingPageState extends State<RoutingPage> {
         ),
       ),
     );
-  }
-
-  /// The switches behind the list, plus the entry to the per-profile rules.
-  ///
-  /// The profile *list* is gone — this page's shared pool is the default route
-  /// for every configuration — but the rules a configuration keeps for itself
-  /// still exist and are still applied, so the screen that edits them stays
-  /// reachable. Without this entry it had no opener at all and a configuration
-  /// bound to an old profile ran rules nobody could see or edit.
-  List<PopupMenuItem> _menu(BuildContext context) {
-    return [
-      PopupMenuItem(
-        glyph: AppGlyphs.rulePresets,
-        label: context.tr('Per-profile rules'),
-        onPressed: () =>
-            openPage(context, const AdditionalRulesPage(profileId: 0)),
-      ),
-      PopupMenuItem(
-        glyph: AppGlyphs.rules,
-        label: context.tr('Route settings'),
-        section: const PopupMenuSection(),
-        onPressed: () => openPage(context, const _RouteSettingsPage()),
-      ),
-      PopupMenuItem(
-        glyph: AppGlyphs.sync,
-        label: context.tr('Automatic updates'),
-        onPressed: () => openPage(context, const _RouteUpdatePage()),
-      ),
-      PopupMenuItem(
-        glyph: AppGlyphs.reset,
-        label: context.tr('Restore defaults'),
-        danger: true,
-        onPressed: () async {
-          final box = context.box;
-          final ok = await confirm(
-            context,
-            'Restore defaults?',
-            action: 'Restore',
-            message: context.tr('Every routing setting returns to its Throne default.'),
-          );
-          if (ok) {
-            await box.resetSettings(const [
-              'outboundDomainStrategy', 'domainStrategy', 'rulesetMirror', 'adblockEnable',
-              'routeAutoUpdateEnabled', 'routeAutoUpdateMinutes',
-            ]);
-          }
-        },
-      ),
-    ];
   }
 }
 

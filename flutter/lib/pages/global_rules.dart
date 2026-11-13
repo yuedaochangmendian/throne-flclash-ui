@@ -50,7 +50,6 @@ class GlobalRulesController extends ChangeNotifier {
 
   Future<void> reload() async => _state?.load();
   Future<void> add() async => _state?.addRule();
-  Future<void> importRules() async => _state?.importRules();
   Future<void> deleteSelected() async => _state?.deleteSelected();
 
   /// Selection mode and the search field, driven from the host's toolbar.
@@ -81,7 +80,6 @@ class GlobalRulesBodyState extends State<GlobalRulesBody> {
   bool get selectionActive => _selectMode;
   Future<void> load() => _load();
   Future<void> addRule() => _add();
-  Future<void> importRules() => _import();
   Future<void> deleteSelected() => _deleteSelected();
 
   /// Entering with nothing ticked is deliberate: the user asked to pick, not to
@@ -174,48 +172,27 @@ class GlobalRulesBodyState extends State<GlobalRulesBody> {
 
   bool get _filtered => _query.isNotEmpty;
 
-  Future<void> _edit(_PoolRef ref) async {
-    final saved = await openPage<Json>(
-      context,
-      RuleEditorPage(
-        profileId: 0,
-        index: _rules.indexOf(ref),
-        rule: ref.rule,
-        rules: _rules.map((e) => e.rule).toList(),
-        pool: true,
-      ),
-    );
-    if (saved == null || !mounted) return;
-    await _load();
-  }
+  /// Both add and edit go through the same FlClash-style picker: one built-in
+  /// type, one content value, one target. That is the only rule shape the
+  /// routing page offers now, so there is no separate 45-column form.
+  Future<void> _edit(_PoolRef ref) => _pick(ref);
 
-  Future<void> _add() async {
-    final saved = await openPage<Json>(
-      context,
-      RuleEditorPage(
-        profileId: 0,
-        index: -1,
-        rule: const {},
-        rules: _rules.map((e) => e.rule).toList(),
-        pool: true,
-      ),
-    );
-    if (saved == null || !mounted) return;
-    await _load();
-  }
+  Future<void> _add() => _pick(null);
 
-  Future<void> _import() async {
-    final box = context.box;
-    final request = await showDialog<RuleImportRequest>(
-      context: context,
-      builder: (_) => RuleImportPage(profileId: 0, intoPool: true),
-    );
-    if (request == null || !mounted) return;
+  Future<void> _pick(_PoolRef? ref) async {
+    final rule = await showRulePicker(context, initial: ref?.rule);
+    if (rule == null || !mounted) return;
+    final rules = _rules.map((e) => e.rule).toList();
+    if (ref == null) {
+      rules.add(rule);
+    } else {
+      rules[_rules.indexOf(ref)] = rule;
+    }
     try {
-      await applyRuleImport(box, request, profileId: 0, intoPool: true);
+      await context.box.routeSaveGlobalRules(rules);
       if (mounted) await _load();
     } catch (error) {
-      box.report(error);
+      if (mounted) context.box.report(error);
     }
   }
 
@@ -236,73 +213,6 @@ class GlobalRulesBodyState extends State<GlobalRulesBody> {
       if (mounted) await _load();
     } catch (error) {
       if (mounted) context.box.report(error);
-    }
-  }
-
-  /// Turns this pool rule on or off for one configuration.
-  ///
-  /// The per-profile switches used to live on the profile's override screen,
-  /// which is gone, and `_disabled` is stored per profile on the host. Listing
-  /// the profiles here keeps the capability — and it takes both directions:
-  /// with only "disable", a configuration that had a rule off stayed that way
-  /// with no way to change its mind.
-  Future<void> _setDisabledForProfile(_PoolRef ref, {required bool disabled}) async {
-    final box = context.box;
-    List<Json> profiles;
-    try {
-      final data = json(await box.routeProfiles.list());
-      profiles = (data['profiles'] as List? ?? const [])
-          .map((item) => json(item))
-          .where((profile) => (profile['isRaw'] as bool?) != true)
-          .toList();
-    } catch (error) {
-      if (mounted) box.report(error);
-      return;
-    }
-    if (!mounted || profiles.isEmpty) return;
-    final picked = await showDialog<Json>(
-      context: context,
-      builder: (context) => SimpleDialog(
-        title: Text(context.tr(
-            disabled ? 'Disable for a profile' : 'Enable for a profile')),
-        children: [
-          for (final profile in profiles)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, profile),
-              child: Text(
-                '${profile['name'] ?? context.tr('Untitled')}'
-                '${profile['current'] == true ? ' · ${context.tr('Current')}' : ''}',
-              ),
-            ),
-        ],
-      ),
-    );
-    if (picked == null || !mounted) return;
-    final profileId = (picked['id'] as num?)?.toInt() ?? 0;
-    if (profileId <= 0) return;
-    try {
-      final data = json(await box.routeGlobalRules(profileId));
-      final current = {
-        for (final rule in rows(data['rules']))
-          if (rule['enabled'] != true) (rule['id'] as num?)?.toInt(),
-      }..remove(null);
-      // A set either way: the write replaces the whole disabled list, so the
-      // add and the remove are the same call with one member changed.
-      if (disabled) {
-        current.add(ref.id);
-      } else {
-        current.remove(ref.id);
-      }
-      await box.routeSetGlobalRuleDisabled(profileId, current.toList());
-      if (mounted) {
-        showAppBanner(
-          context,
-          '${context.tr(disabled ? 'Disabled for' : 'Enabled for')} '
-          '${picked['name'] ?? context.tr('Untitled')}',
-        );
-      }
-    } catch (error) {
-      if (mounted) box.report(error);
     }
   }
 
@@ -415,21 +325,6 @@ class GlobalRulesBodyState extends State<GlobalRulesBody> {
                 glyph: AppGlyphs.edit,
                 label: context.tr('Edit'),
                 onPressed: () => _edit(ref),
-              ),
-              // The per-configuration opt-out the profile screens used to own.
-              // The rule stays in the pool and every other configuration keeps
-              // it; this is the only way to turn it off for one of them.
-              PopupMenuItem(
-                glyph: AppGlyphs.eyeOff,
-                label: context.tr('Disable for a profile'),
-                onPressed: () => _setDisabledForProfile(ref, disabled: true),
-              ),
-              // The other half of that switch: before it, a rule turned off for a
-              // configuration could never be turned back on from here.
-              PopupMenuItem(
-                glyph: AppGlyphs.eye,
-                label: context.tr('Enable for a profile'),
-                onPressed: () => _setDisabledForProfile(ref, disabled: false),
               ),
               PopupMenuItem(
                 glyph: AppGlyphs.delete,

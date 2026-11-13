@@ -1,3 +1,7 @@
+// The routing page after the FlClash refactor: a rule list plus an add-rule
+// sheet built from built-in types and targets. The 45-column editor, per-profile
+// rules, JSON import and per-profile opt-outs are gone.
+
 import 'dart:async';
 
 import 'package:flrone/core/action.dart';
@@ -9,168 +13,55 @@ import 'package:flutter_test/flutter_test.dart';
 import 'support/errors.dart';
 import 'support/fake_route_kernel.dart';
 
-/// A rule as BboxRoutes.ruleToMap emits it: metadata, the string fields, every list field and the booleans.
-Map<String, Object?> rule({
-  String name = '',
-  String type = 'custom',
-  String action = 'route',
-  int outboundId = -1,
-  List<String> domain = const [],
-  List<String> domainSuffix = const [],
-  List<String> ipCidr = const [],
-  List<String> processName = const [],
-  List<String> networkType = const [],
-}) => {
-  'name': name,
-  'type': type,
-  'disabled': false,
-  'action': action,
-  'outbound_id': outboundId,
-  'ip_version': '',
-  'network': '',
-  'protocol': '',
-  'reject_method': '',
-  'override_address': '',
-  'override_port': '',
-  'tls_fragment_fallback_delay': '',
-  'tls_spoof': '',
-  'tls_spoof_method': '',
-  'strategy': '',
-  'inbound': <String>[],
-  'domain': domain,
-  'domain_suffix': domainSuffix,
-  'domain_keyword': <String>[],
-  'domain_regex': <String>[],
-  'source_ip_cidr': <String>[],
-  'ip_cidr': ipCidr,
-  'source_port': <String>[],
-  'source_port_range': <String>[],
-  'port': <String>[],
-  'port_range': <String>[],
-  'process_name': processName,
-  'process_path': <String>[],
-  'process_path_regex': <String>[],
-  'package_name': <String>[],
-  'package_name_regex': <String>[],
-  'network_type': networkType,
-  'wifi_ssid': <String>[],
-  'wifi_bssid': <String>[],
-  'rule_set': <String>[],
-  'sniffers': <String>[],
-  'source_ip_is_private': false,
-  'ip_is_private': false,
-  'invert': false,
-  'no_drop': false,
-  'sniff_override_dest': false,
-  'network_is_expensive': false,
-  'tls_fragment': false,
-  'tls_record_fragment': false,
-};
+Map<String, Object?> poolRule(String name, {int id = 1}) => {
+      'id': id,
+      'name': name,
+      'type': 'custom',
+      'disabled': false,
+      'action': 'route',
+      'outbound_id': -1,
+      'domain_suffix': <String>['example.test'],
+    };
 
 void main() {
   late StreamController<dynamic> events;
-  late List<Map<String, Object?>> rules;
-  late List<String> dataPathCalls;
-  late List<Map<String, Object?>> savedRules;
-
-  /// The global pool the fixture answers. Defaults to the single rule the
-  /// existing cases were written against; a test that cares about filtering or
-  /// multi-select replaces it.
   late List<Map<String, Object?>> poolRules;
+  late List<Map<String, Object?>> savedPool;
 
-  /// The route shapes BboxRoutes returned, keyed by action.
   Map<String, Object?>? routeFixtures(ActionMethod method, Object? data) {
     switch (method) {
-      case ActionMethod.getRouteProfile:
-        return {
-          'id': 1,
-          'name': 'Default',
-          'defaultOutbound': 'direct',
-          'isRemote': false,
-          'remoteUrl': '',
-          'autoUpdate': false,
-          'isRaw': false,
-          'endpointIds': <int>[],
-          'rules': '',
-          'ruleCount': rules.length,
-        };
-      case ActionMethod.getRouteProfiles:
-        return {
-          'currentId': 1,
-          'profiles': [
-            {
-              'id': 1,
-              'name': 'Default',
-              'current': true,
-              'isRemote': false,
-              'isRaw': false,
-              'ruleCount': rules.length,
-              'simpleRuleCount': 0,
-            },
-          ],
-        };
-      case ActionMethod.getRouteRules:
-        return {'rules': rules};
       case ActionMethod.getGlobalRules:
-        // Mutable so a test can distinguish which rows the filter let through;
-        // the default keeps the single-rule shape the existing cases expect.
         return {'rules': poolRules};
       case ActionMethod.saveGlobalRules:
-        return {'rules': <Object?>[]};
-      case ActionMethod.setGlobalRuleDisabled:
-        return null;
-      case ActionMethod.deleteGlobalRule:
-        return null;
-      case ActionMethod.saveRouteRules:
         final payload = data is Map ? data['rules'] : null;
-        savedRules = [
+        savedPool = [
           for (final rule in payload as List? ?? const [])
             Map<String, Object?>.from(rule as Map),
         ];
-        rules = savedRules;
-        return {'rules': savedRules};
-      case ActionMethod.setCurrentRoute:
-        return {'currentId': 1};
+        poolRules = savedPool;
+        return {'rules': savedPool};
+      case ActionMethod.deleteGlobalRule:
+        return null;
       default:
         return null;
     }
   }
 
-  Future<void> mount(
-    WidgetTester tester, {
-    List<Map<String, Object?>>? pool,
-  }) async {
+  Future<void> mount(WidgetTester tester, {List<Map<String, Object?>>? pool}) async {
     tester.binding.platformDispatcher.localesTestValue = const [Locale('en')];
     addTearDown(tester.binding.platformDispatcher.clearLocalesTestValue);
     tester.view.physicalSize = const Size(360, 1400);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    // Every case that does not care about the pool's contents gets the single
-    // rule the original assertions were written against; a case that does passes
-    // its own rows through [pool].
-    poolRules = pool ?? [
-      {
-        'id': 1,
-        'name': 'Pool A',
-        'type': 'route',
-        'outbound_id': -1,
-        'disabled': false,
-      },
-    ];
+    poolRules = pool ?? [poolRule('Pool A')];
+    savedPool = <Map<String, Object?>>[];
     const channel = MethodChannel('test.routes-page');
     events = StreamController<dynamic>.broadcast();
-    dataPathCalls = <String>[];
-    savedRules = <Map<String, Object?>>[];
     final messenger =
         TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
     messenger.setMockMethodCallHandler(channel, (call) async {
       switch (call.method) {
-        // The host cannot answer the data plane's one channel call (older host,
-        // no libsqlite3, schema mismatch): every screen must stay on routes.list.
-        case 'data.path':
-          dataPathCalls.add(call.method);
-          return null;
         case 'ready':
           return {
             'version': 'test',
@@ -178,13 +69,16 @@ void main() {
             'preferences': {'locale': 'en'},
             'dashboard': {'status': 'Stopped'},
           };
+        case 'groups.nodes':
+          return {
+            'nodes': [
+              {'id': 10, 'tag': 'Node A'},
+            ],
+          };
       }
       return null;
     });
     final box = BoxController(channel: channel, events: events.stream);
-    // ADR 0002 phase 3c: the route surface goes through the action bus, so the
-    // screens need an attached kernel. debugAttach is the same seam the
-    // hand-over tests use.
     box.kernel.debugAttach(FakeRouteKernel(routeFixtures), NoopKernelWorker());
     await tester.pumpWidget(BoxApp(controller: box));
     await tester.pumpAndSettle();
@@ -195,377 +89,103 @@ void main() {
     });
   }
 
-  testWidgets(
-    'the route profile editor and its rule editor render without exceptions',
-    (tester) async {
-      reportFlutterErrors();
-      rules = [
-        rule(name: 'Direct LAN', domainSuffix: ['.lan']),
-        rule(
-          name: 'Simple',
-          type: 'simple_address_proxy',
-          outboundId: -1,
-          domain: ['example.org'],
-        ),
-        rule(
-          name: 'Simple warp',
-          type: 'simple_process_name_warp_bypass',
-          outboundId: -5,
-          processName: ['com.example'],
-        ),
-      ];
-      await mount(tester);
-      openPage(
-        tester.element(find.byType(HomePage)),
-        const AdditionalRulesPage(profileId: 1),
-      );
-      await tester.pumpAndSettle();
-      expect(find.text('Direct LAN'), findsOneWidget);
-      expect(find.text('Simple'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-
-      // Editing an existing plain rule.
-      await tester.tap(find.text('Direct LAN'));
-      await tester.pumpAndSettle();
-      expect(find.text('Edit rule'), findsWidgets);
-      expect(tester.takeException(), isNull);
-      Navigator.of(tester.element(find.text('Edit rule').first)).pop();
-      await tester.pumpAndSettle();
-
-      // Editing a simple rule (type token carries the action suffix).
-      await tester.tap(find.text('Simple'));
-      await tester.pumpAndSettle();
-      expect(find.text('Edit rule'), findsWidgets);
-      expect(tester.takeException(), isNull);
-      Navigator.of(tester.element(find.text('Edit rule').first)).pop();
-      await tester.pumpAndSettle();
-
-      // Editing a simple rule whose action is warp_bypass.
-      await tester.ensureVisible(find.text('Simple warp'));
-      await tester.tap(find.text('Simple warp'));
-      await tester.pumpAndSettle();
-      expect(find.text('Edit rule'), findsWidgets);
-      expect(tester.takeException(), isNull);
-      Navigator.of(tester.element(find.text('Edit rule').first)).pop();
-      await tester.pumpAndSettle();
-
-      // Adding a new rule starts from an empty draft, from the bar's add button.
-      await tester.tap(find.byTooltip('Add rule'));
-      await tester.pumpAndSettle();
-      expect(find.text('Add rule'), findsWidgets);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets('a rule enabled state is saved and shown immediately', (
-    tester,
-  ) async {
-    reportFlutterErrors();
-    rules = [
-      rule(name: 'Direct LAN', domainSuffix: ['.lan'])..['disabled'] = true,
-    ];
-    await mount(tester);
-    openPage(
-      tester.element(find.byType(HomePage)),
-      const AdditionalRulesPage(profileId: 1),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      find.textContaining('Disabled'),
-      findsOneWidget,
-      reason: 'the rule list must show the saved disabled state',
-    );
-    await tester.tap(find.text('Direct LAN'));
-    await tester.pumpAndSettle();
-    expect(find.text('Enabled'), findsWidgets);
-    expect(find.text('Disabled'), findsWidgets);
-    await tester.tap(find.byType(Switch).first);
-    await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('Save'));
-    await tester.pumpAndSettle();
-    expect(savedRules.single['disabled'], isFalse);
-    expect(find.textContaining('Enabled'), findsWidgets);
-    expect(tester.takeException(), isNull);
-  });
-
-  // The scalar rule fields are fixed menus with the legal values Throne for
-  // Android ships in arrays.xml, not free-text rows. These are pure helpers,
-  // so the value contract is asserted without pumping a widget.
-  group('rule enum options (Throne for Android parity)', () {
-    test('ip_version stores 4/6, not the old ipv4/ipv6 hints', () {
-      expect(ruleEnumValues['ip_version']!.map((o) => o.value), ['', '4', '6']);
-      expect(ruleEnumValues['ip_version']!.map((o) => o.label), [
-        'Any',
-        'IPv4',
-        'IPv6',
-      ]);
-      expect(ruleEnumValues['ip_version']!.length, 3);
-    });
-
-    test('network and protocol carry the full upstream value sets', () {
-      expect(ruleEnumValues['network']!.map((o) => o.value), [
-        '',
-        'tcp',
-        'udp',
-        'icmp',
-      ]);
-      expect(ruleEnumValues['protocol']!.map((o) => o.value), [
-        '',
-        'http',
-        'tls',
-        'quic',
-        'stun',
-        'dns',
-        'bittorrent',
-        'dtls',
-        'ssh',
-        'rdp',
-        'ntp',
-      ]);
-    });
-
-    test('reject_method and strategy keep an empty first (unset) option', () {
-      expect(ruleEnumValues['reject_method']!.first.value, '');
-      expect(
-        ruleEnumValues['reject_method']!.map((o) => o.value).skip(1).toList(),
-        ['default', 'drop', 'reply'],
-      );
-      expect(ruleEnumValues['strategy']!.first.value, '');
-      expect(ruleEnumValues['strategy']!.map((o) => o.value).skip(1).toList(), [
-        'ipv4_only',
-        'ipv6_only',
-        'prefer_ipv4',
-        'prefer_ipv6',
-      ]);
-    });
-
-    test('action keeps bypass and adds hijack-dns', () {
-      final values = ruleEnumValues['action']!.map((o) => o.value).toList();
-      expect(
-        values,
-        containsAll(<String>[
-          'route',
-          'reject',
-          'hijack-dns',
-          'sniff',
-          'resolve',
-          'route-options',
-          'bypass',
-        ]),
-      );
-    });
-
-    test('an unknown stored value is appended, not dropped (ensureValue)', () {
-      final options = ruleEnumOptions('ip_version', 'ipv4');
-      expect(options.map((o) => o.value), ['', '4', '6', 'ipv4']);
-      expect(options.last.label, 'ipv4');
-      expect(ruleEnumLabel('ip_version', 'ipv4'), 'ipv4');
-      // A known value is never duplicated into the option list.
-      expect(ruleEnumOptions('ip_version', '4').map((o) => o.value), [
-        '',
-        '4',
-        '6',
-      ]);
-      // An unknown field has no presets, but ensureValue still keeps its
-      // current value selectable instead of silently dropping it.
-      final unknown = ruleEnumOptions('unknown_field', 'x');
-      expect(unknown.map((o) => o.value), ['x']);
-      expect(unknown.single.label, 'x');
-      expect(ruleEnumOptions('unknown_field', ''), isEmpty);
-    });
-
-    test('empty values resolve to their unset label', () {
-      expect(ruleEnumLabel('ip_version', ''), 'Any');
-      expect(ruleEnumLabel('network', ''), 'Any');
-      expect(ruleEnumLabel('protocol', ''), 'Any');
-      expect(ruleEnumLabel('reject_method', ''), 'Unset');
-      expect(ruleEnumLabel('strategy', ''), 'Default');
-    });
-
-    test(
-      'selecting the unset option removes the key instead of storing ""',
-      () {
-        final original = <String, dynamic>{
-          'name': 'r',
-          'ip_version': '4',
-          'action': 'route',
-        };
-        final cleared = ruleEnumApply(original, 'ip_version', '');
-        expect(cleared.containsKey('ip_version'), isFalse);
-        expect(cleared['name'], 'r');
-        expect(cleared['action'], 'route');
-        expect(original['ip_version'], '4', reason: 'input map is not mutated');
-        final set = ruleEnumApply(original, 'ip_version', '6');
-        expect(set['ip_version'], '6');
-        // A previously-unset field can be added again.
-        expect(ruleEnumApply(cleared, 'ip_version', '6')['ip_version'], '6');
-      },
-    );
-  });
-
-  testWidgets('a legacy ip_version still renders', (tester) async {
-    reportFlutterErrors();
-    rules = [
-      {...rule(name: 'Legacy'), 'ip_version': 'ipv4'},
-    ];
-    await mount(tester);
-    openPage(
-      tester.element(find.byType(HomePage)),
-      const AdditionalRulesPage(profileId: 1),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Legacy'));
-    await tester.pumpAndSettle();
-    expect(find.text('Edit rule'), findsWidgets);
-    expect(
-      tester.takeException(),
-      isNull,
-      reason: 'ensureValue must keep an out-of-preset value renderable',
-    );
-  });
-
-  testWidgets('a custom rule folds the long tail behind Advanced', (
-    tester,
-  ) async {
-    reportFlutterErrors();
-    rules = [
-      {...rule(name: 'Custom one')},
-    ];
-    await mount(tester);
-    openPage(
-      tester.element(find.byType(HomePage)),
-      const AdditionalRulesPage(profileId: 1),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Custom one'));
-    await tester.pumpAndSettle();
-
-    // Throne's two basic categories are visible; the advanced tail is folded.
-    expect(find.text('Match'), findsWidgets);
-    expect(find.text('Domain keyword'), findsNothing);
-    expect(find.text('Port'), findsNothing);
-
-    await tester.ensureVisible(find.text('Advanced'));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Advanced'));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Domain keyword'), findsWidgets);
-    expect(find.text('Port'), findsWidgets);
-    expect(tester.takeException(), isNull);
-  });
-
-  testWidgets(
-    'a list member is edited one value per line, as the native editor does',
-    (tester) async {
-      reportFlutterErrors();
-      rules = [
-        rule(name: 'Ads', domainSuffix: ['ads.example']),
-      ];
-      await mount(tester);
-      openPage(
-        tester.element(find.byType(HomePage)),
-        const AdditionalRulesPage(profileId: 1),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(find.text('Ads'));
-      await tester.pumpAndSettle();
-
-      // The row shows what is set; the value is not a comma-joined single line any more.
-      expect(find.text('ads.example'), findsOneWidget);
-      // A field with nothing set says so, as the native rows do.
-      expect(find.text('Not set'), findsWidgets);
-
-      await tester.tap(find.text('Domain suffix'));
-      await tester.pumpAndSettle();
-      // The dialog carries the hint the native one shows above its field.
-      expect(
-        find.textContaining('google.com matches google.com and its subdomains'),
-        findsOneWidget,
-      );
-
-      // The dialog's field is the last one built; the page behind keeps its own text fields.
-      await tester.enterText(
-        find.byType(TextField).last,
-        'a.com\nb.com\n\n  c.com  ',
-      );
-      await tester.tap(find.text('OK'));
-      await tester.pumpAndSettle();
-
-      // One value per line, blank lines dropped and each line trimmed.
-      expect(find.text('a.com, b.com, c.com'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
-
-  testWidgets('the routing page is the rule list itself', (tester) async {
-    reportFlutterErrors();
-    rules = [];
-    await mount(tester);
+  Future<void> openRouting(WidgetTester tester) async {
     openPage(tester.element(find.byType(HomePage)), const RoutingPage());
     await tester.pumpAndSettle();
+  }
 
-    // The pool is the page: its rules render inline. The add/import actions sit
-    // on the section's title card (FlClash's RuleTitle shape), so the tooltips
-    // are found there rather than on the app bar.
+  testWidgets('the routing page is the rule list with an Add rule action', (tester) async {
+    reportFlutterErrors();
+    await mount(tester);
+    await openRouting(tester);
+
     expect(find.text('Pool A'), findsOneWidget);
     expect(find.byTooltip('Add rule'), findsOneWidget);
-    expect(find.byTooltip('Import rules from JSON'), findsOneWidget);
-
-    // No section title: the page is already called Routing.
-    expect(find.text('Global rules'), findsNothing);
-
-    // Route profiles, WARP and the technical switches are gone from the page.
-    expect(find.text('Route profiles'), findsNothing);
-    expect(find.text('WARP'), findsNothing);
-    expect(find.text('Outbound domain strategy'), findsNothing);
-    expect(find.text('Rule set mirror'), findsNothing);
-    expect(find.text('Ad blocking'), findsNothing);
-    expect(find.text('Update rule sets'), findsNothing);
-
-    // What remains is one tap deep, and profiles/WARP are gone for good.
+    expect(find.byTooltip('Import rules from JSON'), findsNothing);
+    expect(find.text('Per-profile rules'), findsNothing);
+    expect(find.text('Restore defaults'), findsNothing);
+    // The engine switches stay: they set how rules resolve, not which rules exist.
     await tester.tap(find.byTooltip('More'));
     await tester.pumpAndSettle();
     expect(find.text('Route settings'), findsOneWidget);
     expect(find.text('Automatic updates'), findsOneWidget);
-    expect(find.text('Route profiles'), findsNothing);
-    expect(find.text('WARP'), findsNothing);
+    expect(find.text('Per-profile rules'), findsNothing);
+    expect(find.text('Restore defaults'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('inbound, node presets and subscriptions live under Advanced settings', (
-    tester,
-  ) async {
+  testWidgets('Add rule opens the built-in type picker', (tester) async {
     reportFlutterErrors();
-    rules = [];
     await mount(tester);
-    openPage(tester.element(find.byType(HomePage)), const AdvancedSettingsPage());
+    await openRouting(tester);
+
+    await tester.tap(find.byTooltip('Add rule'));
     await tester.pumpAndSettle();
 
-    expect(find.text('Inbound'), findsOneWidget);
-    expect(find.text('Node presets'), findsOneWidget);
-    expect(find.text('Subscriptions'), findsOneWidget);
+    expect(find.text('Rule type'), findsWidgets);
+    expect(find.text('Target'), findsWidgets);
+    expect(find.text(ruleKinds.first.label), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 
-  // --- the interactions the Routing page borrows from FlClash ---------------
+  testWidgets('the type picker offers all 33 built-in FlClash types', (tester) async {
+    reportFlutterErrors();
+    await mount(tester);
+    await openRouting(tester);
+    await tester.tap(find.byTooltip('Add rule'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Rule type').last);
+    await tester.pumpAndSettle();
+
+    for (final kind in ruleKinds) {
+      expect(find.text(kind.label), findsWidgets, reason: '${kind.label} must be offered');
+    }
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('adding a rule writes it to the pool', (tester) async {
+    reportFlutterErrors();
+    await mount(tester, pool: []);
+    await openRouting(tester);
+    await tester.tap(find.byTooltip('Add rule'));
+    await tester.pumpAndSettle();
+
+    // The page's search field comes first, then the sheet's Name and Content.
+    await tester.enterText(find.byType(TextField).at(2), 'example.test');
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Add rule').last);
+    await tester.pumpAndSettle();
+
+    expect(savedPool.length, 1);
+    expect(savedPool.single['domain'], ['example.test']);
+    expect(savedPool.single['action'], 'route');
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('a rule without content is refused', (tester) async {
+    reportFlutterErrors();
+    await mount(tester, pool: []);
+    await openRouting(tester);
+    await tester.tap(find.byTooltip('Add rule'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Add rule').last);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Content is required'), findsOneWidget);
+    expect(savedPool, isEmpty);
+    expect(tester.takeException(), isNull);
+  });
 
   testWidgets('the search field filters the pool', (tester) async {
     reportFlutterErrors();
-    rules = [];
-    await mount(tester, pool: [
-      {'id': 1, 'name': 'Keep me', 'type': 'route', 'outbound_id': -1, 'disabled': false},
-      {'id': 2, 'name': 'Hide me', 'type': 'route', 'outbound_id': -1, 'disabled': false},
-    ]);
-    openPage(tester.element(find.byType(HomePage)), const RoutingPage());
-    await tester.pumpAndSettle();
+    await mount(tester, pool: [poolRule('Keep me'), poolRule('Hide me', id: 2)]);
+    await openRouting(tester);
 
     expect(find.text('Keep me'), findsOneWidget);
     expect(find.text('Hide me'), findsOneWidget);
-
     await tester.enterText(find.byType(TextField).first, 'Keep');
     await tester.pumpAndSettle();
-
     expect(find.text('Keep me'), findsOneWidget);
     expect(find.text('Hide me'), findsNothing);
     expect(tester.takeException(), isNull);
@@ -573,48 +193,38 @@ void main() {
 
   testWidgets('selection mode opens from the bar and can delete', (tester) async {
     reportFlutterErrors();
-    // The "Delete selected" action used to be unreachable: `selectionActive`
-    // was derived from a non-empty selection, and nothing could make the first
-    // tick. The Select action is what enters the mode.
-    rules = [];
-    await mount(tester, pool: [
-      {'id': 1, 'name': 'Doomed', 'type': 'route', 'outbound_id': -1, 'disabled': false},
-    ]);
-    openPage(tester.element(find.byType(HomePage)), const RoutingPage());
-    await tester.pumpAndSettle();
+    await mount(tester);
+    await openRouting(tester);
 
     expect(find.byTooltip('Delete selected'), findsNothing);
     await tester.tap(find.byTooltip('Select'));
     await tester.pumpAndSettle();
-
     expect(find.byTooltip('Delete selected'), findsOneWidget);
     expect(find.byTooltip('Select all'), findsOneWidget);
-
     await tester.tap(find.byTooltip('Select all'));
     await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Delete selected'));
     await tester.pumpAndSettle();
-    // The confirmation dialog names the count.
     expect(find.text('Delete selected'), findsWidgets);
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('a pool rule offers both disable and enable for a profile', (tester) async {
+  testWidgets('the rule list no longer offers per-profile disable or enable', (tester) async {
     reportFlutterErrors();
-    // Only "disable" existed, so a rule switched off for a configuration could
-    // never be switched back on from this screen.
-    rules = [];
-    await mount(tester, pool: [
-      {'id': 1, 'name': 'Toggle me', 'type': 'route', 'outbound_id': -1, 'disabled': false},
-    ]);
-    openPage(tester.element(find.byType(HomePage)), const RoutingPage());
-    await tester.pumpAndSettle();
+    await mount(tester);
+    await openRouting(tester);
 
-    await tester.longPress(find.text('Toggle me'));
+    await tester.longPress(find.text('Pool A'));
     await tester.pumpAndSettle();
-
-    expect(find.text('Disable for a profile'), findsOneWidget);
-    expect(find.text('Enable for a profile'), findsOneWidget);
+    expect(find.text('Disable for a profile'), findsNothing);
+    expect(find.text('Enable for a profile'), findsNothing);
+    expect(find.text('Edit'), findsOneWidget);
+    expect(find.text('Delete'), findsOneWidget);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('the built-in list carries the 33 FlClash rule types', (tester) async {
+    expect(ruleKinds.length, 33);
+    expect(ruleKinds.map((kind) => kind.label).toSet().length, 33);
   });
 }

@@ -194,9 +194,11 @@ extension RoutesApi on BoxController {
   // The kernel owns the route documents and is their only writer, so every call goes
   // through the JSON action bus. The channel arms are gone: without the FFI driver there is
   // no route store to answer from, and old-version compatibility was dropped deliberately.
-  // Two entries stay on the channel because they are not route data: `routes.presets` /
-  // `routes.addPreset` read the bundled snapshot and fetch remote profiles, and
-  // `routes.ruleSets` searches the local rule-set catalog.
+  //
+  // The routing UI now offers only "add a rule" (built-in types + targets) against the
+  // shared pool. Profile CRUD, batch add, reset, per-profile opt-outs and the rule-set
+  // catalog search were removed with that UI, so only the pool's read/write/delete and
+  // the DNS import's per-profile list access remain.
   ThroneKernel _routeKernel() =>
       kernel.attached ??
       (throw StateError(
@@ -221,59 +223,8 @@ extension RoutesApi on BoxController {
   Future<dynamic> routeSaveGlobalRules(dynamic rules) =>
       _routeKernel().invoke<Object?>(ActionMethod.saveGlobalRules, data: {'rules': rules});
 
-  Future<dynamic> routeSetGlobalRuleDisabled(
-    dynamic profileId,
-    List<dynamic> ids,
-  ) => _routeKernel().invoke<Object?>(ActionMethod.setGlobalRuleDisabled, data: {
-    'profileId': profileId,
-    'ids': ids,
-  });
-
   Future<dynamic> routeDeleteGlobalRule(dynamic id) =>
       _routeKernel().invoke<Object?>(ActionMethod.deleteGlobalRule, data: {'id': id});
-
-  // --- profile CRUD (ADR 0002 phase 3d, PR-1) --------------------------------
-
-  /// Returns one profile's metadata and its simple-rule text.
-  Future<dynamic> routeGetProfile(dynamic id) =>
-      _routeKernel().invoke<Object?>(ActionMethod.getRouteProfile, data: {'id': id});
-
-  /// Creates or updates a route profile. Absent fields are left untouched.
-  Future<dynamic> routeSaveProfile({
-    dynamic id,
-    String? name,
-    String? defaultOutbound,
-    bool? isRemote,
-    String? remoteUrl,
-    bool? autoUpdate,
-    List<int>? endpointIds,
-    String? rules,
-  }) => _routeKernel().invoke<Object?>(ActionMethod.saveRouteProfile, data: {
-    'id': id,
-    'name': name,
-    'defaultOutbound': defaultOutbound,
-    'isRemote': isRemote,
-    'remoteUrl': remoteUrl,
-    'autoUpdate': autoUpdate,
-    'endpointIds': endpointIds,
-    'rules': rules,
-  });
-
-  /// Deletes a route profile and its rules.
-  Future<dynamic> routeDeleteProfile(dynamic id) =>
-      _routeKernel().invoke<Object?>(ActionMethod.deleteRouteProfile, data: {'id': id});
-
-  /// Marks a profile as the active route.
-  Future<dynamic> routeSetCurrent(dynamic id) =>
-      _routeKernel().invoke<Object?>(ActionMethod.setCurrentRoute, data: {'id': id});
-
-  /// Adds one rule per text line (`prefix:value -> outbound`).
-  Future<dynamic> routeBatchAddRules(dynamic id, String text) =>
-      _routeKernel().invoke<Object?>(ActionMethod.batchAddRules, data: {'id': id, 'text': text});
-
-  /// Resets a profile's rules to the Default chain's.
-  Future<dynamic> routeResetRules(dynamic id) =>
-      _routeKernel().invoke<Object?>(ActionMethod.resetRouteRules, data: {'id': id});
 }
 
 // Settings stay on the channel (ADR 0002, amended). Room is the authoritative
