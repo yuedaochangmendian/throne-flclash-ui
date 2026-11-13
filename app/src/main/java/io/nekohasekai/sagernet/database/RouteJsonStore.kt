@@ -22,6 +22,7 @@ object RouteJsonStore {
 
     private const val PROFILES = "route_profiles"
     private const val RULES = "route_rules"
+    private const val GLOBAL_RULES = "global_route_rules"
 
     /** Where the documents live; the host sets it once the kernel base path is known. */
     @Volatile
@@ -42,19 +43,32 @@ object RouteJsonStore {
     }
 
     /**
-     * True when the kernel has written the document set. Either file is enough: the export
-     * always writes both, and a profile set with no rules is a legitimate state (a fresh
+     * True when the kernel has written the document set. Any one file is enough: the export
+     * writes all three, and a profile set with no rules is a legitimate state (a fresh
      * Default profile).
      */
     val ready: Boolean
         get() {
             val dir = directory ?: return false
-            return File(dir, "$PROFILES.json").isFile || File(dir, "$RULES.json").isFile
+            return File(dir, "$PROFILES.json").isFile ||
+                File(dir, "$RULES.json").isFile ||
+                File(dir, "$GLOBAL_RULES.json").isFile
         }
 
     fun allProfiles(): List<RouteProfileEntity>? = readRows(PROFILES)?.mapNotNull(::rowToProfile)
 
     fun allRules(): List<RouteRuleEntity>? = readRows(RULES)?.mapNotNull(::rowToRule)
+
+    /**
+     * The global added-rules pool, in stored order, or null when no document exists.
+     *
+     * This is the pool `ConfigGenerator` prepends to every profile's own rules. The kernel
+     * is its only writer (`route_actions.go`), so Kotlin must read the same document: the
+     * Room table still holds the rows the one-time seed copied, and nothing has written to
+     * it since, so reading it answered a stale snapshot.
+     */
+    fun allGlobalRules(): List<GlobalRouteRuleEntity>? =
+        readRows(GLOBAL_RULES)?.mapNotNull(::rowToGlobalRule)
 
     /** One profile without its rules, matching `RouteDao.getProfile`. */
     fun getProfile(id: Long): RouteProfileEntity? = allProfiles()?.firstOrNull { it.id == id }
@@ -91,6 +105,21 @@ object RouteJsonStore {
 
     private fun rowToRule(row: JSONObject) = RouteRuleEntity().apply {
         routeProfileId = row.optLong("route_profile_id")
+        fillRuleColumns(row)
+    }
+
+    /**
+     * A global-pool row. The pool has no owning profile, and its primary key is `rule_id`
+     * where the kernel writes `id` (`route_actions.go` sets `stored["id"]`); everything
+     * else is the same column set as a profile rule.
+     */
+    private fun rowToGlobalRule(row: JSONObject) = GlobalRouteRuleEntity().apply {
+        ruleId = row.optLong("id")
+        fillRuleColumns(row)
+    }
+
+    /** The columns [RouteRuleColumns] declares, which both rule entities extend. */
+    private fun RouteRuleColumns.fillRuleColumns(row: JSONObject) {
         ruleOrder = row.optInt("rule_order")
         name = row.optString("name")
         type = row.optInt("type")
