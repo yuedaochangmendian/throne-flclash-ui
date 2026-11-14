@@ -31,7 +31,9 @@ Eight files differ from upstream, plus one new file — that is the whole adapta
 `flutter/lib/ui/` is **not** a vendored Prism UI copy any more: it is FlClash's own thin adapter over
 the `prism_ui` package (it re-exports `package:prism_ui/prism_ui.dart` and adds a handful of app
 widgets). The upstream package itself lives at `flutter/plugins/prism_ui/lib` as a path dependency —
-see `docs/prism-upstream.md`.
+see `docs/prism-upstream.md`. That copy carries **no local patch**: it matches the pinned upstream
+baseline byte-for-byte (145 files, 0 diverged), which is why the fork's old `banner.dart` change is
+gone — it broke swipe-to-dismiss on action-less banners and six upstream banner tests.
 
 ## Channels
 

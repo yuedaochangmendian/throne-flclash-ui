@@ -547,9 +547,7 @@ class _BannerState extends State<_Banner> with TickerProviderStateMixin {
   @override
   Widget build(BuildContext context) {
     final child = IgnorePointer(
-      // A notice has no action: it must not stand between a press and the page
-      // under it while it hangs there.
-      ignoring: !widget.visible || widget.onTap == null,
+      ignoring: !widget.visible,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: widget.onTap,

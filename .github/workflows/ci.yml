@@ -77,13 +77,13 @@ jobs:
       - name: Channel contract audit
         run: python3 tools/diagnostics/channel_audit.py
       # The vendored Prism UI package is measured against the upstream commit it was taken
-      # from, so drift is visible on every push. Two failures are possible and both are
-      # deliberate: an upstream file dropped locally (never intended), and a divergence set
-      # other than the one recorded local patch (banner.dart).
+      # from, so drift is visible on every push. The vendored copy currently
+      # matches the pinned upstream baseline byte-for-byte (0 diverged), so the
+      # gate allows at most one future local patch and fails on any dropped file.
       - name: Prism UI drift check
         run: |
           python3 tools/diagnostics/prism_drift.py check --json prism_drift.json \
-            --fail-on removed --max-diverged 1 --expect-diverged banner.dart
+            --fail-on removed --max-diverged 1
       - name: Upload Prism UI drift report
         if: ${{ always() }}
         uses: actions/upload-artifact@v7

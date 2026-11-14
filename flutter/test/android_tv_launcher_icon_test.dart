@@ -19,13 +19,18 @@ double _androidDoubleAttribute(
 }
 
 void main() {
-  final upstreamAndroid = Directory('android/app/src/main/res').existsSync();
+  // The committed editable host at flutter/android/ carries ordinary launcher
+  // resources, but this fork does not vendor upstream FlClash's TV-specific
+  // density/adaptive icon set. Skip only when those TV files are absent.
+  final tvIconsVendored =
+      File('android/app/src/main/res/mipmap-television-mdpi/ic_launcher.webp')
+          .existsSync();
   void tvTest(String name, dynamic Function() body) => test(
         name,
         body,
-        skip: upstreamAndroid
+        skip: tvIconsVendored
             ? false
-            : 'the upstream FlClash Android res tree is not vendored here',
+            : 'the upstream FlClash TV launcher icons are not vendored here',
       );
   TestWidgetsFlutterBinding.ensureInitialized();
 
