@@ -13,7 +13,7 @@
 
 - **迁移收官**：批次 0.5→A→B→C→D×2→E1→E2→F→G→H→I→J→K→L0/L1/L2 全部落地（46 commits）；旧 Fragment 树与 29 个协议 Activity 已删；Flutter 是唯一界面（3.0.0 起）；openspec 提案已归档
 - **v3.0.x 打磨线**（3.0.1–3.0.11）：协议 typed 表单 + 测速面板细化、国旗徽章（矢量 SVG）、logcat 通道（tail-reader、清屏不阻塞主线程）、日志导出反馈、设置行值展示、probe 会话生命周期修复（v3.0.11）
-- **质量现状**：Flutter 221 测试全绿 + Kotlin 单测（备份/解析器/设置契约/发布说明）+ analyze 存量约 167 条 info（CI 不阻塞）；`tools/diagnostics/` 已有 `settings_audit.py`、`scan_aar_apis.py`、i18n 三件套
+- **质量现状**：Flutter 221 测试全绿 + Kotlin 单测（备份/解析器/设置契约/发布说明）+ `flutter analyze --fatal-infos` 零告警（CI 确实带该参数，见 `.github/workflows/ci.yml`）；`tools/diagnostics/` 已有 `settings_audit.py`、`scan_aar_apis.py`、i18n 三件套
 - **自更新链路已加固**：`UpdateChecker` 读 `throne-update.json`（name/size/sha256），`UpdateVerifier` 落盘后校验 sha256——不必重做，只需保持测试
 - **能力开关现状**（`Capabilities.kt`）：true = routes/autoSelector/warp/connections/logs/groups/memory/proxyGroups/clashModes/perApp/backup/lanProxy；**false = 12 项 B-box 独有能力**（terminal/capture/remote/reports/stun/quality/endpoints/taildrop/perAppManaged/rootQuery/dnsObject）
 
@@ -23,7 +23,7 @@
 |---|---|---|---|
 | 1 | ~~依赖链 force 降级与元数据跳过~~：U2 已升 Kotlin 2.4.10 并删除全套 force 和 `-Xskip-metadata-version-check`；`scan_aar_apis.py` 以新版宿主依赖为基线继续守门 | `app/build.gradle.kts` | ✅ U1/U2；rosemoe 解钉仍属 U3 |
 | 2 | ~~CameraX 1.5.3 钉死~~：U1 已升 AGP 8.12.3 / Gradle 8.13，CameraX 1.6.1 自然解析；compileSdk 36 仍是 Flutter AAR 的独立要求 | `app/build.gradle.kts` | ✅ U1 |
-| 3 | analyze 存量 167 条 info（多为 test 的 curly_braces / unnecessary_import） | `flutter analyze` | M |
+| 3 | ~~analyze 存量 167 条 info~~：M3 已清零，CI 现以 `flutter analyze --fatal-infos` 收口且零告警 | `flutter analyze --fatal-infos` | ✅ 已解决 |
 | 4 | ~~README 仍是上游 Throne 原文~~：已重写为 Flrone；命名统一在 `opt/flrone-naming` 完成——Flutter 包名、AAR 坐标、通道、rootProject、APK/artifact 前缀全部改为 Flrone；**applicationId `com.throneflclash` 与仓库名按决策保留**，以免现有用户无法覆盖安装 | `README.md` | ✅ 已解决 |
 | 5 | docs 失实风险：`bbox-bridge.md`/`bbox-flutter.md` 在 0.5 修过一轮，3.0.x 又漂移了十余轮 | docs/ | M |
 | 6 | 核心侧日志噪音：TUN lazy 握手下本地 app 提前 RST → `connection: report handshake success: go: connection reset by peer`（ERROR 级，reF1nd/sing-tun `stack_go_conn.go:51` errGoReset；核心 pin 上游不可修） | 本会话已定性 | N |
@@ -51,14 +51,14 @@
 ### W1 · ~~v3.0.12 在途收尾~~ ✅ 已完成（2026-11-03，commit `41636a9`）
 
 - BboxLogcat.kt 重写为可注入进程的 LogcatReader（Mutex 保护、带超时的 clear，JVM 可单测，新增 BboxLogcatTest 477 行）；logs.dart 导出 tri-state + 防重入 + 空列表禁用，logs_test 补三态/防重入用例；探针会话重构为 BboxProbeSession（close 取消在飞请求 + 释放资源），`respond` 补 CancellationException 语义（scope 已关/会话已关返回 "cancelled"）；routed_ip_probe 补 `_closed` 语义（close 等待延迟 open，防残留 session）；顺带 shape_badge 焦点环改为前景绘制（不透明子组件不再遮盖）
-- Flutter 226 测试全绿（+5）、analyze 167 存量不变；CI run 41485297569 成功，v3.0.12 已发（prerelease=false，latest 指向正确）
+- Flutter 226 测试全绿（+5）；CI run 41485297569 成功，v3.0.12 已发（prerelease=false，latest 指向正确）
 - 遗留观察（已闭合）：`probeGet` 从 computeIfAbsent 自愈改为「缺 session = CancellationException」——约定由传输层本身强制（`routed_ip_probe.get` 首次调用自开 session，native 侧对缺 session 一律 fail-closed 返回 cancelled），新调用方沿用 `RoutedIpProbe` 即无序额外校验
 
 ### W2 · 批次 M：技术债与身份理顺（v3.1.0）
 
 - **M1 依赖链收窄**：跑 `scan_aar_apis.py` 复核 Flutter AAR（3.47.9 工具链产物）对 coroutines/stdlib 的实际 API 引用；能解除 force/排除就解除，不能解除则在 docs 里写明风险边界与升级路径；`-Xskip-metadata-version-check` 目标删除
 - **M2 camera 与 compileSdk**：评估 camera 1.6.1 降级到兼容 compileSdk 35 的版本（扫码是唯一用途），或接受 36 并记录原因
-- **M3 analyze 清零**：一次性修掉 167 条 info（curly_braces/unnecessary_import 全部是机械修复），此后 CI 加 `--fatal-infos` 防回潮
+- ~~**M3 analyze 清零**：一次性修掉 167 条 info（curly_braces/unnecessary_import 全部是机械修复），此后 CI 加 `--fatal-infos` 防回潮~~ ✅ 已完成——CI 现以 `flutter analyze --fatal-infos` 收口，零告警
 - **M4 README/docs 重写**：README 讲清「这是什么（Throne 核心 + Flrone UI）／与上游关系／自更新与签名／安装升级」；去掉上游捐赠链接（保留上游致敬段）；`bbox-bridge.md`/`bbox-flutter.md` 对照 `Capabilities.kt` + 通道现状重写（通道方法以双端 grep 为准）；**本规划文档随此批入库 `docs/roadmap.md`**
 - **M5 通道契约自动化**：新 `tools/diagnostics/channel_audit.py`——正则扫 Dart `box.call('…')/events.add({'type':…})` 与 Kotlin `when(call.method)/emit("…")`，双端差集为空才算过；进 CI（ci.yml 加一步）
 - 验收：M5 脚本 0 差集；CI 带 --fatal-infos 全绿；README/docs 与实况一致

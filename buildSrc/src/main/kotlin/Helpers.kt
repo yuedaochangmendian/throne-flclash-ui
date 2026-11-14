@@ -51,9 +51,9 @@ fun Project.setupCommon() {
     android.apply {
         buildToolsVersion = "35.0.1"
         // The B-box Flutter module (`flutter build aar`) publishes AARs whose metadata declares
-        // minCompileSdk=36 (flutter_debug/…_release and mobile_scanner_* are compiled against 36),
-        // so the host app has to compile against 36 too while targetSdk stays 35.
-        compileSdk = 36
+        // minCompileSdk=37 (the FlClash UI AAR and wifi_ssid_* are compiled against 37),
+        // so the host app has to compile against 37 too while targetSdk stays 35.
+        compileSdk = 37
         // This app has no C/C++ of its own, but every native library it ships arrives unstripped — including
         // Flutter's engine, whose debugging symbols are 327 MB of the 377 MB libflutter.so. Without an ndkVersion
         // the strip task cannot find llvm-strip and reports "Unable to strip the following libraries, packaging

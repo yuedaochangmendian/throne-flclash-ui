@@ -1,10 +1,9 @@
-// The Dart-driven kernel's slim Kotlin surface (zero AIDL, zero cross-process).
+// The kernel's slim Kotlin surface (zero AIDL, zero cross-process).
 //
-// With the rebuilt core present, Dart controls the kernel directly over dart:ffi:
-// it builds the core config here (the one thing that still owns the profile DB),
-// persists what the DB owns, and leaves every kernel call to the FFI bindings.
-// The old handlers in ThroneBoxBridge stay for the fallback path — the same
-// actions answer both until the rebuilt AAR is proven in CI.
+// Throne's foreground service owns the core; this object holds the running
+// config facts and the FFI/platform handover state. FlClash's Core host
+// (`io.throne.bbox.corehost.ThroneCore`) answers the UI's wire protocol, and
+// the old page-level bridge no longer exists.
 package io.throne.bbox.bridge
 
 import io.nekohasekai.sagernet.bg.BaseService
@@ -108,15 +107,9 @@ object BboxKernel {
         }
     }
 
-    /** The mode switch's persist half; Dart reloads the core itself (FFI). */
+    /** The mode switch's persist half; the caller reloads the core when it runs. */
     fun setMode(mode: String) {
         BboxMode.set(BboxMode.Mode.of(mode))
-        // Writing the store is not enough: BboxBridge caches the mode in its UI state
-        // and re-publishes that cache every second. Without this refresh the pump kept
-        // pushing the *old* mode, so it stomped the value Dart had just pushed and the
-        // mode chips kept highlighting the previous choice until some unrelated catalog
-        // change happened to rebuild the state. BboxCommands.setMode does the same.
-        BboxBridge.scheduleRefresh(immediate = true)
     }
 
     /**

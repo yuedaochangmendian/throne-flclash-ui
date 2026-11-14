@@ -1,308 +1,74 @@
 import 'dart:async';
-import 'dart:ui' show PlatformDispatcher;
-import 'package:flutter/foundation.dart' show FlutterError, LicenseRegistry, LicenseEntryWithLineBreaks, defaultTargetPlatform;
-import 'package:flutter/services.dart';
-import 'package:material_ui/material_ui.dart' as material;
-import 'widgets.dart';
-import 'pages/dashboard.dart';
-import 'pages/backup.dart';
-import 'pages/proxies.dart';
-import 'pages/profiles.dart';
-import 'pages/tools.dart';
-import 'pages/taildrop.dart';
-import 'theme_settings.dart';
-import 'components/page_switcher.dart';
+import 'dart:io';
 
-void main() {
-  WidgetsFlutterBinding.ensureInitialized();
-  SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
-  LicenseRegistry.addLicense(() async* {
-    for (final entry in const {'FlClash': 'LICENSE', 'cilium/ebpf': 'cilium-ebpf-LICENSE', 'ulikunitz/xz': 'xz-LICENSE', 'JetBrains Mono': 'JetBrainsMono-OFL.txt'}.entries) {
-      yield LicenseEntryWithLineBreaks([entry.key], await rootBundle.loadString('assets/licenses/${entry.value}'));
-    }
-  });
-  // Cap the decoded-image cache so a long session cannot grow it without bound.
-  imageCache.maximumSizeBytes = 50 << 20;
-  final controller = BoxController();
-  // Framework and engine errors reach the same banner the bridge uses, instead
-  // of only going to logcat where the user never sees them.
-  FlutterError.onError = (details) {
-    FlutterError.presentError(details);
-    controller.report(details.exception);
-  };
-  PlatformDispatcher.instance.onError = (error, stack) {
-    controller.report(error);
-    return true;
-  };
-  controller.refreshGate.start();
-  runApp(BoxApp(controller: controller));
-}
+import 'package:fl_clash/enum/enum.dart';
+import 'package:fl_clash/pages/error.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:rust_api/rust_api.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
-class BoxApp extends StatefulWidget {
-  const BoxApp({super.key, required this.controller});
-  final BoxController controller;
-  @override State<BoxApp> createState() => _BoxAppState();
-}
+import 'application.dart';
+import 'bootstrap.dart';
+import 'common/app_data.dart';
+import 'common/common.dart';
+import 'common/preferences_store.dart';
+import 'common/window.dart';
 
-class _BoxAppState extends State<BoxApp> with WidgetsBindingObserver {
-  final _banner = GlobalKey<BannerHostState>();
-  StreamSubscription<String>? _messages;
-  StreamSubscription<Json>? _reports;
-  @override void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    _messages = widget.controller.messages.listen((message) {
-      _banner.currentState?.show(message);
-    });
-    // A subscription update's change window (SubscriptionReportDialog): the report body selectable,
-    // a copy action beside OK.
-    _reports = widget.controller.subscriptionReports.listen((report) {
-      final context = _banner.currentState?.context;
-      if (context == null) return;
-      final text = report['text']?.toString() ?? '';
-      // The listener body is synchronous — no await separates the context capture from the
-      // dialog — but the lint still fires on the builder's deferred execution.
-      // ignore: use_build_context_synchronously
-      showDialog<void>(context: context, builder: (dialogContext) => material.AlertDialog(
-        title: Text(report['title']?.toString() ?? dialogContext.tr('Change of configuration')),
-        content: SizedBox(width: 480, child: SingleChildScrollView(child: SelectableText(
-          text.trim().isEmpty ? dialogContext.tr('Nothing changed') : text))),
-        actions: [
-          TextButton(onPressed: () => Clipboard.setData(ClipboardData(text: text.trim())),
-            child: Text(dialogContext.tr('Copy'))),
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(context.tr('OK'))),
-        ],
-      ));
-    });
-    widget.controller.initialize();
-  }
-  @override void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _messages?.cancel();
-    _reports?.cancel();
-    widget.controller.dispose();
-    super.dispose();
-  }
-
-  final _themes = <String, ({material.ThemeData material, ThemeData prism})>{};
-
-  @override void didChangeLocales(List<Locale>? locales) => setState(_themes.clear);
-
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    super.didChangeAppLifecycleState(state);
-    // Backgrounded: keep ingesting bridge events but hold their rebuilds until
-    // the user returns. This is the mobile form of Bettbox's active-window gate.
-    if (state == AppLifecycleState.resumed) {
-      widget.controller.resumeRefreshes();
-    } else {
-      widget.controller.suspendRefreshes();
-    }
-  }
-
-  /// Both layers the app draws with: Material's, for the widgets it still
-  /// carries (forms, snackbars, dialogs), and prism's, which every page and
-  /// component in `lib/ui` reads.
-  ({material.ThemeData material, ThemeData prism}) _theme(Brightness brightness) {
-    final prefs = widget.controller.preferences;
-    final scheme = appColorScheme(widget.controller, brightness);
-    final family = prefs['fontFamily'] as String?;
-    final key = "$brightness:${scheme.hashCode}:$family";
-    final fallback = appFontFamilyFallback(platform: defaultTargetPlatform, locales: WidgetsBinding.instance.platformDispatcher.locales, fontFamily: family);
-    return _themes.putIfAbsent(key, () => (
-      material: material.ThemeData(
-        useMaterial3: true,
-        // Material's widgets follow the same surfaces prism's do, pure black included.
-        colorScheme: material.ColorScheme.fromSeed(seedColor: appAccentColor(widget.controller), brightness: brightness)
-          .copyWith(surface: scheme.surface, onSurface: scheme.onSurface, primary: scheme.primary),
-        fontFamily: family,
-        fontFamilyFallback: fallback,
-      ),
-      prism: ThemeData(
-        colorScheme: scheme,
-        fontFamily: family,
-        fontFamilyFallback: fallback,
-        elevatedColorScheme: brightness == Brightness.dark ? scheme.elevated : null,
-      ),
-    ));
-  }
-
-  @override
-  Widget build(BuildContext context) => BoxScope(
-    controller: widget.controller,
-    child: Builder(
-      builder: (context) {
-        final prefs = BoxScope.of(context, aspect: BoxAspect.appearance).preferences;
-        return MaterialApp(
-          title: 'Flrone',
-          debugShowCheckedModeBanner: false,
-          theme: _theme(Brightness.light).material,
-          darkTheme: _theme(Brightness.dark).material,
-          themeMode: ThemeMode.values.firstWhere((mode) => mode.name == prefs['theme'], orElse: () => ThemeMode.system),
-          supportedLocales: const [Locale('en'), Locale('zh')],
-          localizationsDelegates: const [
-            BoxUiDelegate(), ...GlobalMaterialLocalizations.delegates,
-          ],
-          builder: (context, child) {
-            final media = MediaQuery.of(context);
-            final scale = appTextScale(prefs, media.textScaler.scale(1));
-            final glass = (prefs['liquidGlass'] ?? 'none') != 'none';
-            final brightness = material.Theme.of(context).brightness;
-            return BannerHost(
-              key: _banner,
-              stacked: media.size.width >= 600,
-              // Banners hang below the page bar so they never cover its buttons.
-              topInset: media.padding.top + pageToolbarHeight,
-              child: Theme(
-              data: _theme(brightness).prism,
-              child: MeasureScope(
-              measure: Measure.of(context, scale.clamp(.8, 1.4)),
-              child: ViewScope(
-              size: media.size,
-              isMobile: media.size.width < 600,
-              child: MediaQuery(
-                data: media.copyWith(textScaler: TextScaler.linear(scale.clamp(.8, 1.4))),
-                child: AnnotatedRegion<SystemUiOverlayStyle>(
-                  value: SystemUiOverlayStyle(
-                    statusBarColor: Colors.transparent, systemNavigationBarColor: Colors.transparent,
-                    statusBarIconBrightness: brightness == Brightness.dark ? Brightness.light : Brightness.dark,
-                    systemNavigationBarIconBrightness: brightness == Brightness.dark ? Brightness.light : Brightness.dark,
-                  ),
-                  child: LiquidGlassScope(enabled: glass,
-                    quality: prefs['liquidGlass'] == 'ultra' ? LiquidGlassQuality.ultra : LiquidGlassQuality.standard,
-                    child: LiquidGlassHost(enabled: glass, child: child!)),
-                ),
-              ),
-            ),
-            )));
-          },
-          home: widget.controller.ready ? const HomePage() : material.Scaffold(
-            body: SafeArea(child: Center(child: widget.controller.startupError == null
-                ? const CircularProgressIndicator()
-                : ErrorState(widget.controller.startupError!, retry: widget.controller.initialize))),
+void main(List<String> args) {
+  runZonedGuarded(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
+      if (Platform.isWindows || Platform.isLinux) {
+        SharedPreferencesStorePlatform.instance = AtomicFilePreferencesStore(
+          appPath.sharedPreferencesPath,
+        );
+      }
+      if (Platform.isLinux) {
+        linkManager.seedInitialLink(args);
+      }
+      FlutterError.onError = (details) {
+        Future.microtask(() {
+          commonPrint.log(
+            'exception: ${details.exception} stack: ${details.stack}',
+            logLevel: LogLevel.warning,
+          );
+        });
+      };
+      try {
+        await RustLib.init();
+        final version = await system.init();
+        final container = await bootstrap.init(version);
+        await FlClashHttpOverrides.trustCoreRoots();
+        HttpOverrides.global = FlClashHttpOverrides(container);
+        request.attach(container.read);
+        runApp(
+          UncontrolledProviderScope(
+            container: container,
+            child: const Application(),
           ),
         );
-      },
-    ),
+      } catch (e, s) {
+        runApp(
+          InitErrorApp(
+            error: e,
+            stack: s,
+            onClearData: clearAppData,
+            onExit: _exitAfterInitFailure,
+          ),
+        );
+        unawaited(window?.showInitFailure(onExit: _exitAfterInitFailure));
+      }
+    },
+    (error, stack) {
+      FlutterError.reportError(
+        FlutterErrorDetails(exception: error, stack: stack),
+      );
+    },
   );
 }
 
-class HomePage extends StatefulWidget {
-  const HomePage({super.key});
-  @override State<HomePage> createState() => _HomePageState();
-}
-
-class _HomePageState extends State<HomePage> {
-  int _index = 0;
-  StreamSubscription<IntentAvailableEvent>? _intents;
-  BoxController? _box;
-  bool _handlingIntent = false;
-
-  @override void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (_box != null) return;
-    _box = context.box;
-    _intents = _box!.intents.listen((_) => _drainIntents());
-    WidgetsBinding.instance.addPostFrameCallback((_) => _drainIntents());
-  }
-
-  Future<void> _drainIntents() async {
-    if (_handlingIntent || !mounted) return;
-    _handlingIntent = true;
-    try {
-      while (mounted && _box!.pendingIntents.isNotEmpty) {
-        await _import(_box!.pendingIntents.removeAt(0));
-      }
-    } finally { _handlingIntent = false; }
-  }
-
-  Future<void> _import(String uri) async {
-    try {
-      if (uri.startsWith('bbox-share:')) {
-        if (mounted) await openPage(context, SharePage(token: uri.substring('bbox-share:'.length)));
-        return;
-      }
-      // A file the platform handed us: the host reads it and says which it is, because a .thrbackup is a
-      // binary container the config importer cannot parse and a document is text it can.
-      if (uri.startsWith('content://') || uri.startsWith('file://')) {
-        final data = json(await _box!.filesOpen(uri));
-        final backup = json(data['backup']);
-        if (backup.isNotEmpty) {
-          if (mounted) await restoreBackupFile(context, backup);
-        } else if (mounted) {
-          await openForm(context, ProfileForm(initial: data));
-        }
-        return;
-      }
-      final data = json(await _box!.profileDecodeIntent(uri));
-      if (mounted) await openForm(context, ProfileForm(initial: data));
-    } catch (error) { _box!.report(error); }
-  }
-
-  @override void dispose() { _intents?.cancel(); super.dispose(); }
-
-  @override Widget build(BuildContext context) {
-    final mobile = context.isMobileView;
-    final floating = context.box.preferences['floatingNavigation'] != false;
-    // A tab exists only when the host answers for it; the Proxies tab needs selector groups.
-    final caps = context.box.capabilities;
-    final items = <(String, Glyph)>[
-      ('Dashboard', AppGlyphs.dashboard),
-      if (caps.of('proxyGroups')) ('Proxies', AppGlyphs.proxies),
-      ('Profiles', AppGlyphs.profiles),
-      ('Tools', AppGlyphs.tools),
-    ];
-    final pages = <Widget>[
-      const DashboardPage(),
-      if (caps.of('proxyGroups')) const ProxiesPage(),
-      const ProfilesPage(),
-      const ToolsPage(),
-    ];
-    // Pruning a tab that the user was standing on must not leave the index past the end.
-    final index = _index.clamp(0, pages.length - 1);
-    final content = PageSwitcher(
-      index: index,
-      animation: tabAnimationOf(context.box.preferences),
-      onSelected: (index) => setState(() => _index = index),
-      children: [for (var i = 0; i < pages.length; i++)
-        TickerMode(enabled: i == index, child: PageActivityScope(isActive: i == index, child: pages[i])),
-      ],
-    );
-    // The shell itself is plain Material: every page brings its own prism bar.
-    return material.Scaffold(
-        body: Row(children: [
-          if (!mobile) NavigationRail(
-            selectedIndex: index,
-            onDestinationSelected: (index) => setState(() => _index = index),
-            labelType: NavigationRailLabelType.all,
-            destinations: [for (final item in items) NavigationRailDestination(
-              icon: GlyphIcon(item.$2), label: Text(context.tr(item.$1)),
-            )],
-          ),
-          Expanded(child: Column(children: [
-            Expanded(child: Stack(children: [
-              Positioned.fill(child: BottomInsetScope(
-                inset: mobile && floating ? NavigationDock.insetOf(context) : 0,
-                child: MediaQuery.removePadding(context: context, removeBottom: mobile, removeLeft: mobile, removeRight: mobile, child: content),
-              )),
-              if (mobile && floating) PositionedDirectional(
-                start: 0, end: 0, bottom: 0,
-                child: NavigationDock(
-                  selectedIndex: index,
-                  onSelected: (index) => setState(() => _index = index),
-                  destinations: [for (final item in items) NavigationDockDestination(glyph: item.$2, label: context.tr(item.$1))],
-                ),
-              ),
-            ])),
-            if (mobile && !floating) NavigationBar(
-              selectedIndex: index,
-              onDestinationSelected: (index) => setState(() => _index = index),
-              destinations: [for (final (i, item) in items.indexed)
-                NavigationDestination(icon: AnimatedGlyph(glyph: item.$2, filled: i == index), label: context.tr(item.$1)),
-              ],
-            ),
-          ])),
-        ]),
-    );
-  }
+Future<void> _exitAfterInitFailure() async {
+  await system.exit();
+  window?.forceExit();
 }

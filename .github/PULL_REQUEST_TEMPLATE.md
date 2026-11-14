@@ -18,14 +18,15 @@
 
 ## 验证清单
 
-本地或 CI 已运行以下检查（对应 `.github/workflows/ci.yml` 与 `tools/diagnostics/`）：
+本地或 CI 已运行以下检查（对应 `.github/workflows/ci.yml`）：
 
 - [ ] `flutter pub get` && `flutter analyze --fatal-infos`（在 `flutter/` 目录，零告警）
 - [ ] `flutter test --coverage`（CI 另以 `coverage_gate.py` 校验覆盖率下限）
 - [ ] Kotlin 单测与 debug 构建：`./gradlew app:testOssDebugUnitTest app:assembleOssDebug`
-- [ ] 通道契约：`python3 tools/diagnostics/channel_audit.py`（Dart / Kotlin 两端差集为空）
-- [ ] 其他诊断脚本：`symbol_audit.py`、`settings_audit.py --summary`、`ffi_regression_test.py`、`generated_models_check.py`、`py_syntax_check.py`
-- [ ] 改动涉及桥接方法／事件时，已同步 Dart 与 Kotlin 两端，并核对 `docs/bbox-bridge.md` 与 `Capabilities.kt`
+- [ ] Bridge contract audits（`channel_audit.py` / `symbol_audit.py` / `settings_audit.py` / `ffi_regression_test.py` / `generated_models_check.py` / `schema_audit.py`）全部通过
+- [ ] Prism UI 漂移：`python3 tools/diagnostics/prism_drift.py check --local flutter/plugins/prism_ui/lib`
+- [ ] `python3 tools/diagnostics/py_syntax_check.py tools/diagnostics/*.py tools/bindgen/*.py buildScript/*.py`
+- [ ] 改动涉及通道名或 Core 协议方法时，已同步 Dart（`CoreMethod` / `packageName`）与 Kotlin（`ThroneCore.dispatch` / `Components.PACKAGE_NAME`）两端，并核对 `docs/bbox-bridge.md`
 - [ ] 改动涉及规范时，已同步 `openspec/specs/` 或提交 `openspec/changes/` 变更提案
 
 真机 / 设备清单（涉及 UI、VPN、覆盖升级、备份、Android TV 等运行时行为时，按 `docs/device-checklist.md` 走查）：

@@ -9,7 +9,14 @@
         android:name="${applicationId}.SERVICE"
         android:protectionLevel="signature" />
 
+    <!-- FlClash's service broadcasts. Signature-level for the same reason upstream declares it:
+         a plain exported receiver would let any app on the device toggle the tunnel. -->
+    <permission
+        android:name="${applicationId}.permission.RECEIVE_BROADCASTS"
+        android:protectionLevel="signature" />
+
     <uses-permission android:name="${applicationId}.SERVICE" />
+    <uses-permission android:name="${applicationId}.permission.RECEIVE_BROADCASTS" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.CHANGE_NETWORK_STATE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -30,6 +37,9 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Android 17 gates the tun subnet behind this; AppPlugin.requestLocalNetworkPermission
+         asks for it at runtime, which fails outright when the manifest does not declare it. -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" />
     <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION" />
@@ -199,6 +209,46 @@
                 <data android:scheme="json" />
             </intent-filter>
         </activity>
+
+        <!-- FlClash's launcher shortcuts (AppPlugin.initShortcuts). The intents are explicit and carry
+             `<package>.action.START|STOP|TOGGLE`, so the filter has to name each action: without this
+             declaration every shortcut tap was an ActivityNotFoundException. It draws no UI — the
+             action is handed to ThroneServiceController and the activity finishes. -->
+        <activity
+            android:name="com.follow.clash.QuickActionActivity"
+            android:excludeFromRecents="true"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <action android:name="${applicationId}.action.START" />
+            </intent-filter>
+            <intent-filter>
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <action android:name="${applicationId}.action.STOP" />
+            </intent-filter>
+            <intent-filter>
+                <category android:name="android.intent.category.DEFAULT" />
+
+                <action android:name="${applicationId}.action.TOGGLE" />
+            </intent-filter>
+        </activity>
+
+        <!-- FlClash's in-app service broadcasts; the permission keeps them signature-only. -->
+        <receiver
+            android:name="com.follow.clash.ServiceBroadcastReceiver"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="${applicationId}.permission.RECEIVE_BROADCASTS">
+            <intent-filter>
+                <action android:name="${applicationId}.intent.action.VPN_START_REQUESTED" />
+                <action android:name="${applicationId}.intent.action.VPN_REVOKED" />
+            </intent-filter>
+        </receiver>
 
         <!-- The launch targets left outside the Flutter tree: the service notification's switch button
              (SwitchActivity, which forwards to the Flutter host), the VPN consent hop (VpnRequestActivity), the

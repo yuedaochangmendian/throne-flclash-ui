@@ -1,52 +1,48 @@
-"""MethodChannel contract audit for the B-box bridge.
+"""MethodChannel contract audit for the FlClash plugin surface this host implements.
 
-Cross-checks, statically, the two ends of the bridge that `flutter analyze` and
-the Kotlin compiler cannot see (the contract lives in string literals):
+`flutter analyze` and the Kotlin compiler cannot see the channel contract: both
+ends name methods with string literals, so a rename on one side compiles fine and
+fails at runtime as `MissingPluginException` (or worse, a silent no-op).
 
-  - Dart -> Kotlin: every method the UI invokes (`box.call('…')` / `box.act('…')`,
-    dotted or bare inside BoxController) must have a `when(call.method)` handler
-    in ThroneBoxBridge.kt — unless the method belongs to a capability that is
-    switched off in Capabilities.kt (those pages ship unreachable by design;
-    flipping a capability to true without adding its handlers fails this audit)
-  - Kotlin -> Dart: every event the host emits (`emit("…", …)`) must be consumed
-    by a `case '…'` in the Dart event dispatcher (flutter/lib/box.dart), and the
-    MethodChannel names must exist on both ends
-  - dispatch sites whose method is not a literal (ternaries, switch arms, widget
-    arguments) are held to a declared allowlist in DYNAMIC_SITES — exact names and
-    dot-terminated prefixes only — a new site or an undeclared name fails; every
-    declared name must also have a handler
-  - handlers with no caller are listed (with --verbose) as dead-weight candidates
+The audited surface is exactly the hand-written plugin set — FlClash's four
+channels, answered by this repository's Kotlin plugins:
+
+    com.follow.clash/app      <-> app/src/main/java/com/follow/clash/plugins/AppPlugin.kt
+    com.follow.clash/service  <-> .../ServicePlugin.kt   (lifecycle: start/stop/init/…)
+    com.follow.clash/core     <-> .../ServicePlugin.kt   (one method: invokeMethod)
+    com.follow.clash/battery  <-> .../BatteryPlugin.kt   (+ /battery/optimization EventChannel)
+    com.follow.clash/tile     <-> .../TilePlugin.kt      (Kotlin -> Dart only)
+
+What is checked:
+
+  - the channel prefix is one constant on both ends: `packageName` in
+    flutter/lib/common/constant.dart must equal `Components.PACKAGE_NAME`. Both
+    sides build every channel name from it, so renaming one alone breaks all of
+    them at once with no compile error anywhere;
+  - every method Dart invokes on a channel has a `"…" ->` arm in that channel's
+    Kotlin plugin;
+  - every event the Kotlin plugin pushes at Dart (`invokeMethod("…")`,
+    `invokeMethodOnMainThread("…")`, `MethodCall("…", …)`) is consumed by a
+    `case '…':` in the paired Dart file;
+  - every channel literal appears on both ends (a MethodChannel/EventChannel name
+    with no counterpart is a stream that never receives anything);
+  - dispatch sites whose method name is not a string literal must be declared in
+    DYNAMIC_SITES, keyed by `path:line`.
+
+Deliberately shallow, like every audit in this directory: it is a regex
+cross-check over string literals, not a Dart or Kotlin parser. The channel table
+below is hand-maintained on purpose — a new channel means a new row, and that is
+the moment to re-read this file.
+
+History: until the FlClash UI migration this script audited `io.flrone/box`, the
+B-box bridge (`ThroneBoxBridge.kt` + `flutter/lib/box.dart`). Both ends were
+deleted with the migration; the channel here is the one that replaced them.
 
 Run from the repository root:
-    uv run tools/diagnostics/channel_audit.py [--verbose]
+    python3 tools/diagnostics/channel_audit.py [--verbose]
 
-Exit code 0 when every call has a handler and every event a consumer, 1 otherwise.
-
-Assumptions and maintenance
----------------------------
-This is a deliberately shallow, regex-based cross-check, not a parser. Two
-hand-maintained assumptions keep it working; both are fragile and are the first
-things to suspect when the audit reports a false positive or a false negative:
-
-  1. DYNAMIC_SITES is a manual allowlist of dispatch sites whose method name is
-     not a string literal (ternaries, switch arms, widget-driven calls), keyed by
-     source file, with exact names or dot-terminated prefixes. It is not derived
-     from the Dart AST. Adding a new dynamic dispatch site anywhere else makes the
-     audit fail until that site and the names it can produce are declared here;
-     every declared name must also have a Kotlin handler. When the UI changes,
-     review this table and keep the declared names in sync with the code.
-  2. kotlin_handlers() bounds the `when (call.method)` block by the next member
-     function, which it assumes sits at exactly four spaces of indentation (a
-     normal Kotlin class-body `fun`). A nested `fun` at that same depth, or a
-     class reformatted to a different indent, truncates the slice. The failure is
-     deliberately fail-closed: handlers after such a boundary surface as missing,
-     never silently excused. See the arm_indent note in kotlin_handlers() for the
-     related column assumption on the `when` arms.
-
-Both assumptions are documented rather than generalised here on purpose: the
-audit is a CI gate, so rewriting the parsing logic in place would risk weakening
-it. If either assumption stops matching the code, fix the assumption and the
-table explicitly, then re-run the audit.
+Exit code 0 when every live call has a handler and every event a consumer, 1
+otherwise.
 """
 
 from __future__ import annotations
@@ -58,395 +54,293 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 FLUTTER_LIB = REPO_ROOT / "flutter" / "lib"
-BRIDGE = REPO_ROOT / "app" / "src" / "main" / "java" / "io" / "throne" / "bbox" / "flutter" / "ThroneBoxBridge.kt"
-BRIDGE_DIR = REPO_ROOT / "app" / "src" / "main" / "java" / "io" / "throne" / "bbox"
-CAPABILITIES = REPO_ROOT / "app" / "src" / "main" / "java" / "io" / "throne" / "bbox" / "bridge" / "Capabilities.kt"
-DART_DISPATCH = FLUTTER_LIB / "box.dart"
+KOTLIN_PLUGINS = REPO_ROOT / "app" / "src" / "main" / "java" / "com" / "follow" / "clash" / "plugins"
 
-# Bridge dispatches only: the receiver is a box-ish identifier (`box`, `_box!`,
-# `context.box`), so an unrelated `.call(` on a callback field never matches.
-# `?.call(` on a Dart Callable is not a dispatch and the `?` lookbehind keeps it
-# out; whitespace before the paren is allowed (`box.call ('…')`). The bare form
-# (`call('…')` inside BoxController) is matched separately.
-RECEIVER = r"\w*box\s*!?\??\s*\.\s*(?:call|act)"
-BARE = r"(?<![\w?.])(?:call|act)"
-CALL_RE = re.compile(rf"(?<!\?)(?:{RECEIVER}|{BARE})\s*\(\s*'([a-zA-Z][a-zA-Z0-9_.:]*)'", re.IGNORECASE)
-# An interpolated method name (`act('${widget.kind}.submit')`) is a dispatch the
-# literal regex cannot name. The second alternative is a ZERO-WIDTH lookahead right
-# after the paren: a consuming match would backtrack to the last `$` and leave
-# first_argument() starting mid-string, silently disabling the tail check below.
-DYNAMIC_CALL_RE = re.compile(
-    rf"(?<!\?)(?:{RECEIVER}|{BARE})\s*\(\s*(?!['\s)])"
-    rf"|(?<!\?)(?:{RECEIVER}|{BARE})\s*\(\s*(?='(?:[^'\\]|\\.)*\$)",
-    re.IGNORECASE)
-KOTLIN_METHOD_RE = re.compile(r'"([a-zA-Z][a-zA-Z0-9_.:]*)"\s*->')
-EMIT_RE = re.compile(r'\bemit\(\s*"([a-zA-Z][a-zA-Z0-9_]*)"')
-DART_CASE_RE = re.compile(r"case\s+'([a-zA-Z][a-zA-Z0-9_.:]*)'")
-DART_CHANNEL_RE = re.compile(r"(?:Method|Event)Channel\(\s*'([^']+)'")
-# Read channel names from the constructors on both ends rather than hard-coding
-# an organisation prefix: renaming the bridge namespace must not break this gate.
-KOTLIN_CHANNEL_RE = re.compile(r'(?:Method|Event)Channel\([^)]*?"([^"]+)"')
-CAPABILITY_RE = re.compile(r'"([a-zA-Z]+)"\s+to\s+(true|false)')
+# The one prefix both ends must agree on.
+DART_CONSTANT = FLUTTER_LIB / "common" / "constant.dart"
+KOTLIN_COMPONENTS = REPO_ROOT / "app" / "src" / "main" / "java" / "com" / "follow" / "clash" / "common" / "Components.kt"
 
-# Handlers are dotted (`word.word…`) with the single historical exception of
-# `ready`; anything else a `"…" ->` match picks up inside the when block (nested
-# data mappings like "Stopping", "directDns") is not a handler.
-METHOD_NAME_RE = re.compile(r"^[a-z][a-zA-Z0-9_]*(\.[a-zA-Z0-9_.]+)+$|^ready$")
-
-# Methods invoked through a disabled capability's UI. Key = Capabilities.kt key,
-# values = the bridge-method prefixes that belong to it. The vendored B-box pages
-# behind `false` call these, the bridge answers none of them — expected absence.
-# Turning a capability on without landing its handlers fails this audit. Exact
-# names (`share.send`) vouch exactly; dot-terminated entries vouch a prefix.
-CAPABILITY_PREFIXES: dict[str, set[str]] = {
-    "terminal": {"ssh.", "terminal."},
-    "capture": {"capture."},
-    "remote": {"remote."},
-    "reports": {"reports."},
-    "stun": {"stun."},
-    "quality": {"quality."},
-    "taildrop": {"taildrop.", "share.send", "share.discard"},  # share.text is live regardless of Taildrop
-    "endpoints": {"tailscale.", "usb.", "openvpn.", "openconnect.", "usbip."},
+# channel suffix -> (Dart file that speaks it, Kotlin plugin that answers it).
+# A suffix used by two plugins (`service` and `core` both live in ServicePlugin.kt)
+# is listed twice: the handler arms are per-file, and ServicePlugin registers both.
+CHANNELS: dict[str, tuple[str, str]] = {
+    "app": ("flutter/lib/plugins/app.dart", "AppPlugin.kt"),
+    "service": ("flutter/lib/plugins/service.dart", "ServicePlugin.kt"),
+    "core": ("flutter/lib/plugins/service.dart", "ServicePlugin.kt"),
+    "battery": ("flutter/lib/plugins/battery.dart", "BatteryPlugin.kt"),
+    "tile": ("flutter/lib/plugins/tile.dart", "TilePlugin.kt"),
 }
 
-# Dynamic dispatch sites (ternaries, switch arms, widget-driven methods) with
-# their literals; a name ending in `.` matches every method under it, anything
-# else matches exactly. Keep in sync with the code — a new dynamic site anywhere
-# else fails the audit, and every declared name must have a handler.
-DYNAMIC_SITES: dict[str, set[str]] = {
-    "flutter/lib/box.dart": {"dashboard.memory.visible", "logs.logcat.visible", "groups.testSession.visible", "logs.visible"},
-    "flutter/lib/components/capture_poll.dart": {"capture."},  # widget.method, capability-gated page
-    "flutter/lib/components/status_panel.dart": {"service.start", "service.stop"},
-    "flutter/lib/pages/backup.dart": {"webdav.read", "backup.read"},
-    "flutter/lib/pages/authentication.dart": {
-        f"{kind}.{action}" for kind in ("tailscale", "openconnect", "openvpn", "usbip") for action in ("cancel", "submit")
-    },  # '${widget.kind}.{cancel,submit}', capability-gated page
-    "flutter/lib/pages/diagnostics.dart": {"quality.start", "quality.stop", "quality.confirm", "quality.dismiss", "stun.start", "stun.stop"},
-    "flutter/lib/pages/logs.dart": {"logs.clear", "logs.logcat.clear"},
-    "flutter/lib/pages/requests.dart": {"capture."},  # passthrough, capability-gated page
-    "flutter/lib/pages/taildrop.dart": {"taildrop.dismissSend", "taildrop.cancelSend"},
+# EventChannel names that are not method channels and therefore carry no method
+# contract, only a name that must match. Suffix -> (dart, kotlin) as above.
+EVENT_CHANNELS: dict[str, tuple[str, str]] = {
+    "battery/optimization": ("flutter/lib/plugins/battery.dart", "BatteryPlugin.kt"),
 }
 
-# Generated code is not dispatch-site territory; only its literal calls count.
-DYNAMIC_EXEMPT = ("flutter/lib/ui/generated/",)
+# Dispatch sites whose method name is not a literal, keyed `path:line`.
+# Keep this empty unless a call site genuinely cannot be written literally; an
+# undeclared non-literal site fails the audit so a typo cannot hide behind one.
+DYNAMIC_SITES: dict[str, str] = {}
+
+# Only a call on a MethodChannel receiver is a platform dispatch. The receiver is
+# the Dart field holding the channel, and every one of them is named for it
+# (`methodChannel`, `_coreChannel`, `_methodChannel`), so requiring "channel" in
+# the receiver name is what separates `_coreChannel.invokeMethod('init')` from the
+# Dart-level Core RPC wrapper `_service!.invokeMethod(method: …)` and from the
+# declaration `Future<CoreMethodResponse> invokeMethod(CoreMethodCall call)`.
+RECEIVER = r"([A-Za-z_]\w*)\s*\.\s*"
+DART_CALL_RE = re.compile(
+    RECEIVER + r"invoke(?:Map|List)?Method\s*<[^>]*>\s*\(\s*'([A-Za-z0-9_]+)'",
+    re.S,
+)
+DART_INVOKE_RE = re.compile(RECEIVER + r"invoke(?:Map|List)?Method\b")
+DART_CASE_RE = re.compile(r"case\s+'([A-Za-z0-9_]+)'\s*:")
+DART_LITERAL_RE = re.compile(r"'(?:\$packageName)/([A-Za-z0-9_/]+)'")
 
 
-def covered(method: str, entries: set[str]) -> bool:
-    """Exact names vouch exactly; a name ending in a dot vouches its prefix."""
-    return any(method == entry or (entry.endswith(".") and method.startswith(entry)) for entry in entries)
+def is_channel_receiver(name: str) -> bool:
+    return "channel" in name.lower()
+
+KOTLIN_ARM_RE = re.compile(r'^\s*"([a-zA-Z][A-Za-z0-9_.]*)"\s*->', re.M)
+KOTLIN_EMIT_RE = re.compile(
+    r'(?:invokeMethodOnMainThread|invokeMethod)\s*\(\s*"([a-zA-Z][A-Za-z0-9_]*)"'
+)
+KOTLIN_METHOD_CALL_RE = re.compile(r'MethodCall\s*\(\s*"([a-zA-Z][A-Za-z0-9_]*)"')
+KOTLIN_LITERAL_RE = re.compile(r'"\$\{Components\.PACKAGE_NAME\}/([A-Za-z0-9_/]+)"')
 
 
-def dart_calls() -> tuple[dict[str, list[str]], list[str]]:
-    callers: dict[str, list[str]] = {}
-    dynamic: list[str] = []
-    for path in sorted(FLUTTER_LIB.rglob("*.dart")):
-        rel = path.relative_to(REPO_ROOT).as_posix()
-        text = path.read_text(encoding="utf-8")
-        for match in CALL_RE.finditer(text):
-            callers.setdefault(match.group(1), []).append(rel)
-        if rel.startswith(DYNAMIC_EXEMPT):
-            continue
-        for match in DYNAMIC_CALL_RE.finditer(text):
-            line = text.count("\n", 0, match.start()) + 1
-            dynamic.append(f"{rel}:{line}")
-    return callers, dynamic
+def read(path: Path) -> str:
+    return path.read_text(encoding="utf-8")
 
 
-def kotlin_handlers() -> set[str]:
-    text = BRIDGE.read_text(encoding="utf-8")
-    start = text.find("when (call.method)")
-    if start < 0:
-        return set()
-    # The when block runs to the next member function: brace matching cannot be used
-    # here, because Kotlin's nested string interpolations ("${if (x) "a" else "b"}")
-    # defeat every regular-expression counter. The boundary assumes member functions
-    # sit at exactly four spaces of indentation — a nested `fun` at that depth inside
-    # the when block would truncate the slice (fail-closed: handlers after it would
-    # surface as missing, never silently excused). Without any following member
-    # function the boundary is unknown: fail loudly rather than slice to EOF, where
-    # later `"dotted" ->` mappings would leak in as phantom handlers.
-    tail = text[start:]
-    next_fun = re.search(r"\n    (?:private |internal |override )?(?:suspend )?fun ", tail)
-    if next_fun is None:
-        raise SystemExit("channel audit: no member function after `when (call.method)` — "
-                         "cannot bound the handler block; adjust kotlin_handlers()")
-    end = start + next_fun.start()
-    # Arms sit one level under the `when`'s own indentation; anchoring the match to
-    # that column keeps a nested `when (state) { "dotted" -> … }` from counting as
-    # a handler of the outer dispatch.
-    when_line = text[:start].rsplit("\n", 1)[-1]
-    # arm_indent applies only to this one, conventionally formatted Kotlin block:
-    # the `when` line sits at N spaces and its arms at N + 4 (four-space class
-    # indentation). Tabs, a different indent width, or arms on the `when` line
-    # shift the column matched below and make handlers look missing (fail-closed,
-    # as the bounding comment above describes). This is the documented assumption,
-    # not a general Kotlin parser; keep the two assumptions in the module docstring
-    # in mind before changing this arithmetic.
-    arm_indent = len(when_line) - len(when_line.lstrip()) + 4
-    arms = re.finditer(rf"^ {{{arm_indent}}}\"([a-zA-Z][a-zA-Z0-9_.:]*)\"\s*->", text[start:end], flags=re.M)
-    return {name for name in (match.group(1) for match in arms) if METHOD_NAME_RE.match(name)}
+def dart_package_name() -> str | None:
+    match = re.search(r"const\s+packageName\s*=\s*'([^']+)'", read(DART_CONSTANT))
+    return match.group(1) if match else None
 
 
-def disabled_capabilities() -> set[str]:
-    text = CAPABILITIES.read_text(encoding="utf-8")
-    return {key for key, value in CAPABILITY_RE.findall(text) if value == "false"}
+def kotlin_package_name() -> str | None:
+    match = re.search(r'PACKAGE_NAME\s*=\s*"([^"]+)"', read(KOTLIN_COMPONENTS))
+    return match.group(1) if match else None
 
 
-def expected_absent(disabled: set[str]) -> set[str]:
-    absent: set[str] = set()
-    for capability in disabled:
-        absent |= CAPABILITY_PREFIXES.get(capability, set())
-    return absent
+def dart_calls(relative: str) -> set[str]:
+    text = read(REPO_ROOT / relative)
+    return {
+        match.group(2)
+        for match in DART_CALL_RE.finditer(text)
+        if is_channel_receiver(match.group(1))
+    }
 
 
-def emitted_events() -> set[str]:
-    return set(EMIT_RE.findall(BRIDGE.read_text(encoding="utf-8")))
+def dart_cases(relative: str) -> set[str]:
+    return set(DART_CASE_RE.findall(read(REPO_ROOT / relative)))
 
 
-def consumed_events() -> set[str]:
-    return set(DART_CASE_RE.findall(DART_DISPATCH.read_text(encoding="utf-8")))
+def kotlin_arms(plugin: str) -> set[str]:
+    return set(KOTLIN_ARM_RE.findall(read(KOTLIN_PLUGINS / plugin)))
 
 
-def dart_channels() -> set[str]:
-    return set(DART_CHANNEL_RE.findall(DART_DISPATCH.read_text(encoding="utf-8")))
+def kotlin_emits(plugin: str) -> set[str]:
+    text = read(KOTLIN_PLUGINS / plugin)
+    return set(KOTLIN_EMIT_RE.findall(text)) | set(KOTLIN_METHOD_CALL_RE.findall(text))
 
 
-def kotlin_channels() -> set[str]:
-    found = set()
-    for path in BRIDGE_DIR.rglob("*.kt"):
-        found |= set(KOTLIN_CHANNEL_RE.findall(path.read_text(encoding="utf-8")))
+def dart_channel_literals() -> set[str]:
+    found: set[str] = set()
+    for path in FLUTTER_LIB.rglob("*.dart"):
+        found |= set(DART_LITERAL_RE.findall(path.read_text(encoding="utf-8")))
     return found
 
 
-def first_argument(text: str, open_paren: int) -> str:
-    depth = 0
-    for index in range(open_paren, len(text)):
-        char = text[index]
-        if char in "([{":
-            depth += 1
-        elif char in ")]}":
-            if depth == 0:
-                return text[open_paren:index]
-            depth -= 1
-        elif char == "," and depth == 0:
-            return text[open_paren:index]
-    return text[open_paren:]
+def kotlin_channel_literals() -> set[str]:
+    found: set[str] = set()
+    for path in KOTLIN_PLUGINS.rglob("*.kt"):
+        found |= set(KOTLIN_LITERAL_RE.findall(path.read_text(encoding="utf-8")))
+    return found
 
 
-def allowed_name(method: str, literals: set[str], absent_prefixes: set[str]) -> bool:
-    return covered(method, literals) or covered(method, absent_prefixes)
+def dynamic_call_sites() -> list[str]:
+    """Every channel dispatch whose method argument is not a plain quoted literal.
 
+    The receiver must name a channel (see is_channel_receiver), so the Dart-level
+    Core RPC wrappers and local method declarations never reach this scan. The
+    argument is then classified:
 
-def site_allowed(site: str, absent_prefixes: set[str]) -> bool:
-    file, _, line = site.partition(":")
-    literals = DYNAMIC_SITES.get(Path(file).as_posix())
-    if literals is None:
-        return False
-    text = (REPO_ROOT / file).read_text(encoding="utf-8")
-    matches = [m for m in DYNAMIC_CALL_RE.finditer(text)
-               if text.count("\n", 0, m.start()) + 1 == int(line)]
-    if not matches:
-        return False
-    # Every dispatch on the line must be allowed; one bad call must not hide
-    # behind a good neighbour.
-    verdicts = []
-    for match in matches:
-        first = first_argument(text, match.end())
-        if "$" in first:
-            # An interpolated name (`'${widget.kind}.cancel'`): vouch through the
-            # constant tail after the last interpolation, which the declared set
-            # must end with — the tail segment, not just any suffix.
-            tail = re.search(r"\}([a-zA-Z0-9_.]*)'?\"?\)?\s*,?\s*$", first)
-            if not tail or not tail.group(1):
-                verdicts.append(False)
-                continue
-            segment = f".{tail.group(1).lstrip('.')}"
-            verdicts.append(any(name.endswith(segment) for name in literals if not name.endswith(".")))
-            continue
-        # A conditional dispatch offers its branch results as the method names; a
-        # plain quoted name must be declared; a bare identifier/member chain is
-        # widget-driven and gated by its page's capability.
-        branches = [a or b for a, b in re.findall(r"\?\s*'([^']+)'|:\s*'([^']+)'", first)]
-        if not branches:
-            branches = [a or b for a, b in
-                        re.findall(r"'([a-zA-Z][a-zA-Z0-9_.:]*)'|\"([a-zA-Z][a-zA-Z0-9_.:]*)\"", first)]
-        if not branches:
-            verdicts.append(True)
-            continue
-        verdicts.append(all(allowed_name(method, literals, absent_prefixes) for method in branches))
-    return all(verdicts)
+      ``{``            an all-named argument list (no platform dispatch)
+      ``ident:``       a named-argument call, likewise
+      ``'…'``          a literal, claimed by dart_calls() unless it interpolates
+                       (`'${widget.kind}.cancel'`), which no literal regex can name
+      anything else    a variable / ternary / switch arm: a dynamic dispatch
 
-
-def ffi_id_contract_failures() -> list[str]:
-    """Prevent a recurrence of the "profile 0 is gone" startup failure.
-
-    The Flutter preference store holds appearance settings only; the native DB
-    (DataStore.selectedProxy) owns the selected ProxyEntity, and the dashboard's
-    selectedProfileId is a *group* id for display. Mining the wrong map used to
-    send `config.build {id: 0}` on every start.
+    Reported as `path:line` so DYNAMIC_SITES stays greppable.
     """
-    problems: list[str] = []
-    service = (FLUTTER_LIB / "core" / "kernel_service.dart").read_text(encoding="utf-8")
-    args = re.search(r"Json configBuildArgs\(\)\s*=>\s*(.*?);", service, re.S)
-    if not args:
-        problems.append("configBuildArgs() is missing")
-    elif re.search(r"['\"]id['\"]", args.group(1)):
-        problems.append("configBuildArgs() sends an 'id'; the native side must resolve DataStore.selectedProxy")
-    if re.search(r"preferences\[['\"](?:selectedProxy|profileId)['\"]\]", service):
-        problems.append("kernel_service.dart mines Flutter preferences for a proxy id")
-    if re.search(r"\bIsolate\.run\b", service):
-        problems.append("kernel_service.dart still opens a fresh isolate per FFI call")
-
-    kernel = (REPO_ROOT / "app/src/main/java/io/throne/bbox/bridge/BboxKernel.kt").read_text(encoding="utf-8")
-    if not re.search(r"fun buildStartOptions\(\)", kernel):
-        problems.append("BboxKernel.buildStartOptions must resolve the profile itself (no id parameter)")
-    if "DataStore.selectedProxy" not in kernel:
-        problems.append("BboxKernel no longer falls back to DataStore.selectedProxy")
-    if re.search(r'config\.build[\s\S]{0,300}call\.argument<Int>\("id"\)',
-                 BRIDGE.read_text(encoding="utf-8")):
-        problems.append("ThroneBoxBridge.config.build still forwards a guessed id")
-    return problems
-
-
-def platform_value_contract_failures() -> list[str]:
-    """Prevent the `_Map<Object?, Object?> is not a Map<String, dynamic>` crash.
-
-    StandardMessageCodec decodes native maps into `_Map<Object?, Object?>`.
-    Casting those directly to `Json` used to abort `config.build` and
-    `config.warpParams` on every start / WARP registration. The fix belongs at
-    the channel boundary (BoxController.call + the EventChannel stream), with
-    checked conversions anywhere an isolate bounces a map back.
-    """
-    problems: list[str] = []
-    box = (FLUTTER_LIB / "box.dart").read_text(encoding="utf-8")
-    helper = FLUTTER_LIB / "core" / "platform_value.dart"
-    service = FLUTTER_LIB / "core" / "kernel_service.dart"
-    worker = FLUTTER_LIB / "core" / "kernel_worker.dart"
-
-    if not helper.exists():
-        problems.append("flutter/lib/core/platform_value.dart is missing")
-    else:
-        text = helper.read_text(encoding="utf-8")
-        if not re.search(r"Object\?\s+normalizePlatformValue\(", text):
-            problems.append("normalizePlatformValue() is missing")
-        if "value is TypedData" not in text:
-            problems.append("normalizePlatformValue() must preserve typed data (app icons)")
-        if not re.search(r"value is Map[\s\S]{0,200}normalizePlatformValue", text):
-            problems.append("normalizePlatformValue() must recurse into nested maps")
-
-    call = re.search(r"Future<dynamic> call\(String method[\s\S]{0,300}?;", box)
-    if not call or "normalizePlatformValue" not in call.group(0):
-        problems.append("BoxController.call must normalize method-channel replies")
-    if not re.search(r"_events\s*=[\s\S]{0,250}normalizePlatformValue", box):
-        problems.append("the EventChannel stream must normalize its payloads")
-    if "import 'core/platform_value.dart';" not in box:
-        problems.append("box.dart must import the normalization helper")
-
-    # Generated bindings (throne_ffi.dart) legitimately cast json.decode output;
-    # hand-written runtime code must never cast a channel/isolate value to Json.
-    for path in (service, worker):
+    sites: list[str] = []
+    named_argument = re.compile(r"[A-Za-z_][\w]*\s*:(?!-)")
+    for path in sorted(FLUTTER_LIB.rglob("*.dart")):
         text = path.read_text(encoding="utf-8")
-        if re.search(r"\bas\s+(?:Map<String,\s*dynamic>|Json)\b", text):
-            problems.append(f"{path.name} casts a platform value directly to Json")
-        if "asStringKeyedMap" not in text:
-            problems.append(f"{path.name} must use asStringKeyedMap() for wire maps")
-
-    test = REPO_ROOT / "flutter" / "test" / "platform_value_test.dart"
-    if not test.exists():
-        problems.append("platform_value_test.dart regression suite is missing")
-    elif "StandardMessageCodec" not in test.read_text(encoding="utf-8"):
-        problems.append("the regression suite must exercise the real codec shape")
-    return problems
+        for match in DART_INVOKE_RE.finditer(text):
+            if not is_channel_receiver(match.group(1)):
+                continue
+            cursor = match.end()
+            if cursor < len(text) and text[cursor] == "<":
+                depth = 0
+                while cursor < len(text):
+                    if text[cursor] == "<":
+                        depth += 1
+                    elif text[cursor] == ">":
+                        depth -= 1
+                        if depth == 0:
+                            cursor += 1
+                            break
+                    cursor += 1
+            while cursor < len(text) and text[cursor] in " \t\r\n":
+                cursor += 1
+            if cursor >= len(text) or text[cursor] != "(":
+                continue
+            cursor += 1
+            while cursor < len(text) and text[cursor] in " \t\r\n":
+                cursor += 1
+            if cursor >= len(text):
+                continue
+            tail = text[cursor:]
+            head = tail[0]
+            if head == "{" or named_argument.match(tail):
+                continue
+            if head == "'":
+                close = 1
+                while close < len(tail):
+                    if tail[close] == "\\":
+                        close += 2
+                        continue
+                    if tail[close] == "'":
+                        break
+                    close += 1
+                if "$" not in tail[: close + 1]:
+                    continue
+            sites.append(f"{path.relative_to(REPO_ROOT).as_posix()}:{text.count(chr(10), 0, match.start()) + 1}")
+    return sites
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--verbose", action="store_true", help="also list handlers with no Dart caller")
+    parser.add_argument("--verbose", action="store_true",
+                        help="also list Kotlin handlers with no Dart caller")
     args = parser.parse_args()
 
-    calls, dynamic = dart_calls()
-    handlers = kotlin_handlers()
-    disabled = disabled_capabilities()
-    absent_prefixes = expected_absent(disabled)
-    emits = emitted_events()
-    consumers = consumed_events()
+    failures: list[str] = []
 
-    missing_handlers = sorted(
-        method for method in set(calls) - handlers
-        if not covered(method, absent_prefixes)
+    dart_prefix = dart_package_name()
+    kotlin_prefix = kotlin_package_name()
+    if dart_prefix is None:
+        failures.append(f"could not read `packageName` from {DART_CONSTANT.relative_to(REPO_ROOT)}")
+    if kotlin_prefix is None:
+        failures.append(f"could not read PACKAGE_NAME from {KOTLIN_COMPONENTS.relative_to(REPO_ROOT)}")
+    if dart_prefix and kotlin_prefix and dart_prefix != kotlin_prefix:
+        failures.append(
+            f"channel prefix skew: flutter/lib/common/constant.dart says {dart_prefix!r}, "
+            f"Components.kt says {kotlin_prefix!r} — every channel name differs"
+        )
+    if failures:
+        for failure in failures:
+            print(f"FAIL — {failure}")
+        return 1
+
+    total_handlers = 0
+    total_calls = 0
+    reported_emits = 0
+    reported_consumers = 0
+
+    for suffix, (dart_file, plugin) in CHANNELS.items():
+        channel = f"{dart_prefix}/{suffix}"
+        calls = dart_calls(dart_file)
+        arms = kotlin_arms(plugin)
+        total_handlers += len(arms)
+        total_calls += len(calls)
+        missing = sorted(calls - arms)
+        if missing:
+            failures.append(
+                f"{channel}: Dart calls with no Kotlin handler in {plugin}: "
+                + ", ".join(missing)
+            )
+        if args.verbose:
+            uncalled = sorted(arms - calls)
+            if uncalled:
+                print(f"note — {channel}: handlers with no Dart caller: {', '.join(uncalled)}")
+
+    # Kotlin -> Dart. Both directions live in the same plugin files, so pair each
+    # plugin with the Dart file that owns the matching channel.
+    paired: dict[str, str] = {}
+    for suffix, (dart_file, plugin) in CHANNELS.items():
+        paired.setdefault(plugin, dart_file)
+    for plugin, dart_file in paired.items():
+        emits = kotlin_emits(plugin)
+        consumers = dart_cases(dart_file)
+        reported_emits += len(emits)
+        reported_consumers += len(consumers)
+        missing = sorted(emits - consumers)
+        if missing:
+            failures.append(
+                f"{plugin} pushes events Dart does not handle in {dart_file}: "
+                + ", ".join(missing)
+            )
+
+    # Channel names must exist on both ends. `battery/optimization` is an
+    # EventChannel on both sides; the rest are MethodChannels.
+    dart_names = dart_channel_literals()
+    kotlin_names = kotlin_channel_literals()
+    expected = set(CHANNELS) | set(EVENT_CHANNELS)
+    undeclared_dart = sorted(dart_names - expected)
+    undeclared_kotlin = sorted(kotlin_names - expected)
+    if undeclared_dart:
+        failures.append(
+            "Dart names channels this audit does not know (add them to CHANNELS): "
+            + ", ".join(undeclared_dart)
+        )
+    if undeclared_kotlin:
+        failures.append(
+            "Kotlin registers channels this audit does not know (add them to CHANNELS): "
+            + ", ".join(undeclared_kotlin)
+        )
+    unreached = sorted(expected - dart_names)
+    unregistered = sorted(expected - kotlin_names)
+    if unreached:
+        failures.append("declared channels with no Dart end: " + ", ".join(unreached))
+    if unregistered:
+        failures.append("declared channels with no Kotlin end: " + ", ".join(unregistered))
+
+    sites = dynamic_call_sites()
+    unknown_sites = [site for site in sites if site not in DYNAMIC_SITES]
+    if unknown_sites:
+        failures.append(
+            "non-literal dispatch sites outside DYNAMIC_SITES: " + ", ".join(unknown_sites)
+        )
+    stale_sites = sorted(set(DYNAMIC_SITES) - set(sites))
+    if stale_sites:
+        failures.append(
+            "DYNAMIC_SITES declares sites that no longer exist: " + ", ".join(stale_sites)
+        )
+
+    print(
+        f"channels: {len(CHANNELS)} method + {len(EVENT_CHANNELS)} event, "
+        f"{total_handlers} handlers, {total_calls} distinct Dart calls"
     )
-    missing_consumers = sorted(emits - consumers)
-    unknown_dynamic = [site for site in dynamic if not site_allowed(site, absent_prefixes)]
-    # A declared dynamic name with no handler is invisible to every check above
-    # (its callers are all dynamic): validate the declarations themselves. A
-    # declaration only applies when its site file exists in the audited tree.
-    dead_declarations = sorted(
-        literal for file, literals in DYNAMIC_SITES.items() for literal in literals
-        if (REPO_ROOT / file).exists()
-        and not covered(literal, handlers) and not covered(literal, absent_prefixes)
+    print(
+        f"events: {reported_emits} pushed Kotlin -> Dart, "
+        f"{reported_consumers} Dart case arms; "
+        f"{len(dart_names)} Dart / {len(kotlin_names)} Kotlin channel literals"
     )
-    dynamic_known = {method for literals in DYNAMIC_SITES.values() for method in literals if not method.endswith(".")}
-    uncalled = sorted(
-        handler for handler in handlers - set(calls) - dynamic_known
-        if not covered(handler, absent_prefixes)
+
+    if failures:
+        print("\nFAIL — channel contract:")
+        for failure in failures:
+            print(f"  - {failure}")
+        return 1
+
+    print(
+        "\ncontract OK: every Dart call has a Kotlin handler, every Kotlin event a Dart "
+        "consumer, every channel name a counterpart, and both ends agree on the prefix"
     )
-    missing_channels = sorted(dart_channels() - kotlin_channels())
-
-    print(f"bridge methods: {len(handlers)} handlers, {len(calls)} distinct Dart callers, "
-          f"{len(disabled)} capabilities off")
-    print(f"events: {len(emits)} emitted, {len(consumers)} consumed; "
-          f"channels: {len(dart_channels())} dart, {len(kotlin_channels())} kotlin")
-
-    failed = False
-    if missing_handlers:
-        failed = True
-        print("\nFAIL — Dart calls without a Kotlin handler:")
-        for method in missing_handlers:
-            print(f"  {method}  (called from {', '.join(sorted(set(calls[method])))})")
-    if missing_consumers:
-        failed = True
-        print("\nFAIL — Kotlin events without a Dart consumer (flutter/lib/box.dart):")
-        for event in missing_consumers:
-            print(f"  {event}")
-    if unknown_dynamic:
-        failed = True
-        print("\nFAIL — dynamic dispatch sites outside DYNAMIC_SITES (declare them in the script):")
-        for site in unknown_dynamic:
-            print(f"  {site}")
-    if dead_declarations:
-        failed = True
-        print("\nFAIL — declared dynamic names without a handler (the caller is dynamic,")
-        print("so this is the only place the breakage would show):")
-        for literal in dead_declarations:
-            print(f"  {literal}")
-    if missing_channels:
-        failed = True
-        print("\nFAIL — Dart channels with no Kotlin counterpart:")
-        for channel in missing_channels:
-            print(f"  {channel}")
-    if args.verbose and uncalled:
-        print("\nnote — Kotlin handlers with no Dart caller found:")
-        for method in uncalled:
-            print(f"  {method}")
-
-    id_problems = ffi_id_contract_failures()
-    if id_problems:
-        failed = True
-        print("\nFAIL — FFI profile-id contract:")
-        for problem in id_problems:
-            print(f"  {problem}")
-
-    wire_problems = platform_value_contract_failures()
-    if wire_problems:
-        failed = True
-        print("\nFAIL — platform value contract:")
-        for problem in wire_problems:
-            print(f"  {problem}")
-
-    if not failed:
-        print("\ncontract OK: every live call has a handler, every event a consumer, "
-              "the FFI path never invents a proxy id, and platform values are normalized")
-    return 1 if failed else 0
+    return 0
 
 
 if __name__ == "__main__":

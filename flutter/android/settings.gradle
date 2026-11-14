@@ -1,0 +1,67 @@
+// A committed *editable* Android host for the Flutter module in this directory.
+//
+// Why this file exists
+// --------------------
+// `flutter build aar` runs Gradle in this project's "host app Gradle root". For a
+// Flutter module without a committed host, flutter_tools generates a throwaway one
+// under `flutter/.android/` — and `.android/` is gitignored, so every fresh checkout
+// gets the *template* values again. The template's `:flutter` project compiles against
+// `flutter.compileSdkVersion` (= 36 for Flutter 3.4x), but this module has a plugin
+// that requires 37 (`plugins/wifi_ssid/android/build.gradle`), and AGP refuses a module
+// that compiles below a dependency's `minCompileSdk`. That is why a hand-edited
+// `.android/Flutter/build.gradle` used to say 37 locally and why CI broke without it.
+//
+// flutter_tools prefers a committed host over the generated one:
+// `AndroidProject.hostAppGradleRoot` returns `<module>/android` whenever that directory
+// exists (`packages/flutter_tools/lib/src/project.dart`), and
+// `ensureReadyForPlatformSpecificTooling` only writes the ephemeral host into
+// `.android/` when this directory is absent. So committing this file is the supported,
+// durable way to own the compileSdk — no generated file has to be patched.
+//
+// Shape, and why it differs from the template
+// -------------------------------------------
+// `templates/module/android/host_app_editable/settings.gradle.copy.tmpl` is only
+// `include ':app'` plus the `include_flutter.groovy` evaluate call, because an editable
+// host is expected to be completed by the app author. This host keeps the `:app`
+// module (`app/`) because the Flutter Gradle plugin looks it up by name — see
+// `app/build.gradle`. Everything below the plugin management block is the ephemeral
+// template's (`templates/module/android/host_app_ephemeral/settings.gradle.tmpl`), so
+// AGP and KGP resolve for `:flutter`, for `:app`, and for every Flutter plugin
+// subproject `include_flutter.groovy` pulls in.
+
+pluginManagement {
+    // `flutter pub get` rewrites `.android/local.properties` on every run and
+    // writes `flutter.sdk` with single backslashes, which Java Properties
+    // silently turns into form feeds (`\f`) on Windows. Read the committed
+    // host's own local.properties first (it is gitignored but written with
+    // escaped separators), then fall back to FLUTTER_ROOT for CI.
+    def localProperties = new Properties()
+    def hostProperties = new File(settingsDir, 'local.properties')
+    if (hostProperties.exists()) {
+        hostProperties.withInputStream { localProperties.load(it) }
+    }
+    def flutterSdkPath = localProperties.getProperty('flutter.sdk') ?: System.getenv('FLUTTER_ROOT')
+    assert flutterSdkPath != null, "flutter.sdk not set in ${hostProperties} (or FLUTTER_ROOT)"
+
+    includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
+
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+plugins {
+    id "dev.flutter.flutter-plugin-loader" version "1.0.0"
+    id "com.android.library" version "9.1.0" apply false
+    id "org.jetbrains.kotlin.android" version "2.4.0" apply false
+}
+
+rootProject.name = 'flutter_android_host'
+
+include ':app'
+
+// Registers `:flutter` (from `.android/Flutter`) and every native plugin subproject.
+setBinding(new Binding([gradle: this]))
+evaluate(new File(settingsDir.parentFile, '.android/include_flutter.groovy'))

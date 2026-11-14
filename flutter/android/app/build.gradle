@@ -1,0 +1,49 @@
+// The host application module of the committed Android host for this Flutter module.
+//
+// Copied from `templates/module/android/host_app_common/app.tmpl/build.gradle.tmpl`
+// with two edits: `compileSdk` is 37 (see ../../build.gradle and settings.gradle for
+// why), and the dependency block is empty — this app is never assembled, and pulling
+// appcompat/constraintlayout would only add resolution work to every AAR build.
+//
+// This project has to exist: the Flutter Gradle plugin finds `:app` by name and hangs
+// the Flutter asset merge off its variant tasks. It does not have to do anything else.
+//
+// If this module is ever assembled for real (a standalone run of the Flutter UI), the
+// template's `dependencies { implementation("androidx.appcompat:appcompat:1.7.0") … }`
+// block belongs back here.
+
+apply plugin: "com.android.application"
+
+android {
+    namespace = "io.flrone.ui.host"
+    compileSdk = 37
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    defaultConfig {
+        applicationId = "io.flrone.ui.host"
+        minSdk = 24
+        targetSdk = 36
+        versionCode = 1
+        versionName = "1.0"
+    }
+
+    buildTypes {
+        profile {
+            initWith debug
+        }
+        release {
+            // Signing with the debug keys keeps `flutter run --release` working; this APK
+            // is a development artifact, never a release.
+            signingConfig = signingConfigs.debug
+        }
+    }
+}
+
+dependencies {
+    implementation(project(":flutter"))
+    implementation(fileTree(dir: "libs", include: ["*.jar"]))
+}

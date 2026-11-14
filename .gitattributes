@@ -1,6 +1,6 @@
 # The repository is LF everywhere; this pins it so a checkout stays LF regardless of
-# core.autocrlf. The vendored-file hashes in flutter/flclash-manifest.json are computed over
-# LF content, so they only reproduce against an LF working tree.
+# core.autocrlf. The Prism UI drift hashes in tools/diagnostics/prism_upstream.manifest.json
+# are computed over LF content, so they only reproduce against an LF working tree.
 * text=auto
 
 *.kt eol=lf

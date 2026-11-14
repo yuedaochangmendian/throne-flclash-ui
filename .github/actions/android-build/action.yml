@@ -29,10 +29,16 @@ runs:
         distribution: temurin
         java-version: '17'
         cache: gradle
-    # The NDK the app's ndkVersion asks for, installed before the Flutter AAR: without it the
-    # first Gradle build auto-installs it mid-build, where a truncated dl.google.com download
-    # (seen 2026-11-02) fails the run with no retry. Three tries ride out a flaky CDN.
-    - name: Install NDK
+    # The NDK the app's ndkVersion asks for, plus the SDK platform the Flutter module now
+    # compiles against. Both are installed before the Flutter AAR: without them the first
+    # Gradle build auto-installs the NDK mid-build, where a truncated dl.google.com download
+    # (seen 2026-11-02) fails the run with no retry, and a missing platform fails the AAR
+    # build outright. Three tries ride out a flaky CDN.
+    #
+    # Why platforms;android-37.0 and not android-37: the SDK now publishes the 37 line with
+    # minor versions, so the package id — and the directory, `platforms/android-37.0` — carries
+    # the minor. `compileSdk = 37` resolves to it. build-tools 35.0.1 is what Helpers.kt pins.
+    - name: Install NDK, platform 37 and build-tools
       shell: bash
       run: |
         set -euo pipefail
@@ -40,17 +46,51 @@ runs:
           # printf, not yes: `yes |` dies of a broken pipe when sdkmanager stops reading,
           # and with pipefail that reads as a failure even after a clean install. Four y's
           # cover a runner image that ever ships more than one unaccepted license.
-          if printf 'y\ny\ny\ny\n' | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "ndk;28.2.13676358"; then
+          if printf 'y\ny\ny\ny\n' | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+              "ndk;28.2.13676358" "platforms;android-37.0" "build-tools;35.0.1"; then
             break
           fi
           if [ "$attempt" = "3" ]; then
-            echo "::error::NDK 28.2.13676358 failed to install three times"
+            echo "::error::the SDK packages (NDK 28.2.13676358, platform 37.0, build-tools 35.0.1) failed to install three times"
             exit 1
           fi
           sleep 20
         done
+    # `flutter build aar` now compiles the rust_api native asset, so the host needs a Rust
+    # toolchain with the Android triples AND the linux host triple (the hook validates against
+    # flutter/plugins/rust_api/rust/rust-toolchain.toml), plus libclang for rquickjs's
+    # bindgen step, which is enabled only on Android.
+    #
+    # NDK 28.2.13676358 ships libclang.so, and plugins/rust_api/hook/build.dart points
+    # LIBCLANG_PATH at it; libclang-dev is installed anyway so the hook's fallback (and any
+    # tool that looks in the distro location) resolves on a runner whose NDK layout differs.
+    - name: Install Rust and libclang for the rust_api native asset
+      shell: bash
+      run: |
+        set -euo pipefail
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends libclang-dev
+    - name: Set up Rust (channel and targets from rust-toolchain.toml)
+      uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: '1.99.0'
+        targets: x86_64-unknown-linux-gnu,aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+    - name: Point the hook at cleartext NDK paths
+      shell: bash
+      run: |
+        set -euo pipefail
+        NDK="$ANDROID_HOME/ndk/28.2.13676358"
+        test -d "$NDK" || { echo "::error::the NDK is not at $NDK"; exit 1; }
+        echo "ANDROID_NDK_HOME=$NDK" >> "$GITHUB_ENV"
+        # flutter_tools resolves NDK clang from ANDROID_NDK_HOME first, then the newest
+        # directory under $ANDROID_HOME/ndk. Setting it explicitly keeps the AAR build on the
+        # same NDK version the app's ndkVersion names.
+        LIBCLANG="$NDK/toolchains/llvm/prebuilt/linux-x86_64/lib"
+        if [ -d "$LIBCLANG" ]; then
+          echo "LIBCLANG_PATH=$LIBCLANG" >> "$GITHUB_ENV"
+        fi
     # The app links io.flrone.ui:flutter_release:1.0 from flutter/build/host/outputs/repo, which the
-    # repository ignores; without this step the Gradle build cannot resolve the B-box interface at all.
+    # repository ignores; without this step the Gradle build cannot resolve the Flutter module at all.
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
@@ -63,6 +103,17 @@ runs:
         set -euo pipefail
         cd flutter
         flutter pub get
+        # The committed host at flutter/android/ (not the generated flutter/.android/) is what
+        # Gradle runs in, and its build.gradle raises every module's compileSdk to 37 — the
+        # generated template host compiles the module against 36, which AGP rejects once it
+        # resolves a plugin AAR whose metadata says minCompileSdk=37. Assert the directory is
+        # there, so a checkout that lost it fails here with a clear message instead of deep
+        # inside the AAR build.
+        test -f android/build.gradle || {
+          echo "::error::flutter/android/ (the committed host) is missing; the module would"
+          echo "::error::fall back to the template host, whose compileSdk is 36."
+          exit 1
+        }
         flutter build aar --no-debug --no-profile
     - name: ThroneCore AAR and schema
       uses: ./.github/actions/throne-core

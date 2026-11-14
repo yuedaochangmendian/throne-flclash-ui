@@ -13,7 +13,7 @@ jobs:
   build:
     name: Unit tests and debug build
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -21,10 +21,15 @@ jobs:
         uses: ./.github/actions/android-build
         with:
           tasks: app:testOssDebugUnitTest app:assembleOssDebug
+      # The Flutter AAR published by `flutter build aar` is `io.flrone.ui:flutter_release`
+      # under `flutter/build/host/outputs/repo`. It has to be named explicitly: the repo now
+      # also holds an AAR per Flutter plugin, and `find … | head -1` picks whichever sorts
+      # first (`com/follow/clash/wifi_ssid/…`), which is a different plugin's bytecode than
+      # the one this scan is about.
       - name: Scan the Flutter AAR for unbacked API references
         run: |
-          AAR=$(find flutter/build/host/outputs/repo -name "*.aar" | head -1)
-          test -n "$AAR"
+          AAR=flutter/build/host/outputs/repo/io/flrone/ui/flutter_release/1.0/flutter_release-1.0.aar
+          test -f "$AAR" || { echo "::error::the Flutter AAR was not published at $AAR"; exit 1; }
           python3 tools/diagnostics/scan_aar_apis.py "$AAR"
       # The NDK is installed by android-build; its clang is the exact one the
       # release build uses, so preamble syntax errors are caught before linking.
@@ -36,16 +41,45 @@ jobs:
   flutter-tests:
     name: Flutter module tests
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+      # `flutter test` runs the package build hooks, and `plugins/rust_api` builds a Rust
+      # cdylib for the HOST triple (x86_64-unknown-linux-gnu) so the editor and IPC tests can
+      # dlopen it. Two consequences, both handled here rather than by weakening the tests:
+      #
+      #   1. `flutter/plugins/rust_api/rust/rust-toolchain.toml` must list that host triple.
+      #      It does (see the comment in the file). native_toolchain_rust raises
+      #      RustValidationException for a triple the file omits, which is what used to fail
+      #      this job with "does not include the target x86_64-unknown-linux-gnu".
+      #   2. rustup has to be installed, with the pinned channel and every listed target
+      #      available. `dtolnay/rust-toolchain` installs the channel, its `targets` input
+      #      installs the rest.
+      #
+      # No libclang and no NDK are needed: rquickjs only enables bindgen (and therefore C
+      # headers) under `cfg(target_os = "android")`, and `flutter test` builds host-only.
+      # global-hotkey's Linux backend is pure Rust (x11rb), so there is no gtk/x11 dev package
+      # to install either.
+      #
+      # The alternative — `hooks.user_defines.rust_api.build_assets: false` — makes the 18
+      # test files that call `initEditorNative` throw StateError instead, so they would have to
+      # be skipped: real editor/completion/folding/selection coverage traded for a green badge.
+      # Not doing that.
+      - name: Set up Rust (the channel and the targets the build hook may ask for)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.99.0'
+          targets: x86_64-unknown-linux-gnu,aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+      - name: Confirm the hook's toolchain resolves to the pinned channel
+        working-directory: flutter/plugins/rust_api/rust
+        run: rustup show active-toolchain
       - name: Channel contract audit
         run: python3 tools/diagnostics/channel_audit.py
-      # The vendored Prism UI copy is measured against the upstream commit it was
-      # actually taken from, so drift is visible on every push. Two failures are
-      # possible and both are deliberate: an upstream file dropped locally (never
-      # intended), and more than the one recorded local patch (banner.dart).
+      # The vendored Prism UI package is measured against the upstream commit it was taken
+      # from, so drift is visible on every push. Two failures are possible and both are
+      # deliberate: an upstream file dropped locally (never intended), and a divergence set
+      # other than the one recorded local patch (banner.dart).
       - name: Prism UI drift check
         run: |
           python3 tools/diagnostics/prism_drift.py check --json prism_drift.json \
@@ -57,15 +91,21 @@ jobs:
           name: prism-ui-drift
           path: prism_drift.json
           if-no-files-found: warn
-      - name: Bridge contract audits
+      - name: Contract audits
         run: |
+          # throne_* C ABI: Go exports vs the two bridge_symbols.h copies (the Dart half of
+          # this audit went away with the FlClash UI migration; see the script's docstring).
           python3 tools/diagnostics/symbol_audit.py
+          # Retired with the B-box settings bridge; now only fails if that surface returns
+          # without the audit being rebuilt (see the script's docstring).
           python3 tools/diagnostics/settings_audit.py --summary
+          # Kernel-bridge behavioural pins: Go panic fences, tun-spec JSON, VpnService
+          # ordering, and the ServicePlugin/ThroneCore lifecycle contract.
           python3 tools/diagnostics/ffi_regression_test.py
+          # Checked-in Freezed/Drift output against the sources it is generated from.
           python3 tools/diagnostics/generated_models_check.py
-          # Dart reads Room's file directly, so Room's schema version has a second
-          # copy in db.dart. A bump on one side alone still compiles and still
-          # queries — it just reads the wrong column.
+          # Drift schemaVersion against its own migration ladder: a version with no step
+          # upgrades silently and fails only on devices that upgraded.
           python3 tools/diagnostics/schema_audit.py
           python3 tools/diagnostics/py_syntax_check.py tools/diagnostics/*.py tools/bindgen/*.py buildScript/*.py
       # Locale completeness is a report, not a gate: the 885 known gaps across 19 locales
@@ -74,10 +114,15 @@ jobs:
       - name: i18n coverage report
         run: python3 tools/diagnostics/i18n_coverage.py --summary
         continue-on-error: true
+      # The build hook needs an NDK for the Android code paths it may select, and
+      # `flutter test` resolves the same toolchain `flutter build aar` does. Installed here
+      # for the tests to be independent of the runner image's SDK contents.
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          # Pinned to the toolchain the AAR is developed against (see android-build), so a
+          # Flutter upgrade cannot change what this job tests without a commit.
+          flutter-version: '3.47.9'
           cache: true
       - name: Analyze
         working-directory: flutter
@@ -86,6 +131,8 @@ jobs:
           flutter analyze --fatal-infos
       - name: Test
         working-directory: flutter
+        # The build hooks compile rust_api for the host; a failing hook fails the run here
+        # rather than 18 tests dying one by one on a missing library.
         run: flutter test --coverage
       - name: Coverage floor
         working-directory: flutter

@@ -17,6 +17,7 @@ import android.os.UserManager
 import androidx.annotation.RequiresApi
 import androidx.core.content.ContextCompat
 import androidx.core.content.getSystemService
+import com.follow.clash.common.GlobalState
 import io.nekohasekai.sagernet.appwidget.Widgets
 import io.nekohasekai.sagernet.bg.CoreRuntime
 import io.nekohasekai.sagernet.bg.SagerConnection
@@ -33,7 +34,6 @@ import io.nekohasekai.sagernet.ui.MainActivity
 import io.nekohasekai.sagernet.update.UpdateManager
 import io.nekohasekai.sagernet.utils.*
 import io.throne.bbox.bridge.BboxMemory
-import io.throne.bbox.bridge.BboxRuntime
 import kotlinx.coroutines.DEBUG_PROPERTY_NAME
 import kotlinx.coroutines.DEBUG_PROPERTY_VALUE_ON
 import java.io.File
@@ -57,12 +57,17 @@ class SagerNet : Application(),
     override fun onCreate() {
         super.onCreate()
 
+        // FlClash's platform code reads its Application through this holder (GlobalState.application
+        // throws when unset). AppPlugin's attachToActivity consults isTelevision -> packageManager on
+        // the very first frame, so the assignment has to happen before any other startup work —
+        // `application` in the companion object is already set in attachBaseContext, but that is
+        // SagerNet's own field, not this one.
+        GlobalState.init(this)
+
         Thread.setDefaultUncaughtExceptionHandler(CrashHandler)
 
         if (isMainProcess || isBgProcess) {
             SettingsMapper.installOutboundHooks()
-            // The B-box bridge lives in the UI process: one service connection and one state snapshot for every screen.
-            if (isMainProcess) BboxRuntime.install(this)
             // Zero cross-process: the core, the widgets and the tile all live beside the UI now
             // (the manifest no longer pins anything to :bg), so the old :bg-only setup runs here.
             if (isMainProcess || isBgProcess) {

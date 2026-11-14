@@ -6,45 +6,50 @@
 
 | 组件 | 版本 / 说明 | 依据 |
 |---|---|---|
-| Flutter | 3.47.x；发布构建固定 `3.47.9` | `.github/actions/android-build/action.yml` 的 `flutter-version: '3.47.9'`；`ci.yml` 的 Flutter 测试 job 使用 `stable` channel |
-| JDK | **17**（Temurin） | 同上 `java-version: '17'`；`buildSrc/src/main/kotlin/Helpers.kt` 中的 `JavaVersion.VERSION_17` |
-| Android SDK | 本机安装，需含 build-tools（`apksigner`、`aapt2`） | `buildScript/release_assets.py` |
-| NDK | `28.2.13676358` | `ci.yml` 的 clang 路径与 `android-build/action.yml` 的 `ndk;28.2.13676358` |
+| Flutter | 3.47.x；CI 固定 `3.47.9` | `.github/actions/android-build/action.yml` 的 `flutter-version: '3.47.9'` |
+| Rust | `1.99.0` + Android targets（`aarch64-linux-android`、`armv7-linux-androideabi`、`x86_64-linux-android`） | `flutter/plugins/rust_api/rust/rust-toolchain.toml` |
+| libclang | `flutter build aar` 的 bindgen 需要；Windows 上 NDK 不带 libclang，用 pip 的 libclang wheel + `LIBCLANG_PATH`，GNU 工具链走 MinGW | `flutter/plugins/rust_api/hook/build.dart` 的注释 |
+| JDK | **17**（Temurin） | `.github/actions/android-build/action.yml` 的 `java-version: '17'`；`buildSrc/src/main/kotlin/Helpers.kt` 的 `JavaVersion.VERSION_17` |
+| Android SDK | compileSdk **37**、targetSdk 35、minSdk 24；需含 build-tools（`apksigner`、`aapt2`） | `buildSrc/src/main/kotlin/Helpers.kt`；`buildScript/release_assets.py` |
+| NDK | `28.2.13676358` | `Helpers.kt` 的 `ndkVersion`；`ci.yml` 的 clang 路径与 `android-build/action.yml` 的 `ndk;28.2.13676358` |
 | 构建入口 | `./gradlew` | `android-build/action.yml` 的 Gradle build 步骤 |
 
-Flutter module 位于 `flutter/`，Gradle 主工程在仓库根目录；发布构建会先生成 Flutter AAR 再执行 Gradle 任务。应用支持 Android 7.0（API 24）及以上，含 Android TV。
+Flutter module 位于 `flutter/`（FlClash v0.9.3 整树 fork，包名仍是 `fl_clash`），Gradle 主工程在仓库根目录；发布构建会先生成 Flutter AAR 再执行 Gradle 任务。应用支持 Android 7.0（API 24）及以上，含 Android TV。
+
+两个 build hook 的开关在 `flutter/pubspec.yaml` 的 `hooks.user_defines`：`setup.build_assets: false`、`rust_api.build_assets: true`。`flutter/core/` 只有一份 `README.md`，作用是让 `setup` hook 的仓库根探测通过——本仓库不 vendor mihomo 核心，代理内核是 Throne 的 sing-box/Xray。
 
 ## 2. 本地验证命令
 
-CI（`ci.yml`）在每次 push 与 PR 上运行以下检查，提交前建议在本地跑一遍（Flutter 命令在 `flutter/` 目录，其余在仓库根目录）：
+CI（`ci.yml`）在每次 push 与 PR 上运行下面的检查，提交前建议在本地跑一遍（Flutter 命令在 `flutter/` 目录，其余在仓库根目录）：
 
 ```bash
-# Flutter 静态分析与测试
+# Flutter 静态分析与测试（AAR 需要先能构建，见第 1 节的 Rust/libclang/NDK）
 cd flutter && flutter pub get
 flutter analyze --fatal-infos
 flutter test --coverage
-# CI 在 flutter/ 目录另以覆盖率下限脚本收口（与 ci.yml 同一数值）
 python3 ../tools/diagnostics/coverage_gate.py coverage/lcov.info --min 40
 cd ..
 
-# 契约 / 一致性诊断脚本（回到仓库根目录）
-python3 tools/diagnostics/channel_audit.py
-python3 tools/diagnostics/symbol_audit.py
-python3 tools/diagnostics/settings_audit.py --summary
-python3 tools/diagnostics/ffi_regression_test.py
-python3 tools/diagnostics/generated_models_check.py
+# 仍在 CI 中的诊断脚本（回到仓库根目录）
+python3 tools/diagnostics/prism_drift.py check --local flutter/plugins/prism_ui/lib
 python3 tools/diagnostics/py_syntax_check.py tools/diagnostics/*.py tools/bindgen/*.py buildScript/*.py
 
-# Flutter AAR 的 API 扫描（先构建 AAR，路径写法与 ci.yml 一致）
-AAR=$(find flutter/build/host/outputs/repo -name "*.aar" | head -1)
-python3 tools/diagnostics/scan_aar_apis.py "$AAR"
+# cgo preamble 检查（需要 NDK 的 clang）
 python3 tools/diagnostics/check_preamble.py
 
 # Kotlin 单元测试与 debug 构建
 ./gradlew --stacktrace app:testOssDebugUnitTest app:assembleOssDebug
 ```
 
-CI 还会用 NDK 的 clang 检查 cgo preamble，并要求 `flutter analyze --fatal-infos` 零告警。`generated_models_check.py` 静态核对 `@freezed` 模型与随仓库分发的生成文件是否一致（见脚本头部与 `flutter/lib/ui/generated/README.md`）；完整步骤以 `.github/workflows/ci.yml` 为准。
+`flutter analyze --fatal-infos` 必须零告警——CI 用同一参数收口，没有「info 级不阻塞」的余地。
+
+**不要再照抄下面这些**：`tools/diagnostics/` 里仍有五个脚本引用了迁移时删掉的文件（`flutter/lib/box.dart`、`Capabilities.kt`、`flutter/lib/data/db.dart`、`flutter/lib/ui/models.dart`），本地跑会直接 `FileNotFoundError` / `FAIL — missing file` / `setUpClass ERROR` 退出：
+
+`channel_audit.py`、`symbol_audit.py`、`settings_audit.py`、`ffi_regression_test.py`、`generated_models_check.py`、`schema_audit.py`。
+
+它们描述的是已经删除的页面级桥（`io.flrone/box` 契约、`Capabilities.kt` 能力表、`flutter/lib/data/` 直读层）。要恢复为门禁，得先按新的 Core 协议重写；在此之前**以 `ci.yml` 实际运行的那几步为准**，不要把它们当成「运行即绿」的本地检查。
+
+> `prism_drift.py check` 的默认 `--local` 仍指向 `flutter/lib/ui`（迁移后那里只剩 FlClash 的适配层），所以本机调用必须显式带 `--local flutter/plugins/prism_ui/lib`，否则报告会是 `removed: 144`。
 
 ## 3. 分支与提交约定
 
@@ -62,11 +67,14 @@ CI 还会用 NDK 的 clang 检查 cgo preamble，并要求 `flutter analyze --fa
 - 改变行为时先提变更提案并实现，随后同步 `openspec/specs/` 中对应规范，避免规范与代码漂移；`README.md` 的 Development 段同样指明这一流程；
 - `.roo/commands/opsx-*.md` 提供 propose / apply / sync / archive 等阶段的命令描述，可供参考。
 
-## 5. 通道契约必须两端同步
+## 5. 通道与 Core 协议必须两端同步
 
-Flutter（Dart）与宿主（Kotlin）之间的 channel 方法／事件由 `tools/diagnostics/channel_audit.py` 约束：它扫描 Dart 侧的 `box.call('…')` / `events.add({'type': …})` 与 Kotlin 侧的 `when(call.method)` / `emit("…")`，双端差集必须为空，且该脚本已在 CI 中运行。
+界面与宿主的契约现在只有两层，都需要两端同时改：
 
-因此**新增、改名或删除任何桥接方法或事件时，必须同时修改两端**；只改一端会导致 `channel_audit.py` 失败。`Capabilities.kt` 是 B-box 独有能力开关的唯一来源，`docs/bbox-bridge.md` 记录桥接层的每个方法与事件，改动时应一并核对。
+1. **平台插件通道** —— 通道名与上游 FlClash 一致：`com.follow.clash/{app,battery,battery/optimization,service,core,tile}`。名字由两端各自的同一个 `com.follow.clash` 字面量拼出（Dart 侧 `flutter/lib/common/constant.dart` 的 `packageName`，Kotlin 侧 `com/follow/clash/common/Components.kt` 的 `PACKAGE_NAME`），改名必须两处一起动；四个插件在 `BboxFlutterActivity.configureFlutterEngine` 注册。`flutter analyze` 不校验方法名字符串，改完请全文 grep 两端核对。
+2. **Core wire protocol** —— `com.follow.clash/core` 上的 `invokeMethod` 承载 JSON `{id, method, arguments}`。方法名在 Dart 侧是 `CoreMethod` 枚举（`flutter/lib/core/method.dart`），Kotlin 侧是 `ThroneCore.dispatch` 的 `when (method)` 分支，事件类型在 `flutter/lib/core/event.dart` 消费。新增或改名必须两处同时改。
+
+`docs/bbox-bridge.md` 记录了协议的方法表、六个运行时助手和通道清单；`docs/bbox-flutter.md` 记录本地改动与构建前置。CI 的 `channel_audit.py` 已重写为核对上述五条 `com.follow.clash/*` 通道及 `packageName` 常量，`symbol_audit.py`、`ffi_regression_test.py` 等诊断也已按新架构重写（见 `.github/workflows/ci.yml` 的 Bridge contract audits 步骤）。旧的 `io.flrone/box` 通道契约与 `Capabilities.kt` 已随页面级桥删除，不再受审计。
 
 ## 6. 代码与文档一致性
 

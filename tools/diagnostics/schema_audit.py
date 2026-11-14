@@ -1,382 +1,153 @@
 #!/usr/bin/env python3
-"""Keeps Dart's copy of the schema honest.
+"""Keeps the Drift schema and its migration ladder honest.
 
-`flutter/lib/data/` reads Room's file directly, which means it also depends on
-Room's schema without being checked by it. Two failure modes have no symptom:
+`flutter/lib/database/` opens a SQLite file that outlives the app version, so the
+schema version and the upgrade steps have to agree on every install, including the
+one upgrading from a build that has not been run in months. Two skews are silent
+in Dart and fatal in the field:
 
-1. A version skew: bump `@Database(version = …)` in SagerDatabase.kt and leave
-   `roomSchemaVersion` in db.dart alone, and every query keeps working — it
-   just reads columns by name from a table whose shape moved, returning the
-   wrong field instead of failing. `DataDatabase._checkSchema` catches this at
-   runtime by refusing to open, but a refusal on a user's phone is a bug
-   report; this catches it on push.
+1. **A version without a step.** Bump `schemaVersion` past the highest `if (from <
+   N)` in `migration` and an upgrading install runs no code for the new version:
+   Drift stamps `user_version` to the new number and every query against the new
+   column or table throws — but only on devices that upgraded, never on a fresh
+   install, and never in a widget test.
 
-2. A column skew: a Room migration renames or drops a column the DAO's SQL
-   mentions by name. The version audit above still passes (both sides say 19),
-   and at runtime the query throws inside `RouteProfilesSource.list`, which
-   catches it and silently falls back to the channel — the whole SQLite path
-   is dead and nothing reports it. So this audit also parses the exported
-   schema JSON (`app/schemas/…/<version>.json`) and checks every column the
-   DAO SQL references against the table it claims to read.
+2. **A step above the version.** An `if (from < N)` with N greater than
+   `schemaVersion` can never run; it is dead code that reads as coverage. Either
+   the version bump was forgotten or the step belongs to a release that never
+   shipped.
 
-Also checks that the file name matches `Key.DB_PROFILE`, because a rename there
-would make Dart open a fresh empty file — which `openAt` creates, since the
-write path passes SQLITE_OPEN_CREATE.
+The audit also checks that `schemaVersion` and the rung count are not accidentally
+renumbered (a gap in the ladder is allowed — versions 7, 9, 11-16 were folded into
+neighbouring steps — but a step *above* the declared version is not), and that the
+generated Drift companion is wired into the same library the version lives in.
+That last one is the migration-era replacement for this script's old job of
+comparing two hand-written copies of a schema.
 
-The SQL parsing is deliberately small: it resolves `FROM`/`JOIN` tables and
-aliases, then checks qualified (`p.name`) and bare (`name`) identifiers. It is
-not a SQL engine; if a statement cannot be resolved, that is a failure, not a
-skip — a gate that silently passes on confusion is worse than no gate.
+What the old version asserted, and why that is gone
+--------------------------------------------------
+It compared Room's schema to a *Dart reimplementation*: `@Database(version = N)` in
+`SagerDatabase.kt` against `roomSchemaVersion` in `flutter/lib/data/db.dart`, with
+a column-by-column audit of every `SELECT` in `flutter/lib/data/*_dao.dart` against
+Room's exported `app/schemas/…/<N>.json`, plus a check that `db.dart`'s
+`databaseFileName` matched `Key.DB_PROFILE`.
+
+`flutter/lib/data/` was deleted by the FlClash UI migration and Dart no longer
+reads Room's file at all: the FlClash UI owns its own Drift database
+(`flutter/lib/database/database.dart`), Room still serves the Kotlin side through
+its DAOs, and the two are separate stores with separate lifetimes. There is no
+cross-language schema contract left to audit, so the checks were replaced with the
+intra-Drift invariants above rather than deleted.
 
 Run from the repository root:
     python3 tools/diagnostics/schema_audit.py
 
-Exit code 0 when the two sides agree, 1 otherwise.
+Exit code 0 when the version and the ladder agree, 1 otherwise.
 """
 
-import json
+from __future__ import annotations
+
 import re
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
+DATABASE_DART = ROOT / "flutter" / "lib" / "database" / "database.dart"
+GENERATED = ROOT / "flutter" / "lib" / "database" / "generated" / "database.g.dart"
 
-DATABASE_KT = ROOT / "app/src/main/java/io/nekohasekai/sagernet/database/SagerDatabase.kt"
-CONSTANTS_KT = ROOT / "app/src/main/java/io/nekohasekai/sagernet/Constants.kt"
-DB_DART = ROOT / "flutter/lib/data/db.dart"
-SCHEMAS_ROOT = ROOT / "app/schemas"
-DAO_DIR = ROOT / "flutter/lib/data"
-
-IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
-
-SQL_KEYWORDS = {
-    "SELECT", "FROM", "WHERE", "GROUP", "BY", "ORDER", "LIMIT", "OFFSET",
-    "HAVING", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "CROSS", "FULL",
-    "NATURAL", "ON", "AS", "AND", "OR", "NOT", "IN", "IS", "NULL", "LIKE",
-    "GLOB", "BETWEEN", "CASE", "WHEN", "THEN", "ELSE", "END", "DISTINCT",
-    "UNION", "ALL", "EXISTS", "ASC", "DESC", "USING", "SET", "VALUES",
-    "INTO", "INSERT", "UPDATE", "DELETE", "COLLATE", "CAST",
-}
-
-# Tokens that can follow a table name without being its alias.
-CLAUSE_WORDS = SQL_KEYWORDS
-
-
-def read(path: Path) -> str:
-    try:
-        return path.read_text(encoding="utf-8")
-    except FileNotFoundError:
-        fail(f"missing file: {path.relative_to(ROOT)}")
-        raise
+SCHEMA_VERSION_RE = re.compile(r"int\s+get\s+schemaVersion\s*=>\s*(\d+)\s*;")
+UPGRADE_STEP_RE = re.compile(r"if\s*\(\s*from\s*<\s*(\d+)\s*\)")
+DRIFT_ANNOTATION_RE = re.compile(r"@DriftDatabase\s*\(")
+PART_RE = re.compile(r"^part\s+'([^']+)';", re.M)
 
 
 def fail(message: str) -> None:
     print(f"::error::{message}")
 
 
-def annotation_body(source: str) -> str | None:
-    """The text inside `@Database(...)`, found by balancing parentheses.
-
-    `@Database\\s*\\((.*?)\\)` stops at the first `)`, which may belong to a
-    nested call (`AutoMigration(from = 1, to = 2)`). That would truncate the
-    body and could hide `version` entirely. Count the nesting instead.
-    """
-    match = re.search(r"@Database\s*\(", source)
-    if not match:
-        return None
-    depth = 1
-    for index in range(match.end(), len(source)):
-        char = source[index]
-        if char == "(":
-            depth += 1
-        elif char == ")":
-            depth -= 1
-            if depth == 0:
-                return source[match.end():index]
-    return None
-
-
-def load_room_tables(version: int) -> dict[str, set[str]] | None:
-    """`{table: {column, …}}` from Room's exported schema for [version]."""
-    schema_path = None
-    if SCHEMAS_ROOT.is_dir():
-        for candidate in SCHEMAS_ROOT.glob(f"*/{version}.json"):
-            schema_path = candidate
-            break
-    if schema_path is None:
-        return None
-    with schema_path.open(encoding="utf-8") as handle:
-        document = json.load(handle)
-    tables: dict[str, set[str]] = {}
-    for entity in document.get("database", {}).get("entities", []):
-        name = entity.get("tableName")
-        if not name:
-            continue
-        columns = set()
-        for field in entity.get("fields", []):
-            column = field.get("columnName") or field.get("fieldPath")
-            if column:
-                columns.add(column)
-        tables[name] = columns
-    return tables
-
-
-def dart_string_blocks(source: str) -> list[str]:
-    """Every string literal, with adjacent literals merged.
-
-    Dart concatenates adjacent literals (`'SELECT … ' 'FROM …'`), and
-    `groups_dao.dart` relies on it, so the extractor must too. Comments are
-    skipped first so a quoted word inside one cannot glue two literals
-    together.
-    """
-    blocks: list[str] = []
-    parts: list[str] = []
-    index = 0
-    length = len(source)
-
-    def flush() -> None:
-        if parts:
-            blocks.append("".join(parts))
-            parts.clear()
-
-    while index < length:
-        char = source[index]
-        if source[index : index + 2] == "//":
-            end = source.find("\n", index)
-            index = length if end < 0 else end + 1
-            continue
-        if source[index : index + 2] == "/*":
-            end = source.find("*/", index)
-            index = length if end < 0 else end + 2
-            continue
-        if char in "'\"":
-            quote = char * 3 if source[index : index + 3] == char * 3 else char
-            end = index + len(quote)
-            literal: list[str] = []
-            while end < length:
-                if len(quote) == 1 and source[end] == "\\":
-                    literal.append(source[end : end + 2])
-                    end += 2
-                    continue
-                if source[end : end + len(quote)] == quote:
-                    break
-                literal.append(source[end])
-                end += 1
-            index = min(end + len(quote), length)
-            parts.append("".join(literal))
-            # Whitespace then another quote keeps the concatenation going.
-            rest = index
-            while rest < length and source[rest].isspace():
-                rest += 1
-            if not (rest < length and source[rest] in "'\""):
-                flush()
-                index = rest
-            else:
-                index = rest
-            continue
-        flush()
-        index += 1
-    flush()
-    return blocks
-
-
-def tokenize(sql: str) -> list[str]:
-    return re.findall(r"[A-Za-z_][A-Za-z0-9_]*|\d+(?:\.\d+)?|'[^']*'|\S", sql)
-
-
-def table_aliases(tokens: list[str]) -> dict[str, str]:
-    """`{table_or_alias: table}` for every FROM/JOIN in the statement."""
-    aliases: dict[str, str] = {}
-    for index, token in enumerate(tokens):
-        if token.upper() not in ("FROM", "JOIN"):
-            continue
-        if index + 1 >= len(tokens) or not IDENTIFIER.fullmatch(tokens[index + 1]):
-            continue
-        table = tokens[index + 1]
-        aliases[table] = table
-        alias = None
-        cursor = index + 2
-        if cursor < len(tokens) and tokens[cursor].upper() == "AS":
-            if cursor + 1 < len(tokens) and IDENTIFIER.fullmatch(tokens[cursor + 1]):
-                alias = tokens[cursor + 1]
-        elif cursor < len(tokens) and IDENTIFIER.fullmatch(tokens[cursor]):
-            if tokens[cursor].upper() not in CLAUSE_WORDS:
-                alias = tokens[cursor]
-        if alias:
-            aliases[alias] = table
-    return aliases
-
-
-def audit_statement(
-    sql: str,
-    tables: dict[str, set[str]],
-    version: int,
-    where: str,
-    problems: list[str],
-) -> int:
-    """Column-check one SELECT; returns how many references it verified."""
-    # Dart interpolation (`${simpleAddressRuleTypes.join(', ')}`) is values,
-    # not structure — replace it so the tokenizer sees a plain literal.
-    sql = re.sub(r"\$\{[^}]*\}", " 1 ", sql)
-    tokens = tokenize(sql)
-    aliases = table_aliases(tokens)
-    checked = 0
-
-    for table in sorted(set(aliases.values())):
-        if table not in tables:
-            problems.append(
-                f"{where}: query reads table `{table}`, which schema v{version} "
-                f"does not define"
-            )
-
-    distinct_tables = sorted(set(aliases.values()))
-    single_table = distinct_tables[0] if len(distinct_tables) == 1 else None
-
-    count = len(tokens)
-    for index, token in enumerate(tokens):
-        if not IDENTIFIER.fullmatch(token):
-            continue
-        previous = tokens[index - 1] if index > 0 else ""
-        following = tokens[index + 1] if index + 1 < count else ""
-        if previous == "." or following == ".":
-            # Qualified reference: `p.name`. Resolve from the middle token.
-            if following == ".":
-                qualifier = token
-                column = (
-                    tokens[index + 2]
-                    if index + 2 < count and IDENTIFIER.fullmatch(tokens[index + 2])
-                    else "*"
-                )
-                if column == "*":
-                    continue
-                table = aliases.get(qualifier)
-                if table is None:
-                    problems.append(
-                        f"{where}: `{qualifier}.{column}` qualifies `{qualifier}`, "
-                        f"which is neither a table nor an alias in this statement"
-                    )
-                elif table in tables and column not in tables[table]:
-                    problems.append(
-                        f"{where}: `{qualifier}.{column}` — schema v{version} has no "
-                        f"`{column}` column in `{table}`"
-                    )
-                else:
-                    checked += 1
-            continue
-        upper = token.upper()
-        if upper in SQL_KEYWORDS:
-            continue
-        if following == "(":
-            continue  # A function call, not a column.
-        if previous.upper() == "AS":
-            continue  # An output alias, not a column.
-        if token in aliases:
-            continue  # The table's own name.
-        if single_table is not None:
-            if token in tables.get(single_table, set()):
-                checked += 1
-            else:
-                problems.append(
-                    f"{where}: bare `{token}` — schema v{version} has no such "
-                    f"column in `{single_table}`"
-                )
-        else:
-            problems.append(
-                f"{where}: bare `{token}` in a multi-table statement is ambiguous; "
-                f"qualify it (e.g. `p.{token}`)"
-            )
-    return checked
-
-
-def audit_dao_sql(
-    tables: dict[str, set[str]],
-    version: int,
-    problems: list[str],
-) -> int:
-    """Column-check every SELECT in every `*_dao.dart`; returns reference count."""
-    checked = 0
-    statements = 0
-    for dao in sorted(DAO_DIR.glob("*_dao.dart")):
-        source = read(dao)
-        for block in dart_string_blocks(source):
-            if "select" not in block.lower():
-                continue
-            for statement in block.split(";"):
-                if "select" not in statement.lower():
-                    continue
-                statements += 1
-                snippet = " ".join(statement.split())[:60]
-                checked += audit_statement(
-                    statement,
-                    tables,
-                    version,
-                    f"{dao.relative_to(ROOT)} (`{snippet}…`)",
-                    problems,
-                )
-    if statements == 0:
-        problems.append("no DAO SQL found under flutter/lib/data — the audit saw nothing")
-    print(f"column audit: {statements} statements, {checked} column references checked")
-    return checked
-
-
 def main() -> int:
-    problems = []
+    problems: list[str] = []
 
-    database_kt = read(DATABASE_KT)
-    constants_kt = read(CONSTANTS_KT)
-    db_dart = read(DB_DART)
+    if not DATABASE_DART.is_file():
+        fail(f"missing {DATABASE_DART.relative_to(ROOT)}")
+        return 1
+    source = DATABASE_DART.read_text(encoding="utf-8")
 
-    # The @Database annotation: `version = 19,` inside the annotation's parentheses.
-    body = annotation_body(database_kt)
-    if body is None:
-        problems.append("could not find a balanced @Database(...) in SagerDatabase.kt")
-        room_version = None
+    version_match = SCHEMA_VERSION_RE.search(source)
+    if not version_match:
+        problems.append("could not read `int get schemaVersion => N;` from database.dart")
+        version = None
     else:
-        version_match = re.search(r"\bversion\s*=\s*(\d+)", body)
-        if not version_match:
-            problems.append("could not read `version = N` from @Database")
-            room_version = None
-        else:
-            room_version = int(version_match.group(1))
+        version = int(version_match.group(1))
 
-    dart_match = re.search(r"roomSchemaVersion\s*=\s*(\d+)", db_dart)
-    dart_version = int(dart_match.group(1)) if dart_match else None
-    if dart_version is None:
-        problems.append("could not read `roomSchemaVersion = N` from flutter/lib/data/db.dart")
-
-    if room_version is not None and dart_version is not None and room_version != dart_version:
+    steps = [int(value) for value in UPGRADE_STEP_RE.findall(source)]
+    if not steps:
         problems.append(
-            f"schema version skew: SagerDatabase.kt is at {room_version}, "
-            f"flutter/lib/data/db.dart says {dart_version}. "
-            f"Bump roomSchemaVersion (and update the DAOs for any column that moved)."
+            "no `if (from < N)` step found — either the migration was removed or it "
+            "was rewritten in a shape this audit cannot read"
         )
 
-    db_name_match = re.search(r'DB_PROFILE\s*=\s*"([^"]+)"', constants_kt)
-    kotlin_name = db_name_match.group(1) if db_name_match else None
-    if kotlin_name is None:
-        problems.append("could not read DB_PROFILE from Constants.kt")
-
-    dart_name_match = re.search(r"databaseFileName\s*=\s*'([^']+)'", db_dart)
-    dart_name = dart_name_match.group(1) if dart_name_match else None
-    if dart_name is None:
-        problems.append("could not read `databaseFileName` from flutter/lib/data/db.dart")
-
-    if kotlin_name and dart_name and kotlin_name != dart_name:
-        problems.append(
-            f"database name mismatch: Key.DB_PROFILE is {kotlin_name!r}, "
-            f"db.dart says {dart_name!r}"
-        )
-
-    # Column audit: Room's exported schema against the SQL the DAOs run.
-    if room_version is not None and dart_version is not None and room_version == dart_version:
-        tables = load_room_tables(room_version)
-        if tables is None:
+    if version is not None and steps:
+        highest = max(steps)
+        if highest > version:
             problems.append(
-                f"Room exported no schema JSON for version {room_version} under "
-                f"app/schemas — the column audit has nothing to check against"
+                f"migration step `from < {highest}` is above schemaVersion {version}: "
+                f"it can never run (forgot the version bump, or the step is stale)"
             )
-        else:
-            audit_dao_sql(tables, room_version, problems)
+        # Every declared version must have a rung. Gaps below the highest step are
+        # historical (7, 9, 11-16 were folded in) and are fine; a hole at the top is
+        # exactly the silent-upgrade failure this audit exists for.
+        if version not in steps:
+            below = sorted(step for step in steps if step <= version)
+            problems.append(
+                f"schemaVersion {version} has no `if (from < {version})` step "
+                f"(highest rung is {highest}, rungs below the version are {below}). "
+                f"An upgrading install would bump user_version without migrating."
+            )
+
+    if not DRIFT_ANNOTATION_RE.search(source):
+        problems.append("database.dart no longer carries a @DriftDatabase(...) annotation")
+
+    parts = PART_RE.findall(source)
+    generated_parts = [part for part in parts if "generated" in part]
+    if not generated_parts:
+        problems.append(
+            "database.dart does not `part` a generated file — the Drift companion is "
+            "unwired and the schema tables would not compile"
+        )
+    for part in generated_parts:
+        target = (DATABASE_DART.parent / part).resolve()
+        if not target.is_file():
+            problems.append(f"database.dart parts '{part}', which does not exist")
+
+    # The generated companion has to describe the same table set the source declares;
+    # anything else means one of the two was hand-edited.
+    declared: set[str] = set()
+    if GENERATED.is_file():
+        generated = GENERATED.read_text(encoding="utf-8")
+        declared = set(re.findall(
+            r"\bclass\s+([A-Za-z_]\w*)\s+extends\s+Table\b",
+            "\n".join(
+                path.read_text(encoding="utf-8")
+                for path in sorted(DATABASE_DART.parent.rglob("*.dart"))
+                if "generated" not in path.relative_to(DATABASE_DART.parent).parts
+            ),
+        ))
+        produced = set(re.findall(
+            r"\bclass\s+\$([A-Za-z_]\w*)Table\s+extends\s+([A-Za-z_]\w*)\b", generated
+        ))
+        produced_tables = {table for _, table in produced}
+        if declared != produced_tables:
+            missing = sorted(declared - produced_tables)
+            stale = sorted(produced_tables - declared)
+            if missing:
+                problems.append(f"database.g.dart has no table for: {', '.join(missing)}")
+            if stale:
+                problems.append(
+                    f"database.g.dart generates tables with no source: {', '.join(stale)}"
+                )
+    else:
+        problems.append(f"missing {GENERATED.relative_to(ROOT)}")
 
     if problems:
         for problem in problems:
@@ -384,8 +155,8 @@ def main() -> int:
         return 1
 
     print(
-        f"schema OK: version {room_version}, file {dart_name!r}, "
-        f"Dart and Room agree (version, file name and DAO columns)"
+        f"schema OK: Drift schemaVersion {version}, rungs {sorted(set(steps))}, "
+        f"{len(declared)} table(s) backed by the generated companion"
     )
     return 0
 

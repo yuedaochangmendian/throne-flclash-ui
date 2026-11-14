@@ -1,212 +1,103 @@
-# The B-box bridge
+# The Core host
 
-> Status 2026-11-03: current. `Capabilities.kt` is the source of truth for what exists; `tools/diagnostics/channel_audit.py` (wired into CI) enforces the Dart/Kotlin contract on every push.
+> Status 2026-11-14: rewritten after the migration to upstream FlClash v0.9.3's own interface. The
+> page-level bridge (`ThroneBoxBridge.kt`, `Capabilities.kt`, `BboxBridge.kt`, `BboxCatalog.kt`,
+> `BboxCommands.kt`, `BboxTrafficMeter.kt`, `BboxEgress.kt`) is **deleted**. There is no
+> `io.flrone/box` / `io.flrone/events` contract and no `channel_audit.py` gate any more.
 
-The ported interface (`:bboxui`) renders one immutable snapshot and sends every gesture through one object. Throne's
-backend does not work that way: its state lives in four places and the old fragments read each of them directly. This
-document describes the layer in `app/src/main/java/io/throne/bbox/bridge` that reconciles the two, replacing the
-fragment-owned service connections of the old UI.
-
-## Why a bridge at all
-
-B-box's screens (FlClash's) are written against a controller that exposes
-
-* a snapshot — `dashboard`, `groups`, `profiles`, `preferences`, traffic history, logs, connections;
-* an action bus — `box.act('mode.set', {...})`, `box.act('service.start')`, `box.act('proxy.select', {...})`;
-* change notifications — one flow per aspect, so a screen rebuilds only what changed.
-
-Throne instead has `ISagerNetService` (a bound AIDL service with speed/state callbacks), `ProfileManager` and
-`GroupRepo` (Room repositories with in-process listeners), `DataStore` (a preference store), and `RouteManager`
-(the routing profiles). Reproducing B-box's screens faithfully means giving them the first shape; the bridge is that
-translation, not a set of adapters bolted onto each screen.
+The app runs FlClash's own Flutter interface on Throne's runtime. FlClash's screens do not speak a
+page-level channel: they speak the **Core wire protocol** — a JSON `{id, method, arguments}` in, a
+JSON `{id, result}` or `{id, error:{code, message}}` out, plus a `message` event carrying batches —
+exactly as upstream's Go core implements it (`core/protocol.go`). Throne answers that protocol
+natively, so the whole interface works with no bridge layer of its own.
 
 ## Shape
 
 ```
-        ┌──────────────────────────── BboxBridge (singleton) ───────────────────────────┐
-        │  state: StateFlow<BboxUiState>        meter: BboxTrafficMeter                  │
-        │  one SagerConnection   GroupRepo.Listener   ProfileManager.Listener           │
-        └───────▲───────────────────────┬───────────────────────────┬───────────────────┘
-                │                       │                           │
-     SagerConnection callbacks     BboxCatalog.load()          BboxEgress.probe()
-     (state, speed, selector)      (groups, profiles)         (mixed inbound)
-                │                       │                           │
-        ┌───────┴───────────────────────┴───────────────────────────┴───────────────────┐
-        │  BboxCommands : BboxActions — the write half                                  │
-        └───────────────────────────────────────────────────────────────────────────────┘
+   FlClash UI (flutter/lib, package fl_clash)
+        │  MethodChannel com.follow.clash/core   ("invokeMethod" + "event")
+        ▼
+   ServicePlugin  ─────────────► ThroneCore.invokeMethod(data, callback)
+   (app/src/main/java/com/follow/clash/plugins)          │
+                                                         ▼
+                                        ThroneCore.kt (object, io.throne.bbox.corehost)
+                                                         │
+                    GroupRepo · ProfileManager · ProfileImport · SubscriptionQueue
+                    SettingsMapper · DataStore · CoreConfigs · SagerNet · CoreLog
 ```
+
+`ThroneCore` is the single Kotlin implementation of the protocol. It is **not** a second state
+store: a FlClash profile id *is* the matching Throne group id, `proxy.list` reads `GroupRepo`, and
+the running box is whichever `ProxyInstance` `SagerNet` owns. Nothing is mirrored, so nothing can
+drift.
+
+## What ThroneCore answers
+
+| Area | Wire methods | Backed by |
+| --- | --- | --- |
+| Lifecycle | `core.init`, `core.initialized`, `core.gc`, `core.memory` | `initialize()`/`close()` register the `GroupRepo.Listener` and the log pump; memory reads this process's heap and `Debug.MemoryInfo.totalPss`, because the Go runtime shares the app process — there is no separate core process to measure |
+| Profile documents | `config.setup`, `config.update`, `config.validate`, `config.read`, `profile.base`, `profile.outbounds`, `profile.build`, `profile.clearEffect` | `ProfileImport.parse` validates and imports; `GroupRepo` + `ProfileManager.members` produce the Clash-shaped document; `buildProfile` calls `GroupRepo.setCurrent` |
+| Throne profiles | `throne.profile.list`, `throne.profile.save`, `throne.profile.update`, `throne.profile.delete` | `GroupRepo` + `SubscriptionQueue`; a group's subscription metadata becomes the card's quota and expiry. These four are the only methods Throne *added* to the protocol, for FlClash's profile cards |
+| Proxies | `proxy.list`, `proxy.select`, `proxy.definition`, `proxy.testDelay`, `proxy.convert`, `proxy.validate`, `shareLink.encode`, `shareLink.decode`, `filter.validate` | Every Throne group becomes a `Selector` group; the `type` is the Dart enum *name* (`Selector`) because `buildGroups` filters on `GroupTypeExtension.valueList`. Member names are made globally unique. `proxy.select` writes `DataStore.selectedProxy` and `GroupRepo.setCurrent` |
+| Traffic | `traffic.current`, `traffic.total`, `traffic.reset`, `network.changed` | `StatusMessage` cumulative counters, differenced over elapsed wall time. `traffic.current` answers a per-sample rate: the UI appends it to a speed series. It is deliberately not `queryOutboundStats`, which hands out and zeroes a delta and would steal the bytes `TrafficLooper` counts into the profile totals |
+| Egress | `probe.outboundIp` | The selected node's stored `ipOut`, `testCountry` and `latency` |
+| Logs | `log.start`, `log.stop`, plus the `log` event | A 250 ms tail of `CoreLog.file`, batched at most 200 events per `message`, so a startup flush is one Flutter-thread post instead of thousands |
+| Service | `listener.start`, `listener.stop` | `ThroneServiceController` → `SagerNet.startService()` / `stopService()` |
+
+Clash-only features answer an explicit `unsupported_capability` error rather than fabricated empty
+data, so the UI can never mistake "not supported" for "supported and empty": `connection.*`,
+`provider.*`, `ruleSet.*`, `geo.update`, `route.*`, `probe.services`, `mitm.*` and `config.decrypt`
+have no Throne counterpart. `proxy.validate` and `filter.validate` answer an empty array — Throne's
+own importer is the validator, and its filters live on the group row.
+
+Request ids are keys: a reused id answers the displaced request with `core_error` instead of leaving
+it to time out, and a late result is delivered only if its callback is still the pending one.
+`close()` drains every pending callback with `transport_disconnected`.
+
+## The Dart side of the protocol
+
+`flutter/lib/core/` is upstream's own Core client apart from the profile methods:
+
+* `lib.dart` (`CoreLib`) owns the lifecycle and mints request ids; `service.dart` (the `Service`
+  transport) talks to `com.follow.clash/service` and `com.follow.clash/core`.
+* `method.dart` is the `CoreMethod` enum of wire names; Throne's four `throneProfile*` entries are
+  added there.
+* `event.dart` decodes the `message` batches into `CoreEvent`s (`log`, `delay`, `loaded`, …).
+* `throne_profiles.dart` (a new file) is the typed client for `throne.profile.*`, used by bootstrap
+  and by the profile actions.
+
+## The six surviving runtime helpers
+
+Everything else under `app/src/main/java/io/throne/bbox/bridge/` was presentation state and is gone.
+What is left are pieces the *runtime* needs; none of them participates in the UI.
 
 | File | Role |
 | --- | --- |
-| `BboxBridge.kt` | Owns the single service connection and both repository listeners, mirrors everything into `BboxUiState`, debounces bursts of change notifications, ticks the run time and memory once a second. |
-| `BboxCatalog.kt` | Maps the catalog: a Throne group is a B-box group, its members are the nodes, the selected profile is the selection; a subscription group is also a B-box profile card with its quota and expiry. |
-| `BboxTrafficMeter.kt` | Turns `SpeedDisplayData` into the dashboard's rates, totals and the two 30 point sparklines; the window is one sample per second while the service runs, so it spans half a minute. |
-| `BboxMode.kt` | The outbound mode switch, implemented as a routing-profile rewrite (see below). |
-| `BboxEgress.kt` | The outbound IP, country and organisation, probed through the running mixed inbound (or over the phone's own connection while stopped). Five sources are raced at once with an 8 s budget, the richest one preferred; the answer names the source that won. |
-| `BboxCommands.kt` | Every write: start/stop, mode, selection, tests, subscription refresh, delete, open URL. |
-| `BboxRuntime.kt` | Installs the bridge from `SagerNet.onCreate` in the main process and hands `CoreConfigs` the mode-aware routing input. |
-| `app/.../flutter/ThroneBoxBridge.kt` | The host of B-box's own channels: turns this state into the `dashboard` / `rates` / `profiles` / `groups` events and the actions into the calls the Flutter screens make. |
+| `BboxMode.kt` | The outbound-mode switch (Rule / Global / Direct). Throne has no `route.final`, so the mode rewrites the route profile handed to the config generator: Global drops the rules and sends everything to `proxy`, Direct to `direct`, Rule returns the profile untouched. The `hijack-dns` rule survives every mode, or the core's own DNS requests would leave unhandled. Stored in `DataStore.configurationStore` as `bbox_outbound_mode`. |
+| `BboxRuntime.kt` | The process-wide entry point for that rewrite. `routingInput(base)` is called by `CoreConfigs.buildMain`, so a reload from a tile, widget or shortcut honours the mode too. |
+| `BboxKernel.kt` | The FFI driver's Kotlin half. `ffiMode` tells the service to stand aside; `buildStartOptions()` builds the start payload from the selected profile without creating a gobind `Instance`; `markRunning()` / `clearRunning()` keep `runningProfiles` and `runningRouteId` truthful, which two deletion guards read; `handOver()` stops a service-owned box so two boxes never fight over one tun; `onReloadWanted` and `onWifiChanged` are how a non-Dart reload and an SSID change reach Dart. |
+| `BboxCorePlatform.kt` | The `CorePlatform` implementation for the FFI path: tun and `VpnService`, `protect()`, DNS, network and Wi-Fi state, notifications — the Android duties behind the C callback table, mirroring what the gobind `NativeInterface` does for the service-owned path. `SagerNet` installs it into `io.throne.bbox.core.Core.setPlatform`. |
+| `BboxMemory.kt` | System memory trimming: the `onTrimMemory` policy (tell the UI first, then `gc()` and `dalvik.system.VMRuntime.trimHeap` above API 28). The Go runtime is in this process, so there is no core-side GC call to make. |
+| `BboxWarp.kt` | WARP identity registration behind the settings row: `WarpClient.register(tunnelType)` plus the amnezia I1–I5 packet generation, saved through `DataStore`'s warp fields. |
 
-## Data mapping
+`BboxFlutterActivity` holds no backend state. It registers the four FlClash platform plugins —
+`AppPlugin`, `BatteryPlugin`, `ServicePlugin`, `TilePlugin`, the same set upstream's `MainActivity`
+adds — and nothing else. `ThroneServiceController` (in `corehost/`) supplies the service lifecycle
+contract those plugins expect on top of Throne's own `VpnService`: it resolves the group and member
+to start, forwards `syncState` into `DataStore.serviceMode`, and answers `getRunTime`.
 
-| B-box | Throne | Note |
+## Channels the host serves
+
+Channel names are upstream's, unchanged (`Components.PACKAGE_NAME` is `com.follow.clash`):
+
+| Channel | Kind | Served by |
 | --- | --- | --- |
-| `dashboard.status` | `DataStore.serviceState` + the service's `profileName` | `startedAt` is stamped when the state first becomes `Connected`, since Throne keeps no start time. |
-| `dashboard.modes` / `mode` | `BboxMode` (stored in the configuration store) | Rule / Global / Direct, see below. |
-| `dashboard.groups[]` | `GroupRepo.all()` + `ProfileManager.members(gid)` | `selected` is `DataStore.selectedProxy`. |
-| node `delay` / `testedAt` | `ProxyEntity.latency` / `latencyAt` | Seconds in the row, milliseconds in the model. |
-| `dashboard.profiles[]` | subscription groups (`ProxyGroup.isSubscription`) | `traffic` / `expiry` come from `SubUserInfo` (`groups.sub_metadata_json`). |
-| `dashboard.egress` | `BboxEgress` | IP, country, organisation, ASN, address family, the endpoint that answered, and `direct` when no tunnel carried the request. |
-| `dashboard.memory` | `Runtime` + core's `/memory` (`BboxApi.memory`) | `core`/`rss` come from the core's `/memory` (`inuse`, falling back to `rss`); `app`/`heapInuse` is the host process's used heap. The roles can swap across sing-box builds, which is why both are on the wire. |
-| `dashboard.intranet` | `lanWire` / `lanSet` | The mixed inbound's "Allow LAN" and its port; the panel shows the active bindings. |
+| `com.follow.clash/app` | MethodChannel | `AppPlugin` — package list and icons, VPN permission, notifications, shortcuts, exit |
+| `com.follow.clash/battery` | MethodChannel | `BatteryPlugin` — battery-optimisation exemption request |
+| `com.follow.clash/battery/optimization` | EventChannel | `BatteryPlugin` — the exemption state |
+| `com.follow.clash/service` | MethodChannel | `ServicePlugin` — `init`, `shutdown`, `start`, `stop`, `getRunTime`, `syncState`, plus the `event` push |
+| `com.follow.clash/core` | MethodChannel | `ServicePlugin` → `ThroneCore` — `invokeMethod` carrying the JSON request |
+| `com.follow.clash/tile` | MethodChannel | `TilePlugin` — the quick-settings tile's `start` signal |
 
-## Actions
-
-| Action | Implementation |
-| --- | --- |
-| `toggleService` | `SagerNet.startService()` / `SagerNet.stopService()`; a start with nothing selected is refused and logged. |
-| `setMode` | `BboxMode.set` then `SagerNet.reloadService()` when running. |
-| `selectProxy(group, tag)` | Resolve the profile by name, write `selectedProxy` + `currentProfile`, broadcast `Action.SWITCH_PROFILE` so a running core switches instead of restarting, then reload the rows. |
-| `testGroup` / `testProxy` | `TestSessionClient.start(TestSpec(KIND_URL, ...))`; the results are persisted by `:bg` and arrive back through `ProfileManager.Listener`. |
-| `selectProfile` | `GroupRepo.setCurrent`; when stopped, the group's first member becomes the selection. |
-| `updateSubscription` | `SubscriptionQueue.refreshGroup(gid, showDiff = true)`. |
-| `deleteProfile` | `GroupRepo.delete` (its profiles go by the foreign key cascade). |
-| `openUrl` | `ACTION_VIEW` on the application context. |
-| `groups.visible(visible)` | `BboxGroupsWire` through `ThroneBoxBridge.setGroupsVisible` | `ready` and the one-second pump carry group **counts** only (`nodeCount`, `timeouts`). The Proxies screen turns rows on while it is open and off when it closes, so the largest payload the bridge builds only exists while a screen renders it. |
-| `groups.nodes` | `BboxGroupsWire.nodes` | The rule editor's outbound picker: every node's id and tag, flat, without the per-node rows of the catalog event. |
-
-## Outbound mode
-
-Throne has no `route.final` switch; a route profile's default outbound and rule list decide where traffic goes. The
-switch therefore rewrites the profile it hands to the config generator, in `CoreConfigs.buildMain`:
-
-* **Rule** — the profile exactly as saved (no allocation, the common path).
-* **Global** — the profile's rules are dropped and the default outbound becomes `proxy` (the started profile).
-* **Direct** — the same, with `direct` as the default outbound.
-
-The `hijack-dns` rule survives every mode: without it the core's own DNS requests would leave unhandled. The rewrite
-happens on a copy, so the stored profile and the desktop's `.thrbackup` files are never modified.
-
-## Lifecycle
-
-`SagerNet.onCreate` installs the bridge in the main process only. That is earlier than any activity, so the first
-frame already has the service state and the catalog; it also survives rotation, which the old per-fragment connection
-did not. `BboxFlutterActivity` therefore holds no backend state of its own — it registers the channel host and lets the
-Flutter screens read the flow.
-
-The `:bg` process is untouched: it still builds configs, runs the core and persists test results. `BboxMode` is read
-in `:bg` when a config is built, from the same shared preference table, so a start triggered by the tile or a shortcut
-honours the mode as well.
-
-### The FFI driver runs the core; the bridge steps aside for the control plane
-
-Since 3.3.0 the Dart driver owns the core again: `KernelService.initialize()` tells the bridge to stand aside
-(`ffi.mode`), opens `libthrone.so` in the worker isolate and drives start/stop/reload plus the status snapshot over
-the `throne_*` C ABI. The channel keeps the data plane — profile storage, `config.build`, subscriptions, test
-sessions — and Android duties (VpnService, notifications, the platform databases), exactly as ADR 0001 splits them.
-
-The driver still yields on its own when the rebuilt core is absent from the build: `ThroneKernel.isAvailable` is
-checked before `ffi.mode` is touched, so an AAR without the patch leaves `BaseService` starting `ProxyInstance`
-through gomobile and every control call on its channel branch. `kFfiDriverEnabled` in `kernel_service.dart` is the
-single switch for the whole path; turning it off restores the pre-3.3.0 operator without deleting the driver.
-
-### What the driver has to report back (FFI driver only)
-
-Four things the service used to do while it owned the core are now the driver's job, because they are answers only
-the running box can give:
-
-- **Running-config facts.** `state.markRunning` / `state.clearRunning` keep `DataStore.runningProfiles` and
-  `runningRouteId` in step with the box. `ProfileManager.runningUses` refuses to delete a node a running chain still
-  uses, and `RouteManager.runningRouteId` decides whether a group's routing change needs a reload; both read the
-  store, so a driver that never writes it silently disables two guards. The values come straight from `config.build`,
-  and they are written after `worker.start()` held — not when the config was built, which would leave stale facts
-  behind whenever the core refuses to come up.
-- **Domain resolution.** The diagnostics screen and its `dns.resolve` channel went away, and the AIDL method,
-  `DomainResolver` and the Dart driver path went with them. The C ABI's `Mobile.resolveDomains` stays in the core
-  patch (it is part of the throne_* surface, not something the UI owns); nothing calls it today. Subscription
-  filtering never needed any of this: its request carries a full test config, so the core builds a probe box when
-  no instance is passed.
-- **Wi-Fi rules.** The monitor has to live on the Android side (it owns the ConnectivityManager callback), but the
-  core that re-reads the SSID is Dart's. `wifi.watch` starts the monitor when the box says it needs Wi-Fi state;
-  each change comes back as a `wifi.state` event and the driver calls `Instance.updateWIFIState()`.
-- **Notification speed.** `TrafficLooper` needs a `ProxyInstance` for its `TrafficUpdater`, so in ffiMode it never
-  starts and the notification's speed line stays at zero. The driver pushes its status snapshot through
-  `state.stats` instead, which lands in the same `SpeedDisplayData` the looper would have produced.
-
-A service that comes up before Dart (START_STICKY, always-on VPN, a widget) has already built its own box by the time
-`ffi.mode` arrives. Two boxes on one tun fight over the same descriptor, so `BboxKernel.handOver()` stops the
-service-side one and restarts the service in place; the ffiMode branch keeps the notification and leaves the core to
-Dart, which rebuilds it from `KernelService.adoptService()` once the channel can answer `config.build`.
-
-### The heartbeat is a liveness question, not a data question (FFI driver only)
-
-`throne_status_snapshot` is polled once a second from the worker isolate. Reading the traffic counters can race a box
-that is closing, so the read is fenced; when it panics it answers `{"alive":1}` rather than an empty string. An empty
-answer used to mean "the kernel is gone" to the driver, which closed and reopened a tunnel that was still moving
-traffic — the start/restart loop. Before a miss is counted the worker now asks `throne_Instance_alive`, which is
-`started && !closed` on the box and cannot race the counters. Only a box that really stopped is recovered.
-
-Every lifecycle step writes a `[lifecycle] …` line into `core.log` (start, stop, reload with its reason and origin,
-heartbeat loss, start failure), and the service writes `[service] state -> …` on each transition. The log screen tails
-that same file, so a restart loop reads as a sequence instead of a mystery.
-
-## The data plane moves to Dart
-
-`sager_net.db` is opened by Room, and Room opens it with `WRITE_AHEAD_LOGGING` — `SagerDatabase` says so and names
-the reason: a reader in one process runs while the other writes. Nothing stops a third connection in the Dart isolate
-from doing the same, so the data plane does not need a protocol between the two sides. It needs a path, which Dart
-cannot derive (`/data/data/<pkg>/databases` requires a package name it does not have), so `data.path` answers once —
-on the first route-list read, not at startup — with the file and the schema version Room actually opened at, read
-from the file, not from the annotation, because a downgrade makes those two disagree.
-
-The library is the platform's own `libsqlite3.so` over `dart:ffi`, not `sqflite`. That is not a preference: this
-module's AAR cannot register plugins. `flutter build aar` publishes a `GeneratedPluginRegistrant` the host loads by
-reflection and **swallows** on failure, which is why `BboxFlutterActivity.registerScannerPlugin` exists at all. A
-`DynamicLibrary` has no registrant. `flutter/lib/data/sqlite.dart` is the whole binding.
-
-What is live today is one table's **read**: `route_profiles`, joined to `route_rules` for the two counts and to
-`settings` for `current_route_id`, through `RouteProfilesDao`. `RouteProfilesSource` prefers it on the route list and
-the route editor and falls back to `routes.list` over the channel on every failure — no `libsqlite3.so`, no
-`data.path` answer, an unexpected schema, a SQL error, or an empty table. The empty case is deliberate: on the host
-side `RouteManager.all()` would call `ensureDefault()` and **write** a profile, which a read-only Dart connection
-must never do. The SQL reproduces `BboxRoutes.list()`'s wire shape, so the fallback is invisible to the screen.
-
-`groups` (through `GroupsDao`) remains the un-wired vertical slice: it proves that a second connection lives beside
-Room's and pins the column names, but no screen calls it and release AOT tree-shakes it. The remaining tables
-(`profiles`, `SettingEntry`, `MarkerEntity`) follow the same shape, table by table, with writes only after reads are
-trusted on a device.
-
-Two rules keep this from drifting:
-
-- `schema_audit.py` compares `@Database(version = …)` with `roomSchemaVersion` in `db.dart` on every push, and also
-  column-checks every SELECT in `flutter/lib/data/*_dao.dart` against Room's exported schema JSON
-  (`app/schemas/…/<version>.json`). A version bump on one side alone still compiles and still queries — it just reads
-  the wrong column, silently; so does a migration that renames or drops a column the SQL mentions by name (the query
-  throws, `RouteProfilesSource` catches, and the channel answers forever with no report). Both now fail the push.
-- `DataLayer.attach` answers null for every failure (no library, no path, unexpected schema). A null means "keep using
-  the channel", the same contract `ThroneKernel.isAvailable` has on the kernel side.
-
-What stays on the channel is what Dart cannot reach: the platform (`VpnService`, notifications, the widget, SAF,
-`PackageManager`, Logcat) and the host's own state machine (`DataStore.serviceState`, `ProfileManager`'s caches).
-Neither is a gap in the migration — they are the parts that were never data.
-
-## Not wired yet
-
-These fall through the dispatch to the `unsupported` error. They are the B-box features Throne has
-no counterpart for (the manifest in `Capabilities.kt` is the single source of truth): `terminal`,
-`capture.*`, `remote.*`, `reports`, the `stun` / `quality` tools, `endpoints` (tailscale / openvpn /
-openconnect / usbip), `taildrop`, `perAppManaged` (no Shizuku-managed package list), `rootQuery`
-(packages come from PackageManager only), `dnsObject`, and `warp` as a dedicated page (WARP is
-configured through the core). `apps.permission` answers with a refusal rather than an absence: the
-list needs no Shizuku grant.
-
-Wired since the earlier drafts of this file: the connections and logs screens (`BboxApi.connections`
-over the clash API, `BboxLogs` over `CoreLog`), profile import (`addProfile` and the scanner/file
-flows) and the per-node probe (`dashboard.probe.*` with `dashboard.qualityCache.*`). The
-domain-resolution tool shipped here once and left with the diagnostics screen (see the driver note
-above).
-
-File payloads the platform hands the app land here too: `files.open` takes a `content://` or
-`file://` Uri and answers either with the `backup` envelope of a `.thrbackup` (the same shape
-`backup.create` returns, so the restore confirmation is the one the backup page uses) or with the
-editor's seed for a document, decided by the container's "THRN" magic rather than by its name.
+Both ends derive these names from the same `com.follow.clash` literal, so a rename has to move
+`flutter/lib/common/constant.dart` and `Components.kt` together.

@@ -77,7 +77,10 @@ dependencies {
     implementation(fileTree("libs"))
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
-    implementation("androidx.core:core-ktx:1.9.0")
+    // Pinned to 1.18.0 in the root build file: 1.19.1 (which the wifi_ssid plugin AAR requests)
+    // declares minAndroidGradlePluginVersion=9.1.0 and this build pins AGP 8.12.3. Keep these two
+    // numbers in step — lowering this one alone does nothing, the resolutionStrategy wins.
+    implementation("androidx.core:core-ktx:1.18.0")
     implementation("androidx.recyclerview:recyclerview:1.3.0")
     implementation("androidx.activity:activity-ktx:1.10.1")
     implementation("androidx.fragment:fragment-ktx:1.5.6")
@@ -89,6 +92,9 @@ dependencies {
 
     implementation("com.google.android.material:material:1.8.0")
     implementation("com.google.code.gson:gson:2.9.0")
+    implementation("com.android.tools.smali:smali-dexlib2:3.0.10") {
+        exclude(group = "com.google.guava", module = "guava")
+    }
 
     implementation("com.github.jenly1314:zxing-lite:2.1.1")
     // 0.24.x now matches the host's Kotlin 2.2 toolchain, but still needs a separate editor regression pass.

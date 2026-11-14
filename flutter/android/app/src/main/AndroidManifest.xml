@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The host application module of the committed Android host for this Flutter module.
+
+  Nothing installs this app: `flutter build aar` publishes the `:flutter` library and
+  the plugin AARs, and the real host is the Gradle project at the repository root
+  (`app/`), which links `io.flrone.ui:flutter_release:1.0`. This module exists because
+  the Flutter Gradle plugin requires a host app project named `:app` in a module build
+  (`addFlutterTasks`, the "Flutter host module project (Add-to-app)" branch): it hangs
+  the Flutter asset-merge dependency off
+  `:$hostAppProjectName:merge<variant>Assets`. Without `:app`, configuring `:flutter`
+  fails with "Project :app doesn't exist".
+
+  The content is the Flutter template's
+  `templates/module/android/host_app_common/app.tmpl` verbatim: a bare
+  `FlutterActivity`, launch theme, and the INTERNET permission the engine needs.
+-->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+          package="io.flrone.ui.host">
+
+    <!-- The INTERNET permission is required for development. Specifically,
+         flutter needs it to communicate with the running application
+         to allow setting breakpoints, to provide hot reload, etc.
+    -->
+    <uses-permission android:name="android.permission.INTERNET"/>
+
+    <application
+        android:label="fl_clash"
+        android:icon="@mipmap/ic_launcher">
+        <activity
+            android:name=".MainActivity"
+            android:launchMode="singleTop"
+            android:theme="@style/LaunchTheme"
+            android:exported="true"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+        </activity>
+        <!-- Don't delete the meta-data below.
+             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+    </application>
+    <!-- Required to query activities that can process text, see:
+         https://developer.android.com/training/package-visibility and
+         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
+
+         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+    </queries>
+</manifest>

@@ -2,9 +2,11 @@
 # Copyright 2026 Flrone. All rights reserved.
 """Drift detector between the vendored Prism UI copy and upstream chen08209/prism_ui.
 
-The Flrone Flutter UI under ``flutter/lib/ui`` vendors a fork of
-``chen08209/prism_ui``. This tool measures how far the vendored copy has drifted
-from the upstream commit it was actually taken from, so a sync is a decision
+The vendored copy lives in the ``prism_ui`` Flutter plugin
+(``flutter/plugins/prism_ui/lib``): FlClash's whole UI is built on this kit, and the
+UI migration moved the fork from ``flutter/lib/ui`` to a real path-dependency so the
+package imports resolve as upstream's do. This tool measures how far that copy has
+drifted from the upstream commit it was actually taken from, so a sync is a decision
 with evidence behind it instead of a manual diff.
 
 Two artifacts live next to this script:
@@ -62,10 +64,15 @@ REPO_ROOT = HERE.parent.parent
 LOCK_PATH = HERE / "prism_upstream.lock.json"
 MANIFEST_PATH = HERE / "prism_upstream.manifest.json"
 
-DEFAULT_LOCAL = REPO_ROOT / "flutter" / "lib" / "ui"
+DEFAULT_LOCAL = REPO_ROOT / "flutter" / "plugins" / "prism_ui" / "lib"
 DEFAULT_UPSTREAM_REPO = "https://github.com/chen08209/prism_ui.git"
 
 # Package prefixes that mean the same thing on each side of the fork.
+# `package:flrone/ui/` is the name the fork used before the FlClash UI migration; the
+# vendored copy now imports `package:prism_ui/` like upstream. Deliberately NOT
+# including the host app's own package: an accidental `package:fl_clash/ui/` import
+# inside the plugin would be a circular dependency, and normalizing it away would
+# hide exactly that mistake.
 _PACKAGE_PREFIXES = ("package:prism_ui/", "package:flrone/ui/")
 _PACKAGE_SENTINEL = "package:__PRISM_UI__/"
 # `packages/prism_ui/shaders/x.frag` upstream, `shaders/x.frag` once vendored.
@@ -153,8 +160,8 @@ def write_lock(commit_meta: dict, ref: str, previous: dict) -> None:
         },
         "note": (
             "Pinned baseline for Prism UI drift detection: the upstream commit the "
-            "vendored copy under flutter/lib/ui was taken from. Regenerate with "
-            "`prism_drift.py snapshot --upstream <checkout>` only after a real sync, "
+            "vendored copy under flutter/plugins/prism_ui/lib was taken from. Regenerate "
+            "with `prism_drift.py snapshot --upstream <checkout>` only after a real sync, "
             "and update reviewed_upstream by hand when the `upstream` mode is re-run."
         ),
         "manifest": "prism_upstream.manifest.json",

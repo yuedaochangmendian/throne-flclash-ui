@@ -1,16 +1,16 @@
-include: package:flutter_lints/flutter.yaml
+include: lint_options.yaml
+
 analyzer:
   exclude:
-    - lib/ui/generated/**
-    # Generated FFI bindings: lint rules are enforced on the generator template
-    # instead (tools/bindgen/bindgen.py), not waived file-wide.
-    - lib/core/throne_ffi.dart
     - build/**
+    - lib/l10n/intl/**
+    - lib/**/generated/**
+    - plugins/**
     - android/**
     - ios/**
-
-linter:
-  rules:
-    # The vendored prism layer keeps constructor bodies readable with named
-    # parameters; upstream does not enforce this rule either.
-    prefer_initializing_formals: false
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
+  errors:
+    invalid_annotation_target: ignore

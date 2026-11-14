@@ -1,4 +1,3 @@
-import 'package:material_ui/material_ui.dart' as material;
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter, lerpDouble;
 
@@ -6,8 +5,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/physics.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import 'package:flrone/ui/icons/icons.dart';
-import 'package:flrone/ui/prism_ui.dart';
+import 'package:prism_ui/icons/icons.dart';
+import 'package:prism_ui/prism_ui.dart';
 
 part 'scaffold_actions.dart';
 part 'scaffold_search.dart';
@@ -841,8 +840,7 @@ class ScaffoldState extends State<Scaffold>
     final docked = form.dockedSearch;
     return PrismScaffold(
       bar: _buildAppBar(backAction, form),
-      body: material.Material(type: material.MaterialType.transparency,
-        child: SortModeScope(sorting: _sorting, child: widget.body)),
+      body: SortModeScope(sorting: _sorting, child: widget.body),
       headerListenable: keywords,
       headerBuilder: keywords == null
           ? null

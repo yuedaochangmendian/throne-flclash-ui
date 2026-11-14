@@ -1,7 +1,7 @@
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import 'package:flrone/ui/icons/icons.dart';
-import 'package:flrone/ui/prism_ui.dart';
+import 'package:prism_ui/icons/icons.dart';
+import 'package:prism_ui/prism_ui.dart';
 
 sealed class _ListItemAction {
   const _ListItemAction();
@@ -56,7 +56,6 @@ final class _InputAction extends _ListItemAction {
   final String title;
   final String value;
   final String? suffixText;
-  final String? hintText;
   final ValueChanged<String?> onChanged;
   final FormFieldValidator<String>? validator;
   final int? maxLength;
@@ -68,7 +67,6 @@ final class _InputAction extends _ListItemAction {
     required this.value,
     this.suffixText,
     required this.onChanged,
-    this.hintText,
     this.resetValue,
     this.validator,
     this.maxLength,
@@ -157,7 +155,6 @@ class ListItem<T> extends StatelessWidget {
     required String dialogTitle,
     required String value,
     String? suffixText,
-    String? hintText,
     required ValueChanged<String?> onChanged,
     FormFieldValidator<String>? validator,
     int? maxLength,
@@ -171,7 +168,6 @@ class ListItem<T> extends StatelessWidget {
          title: dialogTitle,
          value: value,
          suffixText: suffixText,
-         hintText: hintText,
          onChanged: onChanged,
          validator: validator,
          maxLength: maxLength,
@@ -332,15 +328,6 @@ class ListItem<T> extends StatelessWidget {
         return _buildRow(
           context,
           position: position,
-          // The stored value stays readable on the row; the dialog edits it.
-          trailing: inputDelegate.value.isEmpty
-              ? null
-              : Text(
-                  inputDelegate.value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: context.colorScheme.onSurfaceVariant),
-                ),
           onTap: () async {
             final value = await showFloatingDialog<String>(
               context: Navigator.of(context, rootNavigator: true).context,
@@ -348,7 +335,6 @@ class ListItem<T> extends StatelessWidget {
                 title: inputDelegate.title,
                 value: inputDelegate.value,
                 suffixText: inputDelegate.suffixText,
-                hintText: inputDelegate.hintText,
                 resetValue: inputDelegate.resetValue,
                 inputFormatters: inputDelegate.maxLength == null
                     ? null

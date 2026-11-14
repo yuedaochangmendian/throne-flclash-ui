@@ -1,13 +1,10 @@
-// Adapted from FlClash v0.9.2 lib/common/ip_quality.dart (GPL-3.0).
-// Provider order, response parsing, inferred fallback and quality rules are
-// preserved; requests use a cancellable sing-box transport instead of Dio.
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'ip_probe.dart';
-import 'ip_quality_models.dart';
 
-export 'ip_quality_models.dart';
+import 'package:dio/dio.dart';
+import 'package:fl_clash/enum/enum.dart';
+import 'package:fl_clash/models/models.dart';
 
 typedef IpQualityFailure = ({
   IpQualitySource source,
@@ -16,17 +13,20 @@ typedef IpQualityFailure = ({
 
 class IpQualityLookupException implements Exception {
   const IpQualityLookupException(this.failures);
+
   final List<IpQualityFailure> failures;
-  @override String toString() => 'IP quality unavailable';
 }
 
 class _SourceFailure implements Exception {
   const _SourceFailure(this.status);
+
   final IpQualitySourceStatus status;
 }
 
 typedef _Answer = ({IpQuality quality, bool inferred});
 
+/// A later wave only starts while the earlier ones are still unanswered, so
+/// the sources with the tightest free quotas are asked last and rarely.
 const _waves = [
   [IpQualitySource.identMe, IpQualitySource.ipApiCom, IpQualitySource.ipQuery],
   [IpQualitySource.ipLocate],
@@ -35,21 +35,29 @@ const _waves = [
 ];
 
 Future<IpQuality> lookupIpQuality(
-  IpProbeTransport transport,
+  Dio dio,
   String ip, {
+  required CancelToken cancelToken,
   Duration timeout = const Duration(seconds: 8),
   Duration hedge = const Duration(seconds: 1),
-}) => _Lookup(transport, ip, timeout, hedge).run();
+}) {
+  return _Lookup(dio, ip, cancelToken, timeout, hedge).run();
+}
 
 class _Lookup {
-  _Lookup(this.transport, this.ip, this.timeout, this.hedge);
-  final IpProbeTransport transport;
+  _Lookup(this.dio, this.ip, this.cancelToken, this.timeout, this.hedge);
+
+  final Dio dio;
   final String ip;
-  final Duration timeout, hedge;
+  final CancelToken cancelToken;
+  final Duration timeout;
+  final Duration hedge;
+
   final _completer = Completer<IpQuality>();
   final _failures = <IpQualityFailure>[];
   IpQuality? _fallback;
-  int _wave = 0, _inFlight = 0;
+  int _wave = 0;
+  int _inFlight = 0;
   Timer? _timer;
 
   Future<IpQuality> run() {
@@ -59,27 +67,36 @@ class _Lookup {
 
   void _launch() {
     _timer?.cancel();
-    if (_completer.isCompleted) return;
-    if (transport.cancelled) { _cancel(); return; }
-    if (_wave == _waves.length) { _settle(); return; }
+    if (_completer.isCompleted) {
+      return;
+    }
+    if (_wave == _waves.length) {
+      _settle();
+      return;
+    }
     final sources = _waves[_wave++];
     _inFlight += sources.length;
     for (final source in sources) {
-      unawaited(_query(transport, source, ip, timeout)
-        .then(_onAnswer, onError: (Object error) => _onError(source, error)));
+      unawaited(
+        _query(
+          dio,
+          source,
+          ip,
+          cancelToken,
+          timeout,
+        ).then(_onAnswer, onError: (Object error) => _onError(source, error)),
+      );
     }
-    if (_wave < _waves.length) _timer = Timer(hedge, _launch);
-  }
-
-  void _cancel() {
-    _timer?.cancel();
-    if (!_completer.isCompleted) _completer.completeError(const IpProbeCancelled());
+    if (_wave < _waves.length) {
+      _timer = Timer(hedge, _launch);
+    }
   }
 
   void _onAnswer(_Answer answer) {
     _inFlight--;
-    if (_completer.isCompleted) return;
-    if (transport.cancelled) { _cancel(); return; }
+    if (_completer.isCompleted) {
+      return;
+    }
     if (answer.inferred) {
       _fallback ??= answer.quality;
       _advance();
@@ -87,66 +104,87 @@ class _Lookup {
     }
     _timer?.cancel();
     _completer.complete(answer.quality);
-    unawaited(transport.close());
+    cancelToken.cancel();
   }
 
   void _onError(IpQualitySource source, Object error) {
     _inFlight--;
-    if (_completer.isCompleted) return;
-    if (transport.cancelled) { _cancel(); return; }
+    if (_completer.isCompleted) {
+      return;
+    }
     _failures.add((source: source, status: _statusOf(error)));
     _advance();
   }
 
-  void _advance() { if (_inFlight == 0) _launch(); }
+  void _advance() {
+    if (_inFlight == 0) {
+      _launch();
+    }
+  }
 
   void _settle() {
-    if (_inFlight > 0) return;
+    if (_inFlight > 0) {
+      return;
+    }
     final fallback = _fallback;
     if (fallback != null) {
       _completer.complete(fallback);
-    } else {
-      _failures.sort((a, b) => a.source.index.compareTo(b.source.index));
-      _completer.completeError(IpQualityLookupException(_failures));
+      return;
     }
-    unawaited(transport.close());
+    _failures.sort((a, b) => a.source.index.compareTo(b.source.index));
+    _completer.completeError(IpQualityLookupException(_failures));
   }
 }
 
 Future<_Answer> _query(
-  IpProbeTransport transport,
+  Dio dio,
   IpQualitySource source,
   String ip,
+  CancelToken cancelToken,
   Duration timeout,
 ) async {
-  final response = await transport.get(_urlOf(source, ip), timeout).timeout(timeout);
-  if (response.status == HttpStatus.tooManyRequests) {
+  final response = await dio
+      .get<String>(
+        _urlOf(source, ip),
+        cancelToken: cancelToken,
+        options: Options(
+          responseType: ResponseType.plain,
+          validateStatus: (_) => true,
+        ),
+      )
+      .timeout(timeout);
+  if (response.statusCode == HttpStatus.tooManyRequests) {
     throw const _SourceFailure(IpQualitySourceStatus.rateLimited);
   }
-  if (response.status != HttpStatus.ok) {
+  if (response.statusCode != HttpStatus.ok) {
     throw const _SourceFailure(IpQualitySourceStatus.failed);
   }
-  final json = jsonDecode(response.body) as Map<String, dynamic>;
+  final json = jsonDecode(response.data ?? '') as Map<String, dynamic>;
   final answer = _parse(source, ip, json);
-  if (answer == null) throw const _SourceFailure(IpQualitySourceStatus.noType);
+  if (answer == null) {
+    throw const _SourceFailure(IpQualitySourceStatus.noType);
+  }
   return answer;
 }
 
-IpQualitySourceStatus _statusOf(Object error) => switch (error) {
-  _SourceFailure(:final status) => status,
-  TimeoutException() => IpQualitySourceStatus.timeout,
-  _ => IpQualitySourceStatus.failed,
-};
+IpQualitySourceStatus _statusOf(Object error) {
+  return switch (error) {
+    _SourceFailure(:final status) => status,
+    TimeoutException() => IpQualitySourceStatus.timeout,
+    DioException(
+      type: DioExceptionType.connectionTimeout ||
+          DioExceptionType.sendTimeout ||
+          DioExceptionType.receiveTimeout,
+    ) =>
+      IpQualitySourceStatus.timeout,
+    _ => IpQualitySourceStatus.failed,
+  };
+}
 
 String _urlOf(IpQualitySource source, String ip) {
   return switch (source) {
     IpQualitySource.identMe => 'https://ident.me/json',
-    // ip-api.com's free endpoint is HTTP-only: HTTPS answers 403 with "SSL
-    // unavailable for this endpoint" (verified live, not a maybe). Cleartext is
-    // the same trade the egress lookup's ip-api provider already makes — the
-    // reply carries no secret (what leaks is that this device asked about its
-    // own egress IP); what cleartext gives up is integrity, and a forged answer
-    // only mislabels the quality card, which nothing downstream acts on.
+    // ip-api.com serves HTTPS only on its paid plan.
     IpQualitySource.ipApiCom =>
       'http://ip-api.com/json/$ip?fields=status,isp,org,as,mobile,proxy,hosting',
     IpQualitySource.ipQuery => 'https://api.ipquery.io/$ip?format=json',

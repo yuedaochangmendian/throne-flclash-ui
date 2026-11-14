@@ -58,6 +58,9 @@ rosemoe 的独立升级仍属 U3。`tools/diagnostics/scan_aar_apis.py` 继续�
   stdlib/coroutines 版本提供的 API。force 消失后，Flutter 侧仍会先行引用更新的 Kotlin
   API——门禁继续挡住这类不对称；参考基线已随宿主更新为 stdlib 2.4.10 / coroutines 1.11.0。
 - `tools/diagnostics/channel_audit.py`：与工具链无关，但每次升级都必须绿。
+- `flutter analyze --fatal-infos`：CI（`.github/workflows/ci.yml`）带该参数运行，模块当前零告警。
+  历史上那批 info 级存量（约 167 条，多为 test 的 `curly_braces` / `unnecessary_import`）已在
+  M3 清零——不存在的「CI 不阻塞 info」不构成放宽 lint 的理由，升级后仍需保持零告警。
 
 ## 不在本文件内
 

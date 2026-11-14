@@ -1,195 +1,157 @@
-# B-box's interface on Throne
+# The Flutter module
 
-> Status 2026-11-03: current. `Capabilities.kt` is the source of truth for what exists; `tools/diagnostics/channel_audit.py` (wired into CI) enforces the Dart/Kotlin contract on every push.
+> Status 2026-11-14: rewritten after the migration to upstream FlClash v0.9.3. The old
+> `io.flrone/box` + `io.flrone/events` contract, `BoxController` (`flutter/lib/box.dart`) and
+> `ThroneBoxBridge.kt` are **deleted**; `flutter/flclash-manifest.json` (the v0.9.2 per-file
+> vendoring record) is deleted too.
 
-The app runs **B-box's own Flutter interface** over Throne's backend. `flutter/` starts as a copy of
-`giturass/B-box`'s `flutter/` module (FlClash 0.9.2 presentation, M3 Expressive) — 97 files vendored
-unchanged and 34 adapted, all recorded with hashes in `flclash-manifest.json`. On top of that the
-port carries its own Dart code (the manifest's `ownFiles` partition: the channel client, the pages
-Throne adds — routes, settings, logs — and the capability-gated shells), plus the Android host that
-answers the channels the screens call. Claims of "nothing on the Dart side was rewritten" describe
-the vendored subset only.
+`flutter/` is a whole-tree fork of [FlClash v0.9.3](https://github.com/chen08209/FlClash)
+(`be84736605527034689c95bf27828ff27d912c5e`, tag `v0.9.3`), not a file-by-file vendoring: `lib/`,
+`test/`, `arb/`, `assets/`, `plugins/`, `tool/`, `shaders/`, `build.yaml`, `build_config.yaml` and
+`pubspec.yaml` all come from upstream, and the Dart package is still `fl_clash`. Throne supplies the
+runtime underneath; FlClash's own Riverpod/Drift application layer, pages and views are the app's
+interface, and no Throne page tree is left.
 
-> **Build status.** The debug AAR builds and links. `flutter build aar --debug` produced
-> `flutter/build/host/outputs/repo` (this workspace also copied the `io.flutter` engine artifacts from the Gradle
-> cache into that repo, so the host app resolves them offline). Building it on a constrained network needs
-> `FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn`, `kotlin.incremental=false` +
-> `kotlin.incremental.useClasspathSnapshot=false` (the plugin's Pub cache lives on another drive than the build
-> tree), and `kotlin.compiler.execution.strategy=in-process`. See *Build* below.
+## What was changed locally
 
-## Why a channel host instead of a rewrite
+Eight files differ from upstream, plus one new file — that is the whole adaptation:
 
-B-box's screens talk to Android through two channels and nothing else:
+| File | Change |
+| --- | --- |
+| `flutter/lib/bootstrap.dart` | On Android the profile list comes from Throne's repository (`coreController.listThroneProfiles()`) instead of Drift |
+| `flutter/lib/common/http.dart` | `initCertificate` returns early on Android — Throne trusts the platform store and vendors no mihomo CA bundle |
+| `flutter/lib/core/controller.dart` | `initGeo()` is skipped on Android (there is no bundled geodata to load) |
+| `flutter/lib/core/core.dart` | Exports the new `throne_profiles.dart` |
+| `flutter/lib/core/method.dart` | Adds the four `throneProfile*` wire names |
+| `flutter/lib/core/throne_profiles.dart` | **New file** — the typed client for `throne.profile.list/save/update/delete`, mapping a Throne group to a FlClash `Profile` |
+| `flutter/lib/providers/actions/profiles.dart` | Profile update goes to the native repository on Android and re-reads the native list |
+| `flutter/lib/providers/database.dart` | `profilesStream` polls the native rows on Android and merges Drift's custom profiles in as an overlay |
+| `flutter/pubspec.yaml` | `module:` config (`androidPackage: io.flrone.ui`), the `prism_ui` / `setup` / `rust_api` path deps, `hooks.user_defines` (`setup: build_assets: false`, `rust_api: build_assets: true`), and the mihomo CA-bundle asset removed |
 
-| Channel | Direction | Used for |
+`flutter/lib/ui/` is **not** a vendored Prism UI copy any more: it is FlClash's own thin adapter over
+the `prism_ui` package (it re-exports `package:prism_ui/prism_ui.dart` and adds a handful of app
+widgets). The upstream package itself lives at `flutter/plugins/prism_ui/lib` as a path dependency —
+see `docs/prism-upstream.md`.
+
+## Channels
+
+The device talks to Android through upstream's four platform plugins, registered in
+`app/src/main/java/io/throne/bbox/flutter/BboxFlutterActivity.kt`; the names come from
+`com.follow.clash` on both ends:
+
+| Channel | Kind | Where |
 | --- | --- | --- |
-| `io.flrone/box` | Dart → Android | `ready`, `service.start/stop/reload`, `mode.set`, `groups.select/test`, `profiles.*`, `preferences.set`, `settings.get/set/patch`, `url.open`, … |
-| `io.flrone/events` | Android → Dart | `dashboard`, `rates`, `profiles`, `groups`, `settings`, `preferences`, `error`, `applyRequired`, … |
+| `com.follow.clash/app` | MethodChannel | `flutter/lib/plugins/app.dart` ↔ `AppPlugin` |
+| `com.follow.clash/battery` | MethodChannel | `flutter/lib/plugins/battery.dart` ↔ `BatteryPlugin` |
+| `com.follow.clash/battery/optimization` | EventChannel | same pair — the exemption state |
+| `com.follow.clash/service` | MethodChannel | `flutter/lib/plugins/service.dart` ↔ `ServicePlugin` (`init`, `shutdown`, `start`, `stop`, `getRunTime`, `syncState`, plus the `event` push) |
+| `com.follow.clash/core` | MethodChannel | the same `Service` transport ↔ `ServicePlugin` → `ThroneCore` (`invokeMethod` carrying the JSON request) |
+| `com.follow.clash/tile` | MethodChannel | `flutter/lib/plugins/tile.dart` ↔ `TilePlugin` |
 
-`BoxController` (`flutter/lib/box.dart`) is the only consumer, so implementing those two channels is what makes the
-whole interface work — dashboard, proxies, profiles, tools and settings included. That is what
-`app/src/main/java/io/throne/bbox/flutter/ThroneBoxBridge.kt` does.
+The Core wire protocol these carry, and the `ThroneCore.kt` that answers it, is documented in
+`docs/bbox-bridge.md`. There is no page-level channel and nothing that corresponds to the deleted
+`ready` handshake: the UI calls `core.init` through `ServicePlugin`, and the bootstrap waits for
+`CoreLib.start()` rather than for a first-frame plugin answer.
 
 ## Layout
 
 ```
-flutter/                     B-box's Flutter module (assets, shaders, 189 Dart files)
-  pubspec.yaml               module: androidPackage io.flrone.ui
-  build/host/outputs/repo/   the local Maven repo `flutter build aar` writes
+flutter/                       FlClash v0.9.3, whole tree
+  lib/                         the application (bootstrap, pages, views, providers, core, database)
+  plugins/prism_ui/            the UI kit as an upstream package (path dependency)
+  plugins/{setup,rust_api,...} upstream platform plugins; their build hooks live under hook/
+  core/README.md               marks the repository root for the setup hook (no mihomo core here)
+  build/host/outputs/repo/     the local Maven repo `flutter build aar` writes (gitignored)
 
-app/src/main/java/io/throne/bbox/
-  bridge/                    the state and action layer (see docs/bbox-bridge.md)
-  flutter/ThroneBoxBridge.kt the channel host: state out, actions in
-  flutter/BboxFlutterActivity.kt  FlutterFragmentActivity + engine registration
+app/src/main/java/
+  com/follow/clash/            the four FlClash platform plugins (+ the models they need)
+  io/throne/bbox/corehost/     ThroneCore.kt (the Core protocol) + ThroneServiceController.kt
+  io/throne/bbox/bridge/       the six runtime helpers (see docs/bbox-bridge.md)
+  io/throne/bbox/flutter/      BboxFlutterActivity.kt — plugin registration only
 ```
 
-`BboxFlutterActivity` is the launcher. It registers `ThroneBoxBridge` in `configureFlutterEngine`, which runs before
-the first frame, so `BoxController.initialize()` gets a real `ready` answer instead of a missing plugin.
+`BboxFlutterActivity` is the launcher (and the leanback launcher). It registers the four plugins in
+`configureFlutterEngine`, then calls `CrashHandler.noteStarted()` to return the crash budget, and
+holds no backend state of its own.
 
 ## Build
 
 ```bash
 cd flutter
-flutter create --template=module --project-name flrone --org io.flrone .   # once: writes .android/
 flutter pub get
-FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn flutter build aar      # debug + release
+flutter build aar --no-debug --no-profile     # the release AAR the host links
 ```
 
-Things that bite, and their fixes:
+The host links `io.flrone.ui:flutter_release:1.0` (a plain `implementation`, not a
+`debugImplementation`/`releaseImplementation` pair): the debug AAR ships the JIT engine and Dart as
+interpreted kernel, which is ~150 MB of APK for hot reload this host never exercises. No `flutter`
+command is needed to build the app afterwards — only after Dart changes.
 
-* The module ships without an `android/` (or `.android/`) project, so `flutter create --template=module` has to run
-  once first; without it Gradle walks up and finds the host app's `settings.gradle.kts` and refuses the build.
-* `flutter build aar` must run where no parent `settings.gradle.kts` shadows it. Building a copy outside the repo and
-  copying `build/host/outputs/repo` back works.
-* The Gradle wrapper pulls `gradle-9.3.1-all.zip` from `services.gradle.org`, which redirects to GitHub; where GitHub
-  is unreachable, pre-seed `$GRADLE_USER_HOME/wrapper/dists/gradle-9.3.1-all/<hash>/` from a mirror instead.
+### Prerequisites
+
+* **Flutter 3.47.x** — CI pins `3.47.9` (`.github/actions/android-build/action.yml`).
+* **Rust 1.99.0** plus the Android targets `aarch64-linux-android`,
+  `armv7-linux-androideabi`, `x86_64-linux-android`
+  (`flutter/plugins/rust_api/rust/rust-toolchain.toml`). The `rust_api` build hook runs
+  cargo/bindgen, so `flutter build aar` also needs **libclang**; on Windows the NDK ships no libclang
+  shared library, so a pip `libclang` wheel plus `LIBCLANG_PATH` is what works (the hook's own
+  comment explains why). MinGW is the GNU toolchain the hook expects on Windows.
+* **NDK 28.2.13676358** — the app's `ndkVersion` (`buildSrc/src/main/kotlin/Helpers.kt`). Without it
+  the strip task cannot find `llvm-strip`, and every native library ships with its debug symbols.
+* **compileSdk 37, targetSdk 35, minSdk 24** — `Helpers.kt`. The Flutter AAR declares
+  `minCompileSdk=37`, so the host must compile against 37 while `targetSdk` stays 35.
+* **`flutter/core/`** — `flutter/core/README.md` exists only so the `setup` hook's repository probe
+  (`setup_hooks/CoreBuilder.repositoryRoot`) finds `<repo>/core/` before it honours
+  `build_assets: false`. This fork vendors no mihomo core.
+* **Build hooks** — `flutter/pubspec.yaml` sets `hooks.user_defines`: `setup.build_assets: false`
+  (nothing to build; the proxy core is Throne's sing-box/Xray runtime) and
+  `rust_api.build_assets: true` (the Rust bridge is built).
+
+### Things that bite
+
+* `flutter build aar` must run where no parent `settings.gradle.kts` shadows it; the module has its
+  own generated `.android/` project, and `flutter create --template=module` has to run once if that
+  directory is missing.
 * Engine artifacts (`io.flutter:flutter_embedding_*`, `io.flutter:<abi>_<mode>`) come from
-  `https://storage.flutter-io.cn/download.flutter.io` (or `storage.googleapis.com/download.flutter.io`). On a slow
-  network set `FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn` before building. If the consuming app must
-  resolve offline, copy those artifacts from the Gradle cache into the local repo's `io/flutter/` tree — the POM of
-  `flutter_debug`/`flutter_release` depends on them.
-* On Windows, if the plugin's Pub cache (e.g. `mobile_scanner`) is on a different drive than the build tree, Kotlin
-  incremental compilation fails with `this and base files have different roots`; set `kotlin.incremental=false` and
-  `kotlin.incremental.useClasspathSnapshot=false` in the module's `gradle.properties`. If the Kotlin daemon then
-  hangs ("No compile task"), also set `kotlin.compiler.execution.strategy=in-process`.
-* Network-bound Gradle dependency resolution is much faster with Aliyun mirrors (`maven.aliyun.com/repository/…`)
-  in the module's `.android/settings.gradle`.
-
-The AAR lands in `flutter/build/host/outputs/repo`; `repositories.gradle.kts` already points Gradle at it (plus the
-engine fallback mirrors). `app/build.gradle.kts` depends on `io.flrone.ui:flutter_release` — a plain
-`implementation`, not a `debugImplementation`/`releaseImplementation` pair. Every variant links the release AAR,
-because the debug one ships the JIT engine and Dart as interpreted kernel, which is ~150 MB of APK buying hot reload
-that this host never exercises (the Dart lives in the module and is developed there). No `flutter` command is needed
-to build the app afterwards, only after the Dart side changes.
-
-> **`--release` from now on.** Only the release AAR is consumed, so `flutter build aar` has produced one artifact too
-> many. Keeping the debug copy published costs nothing at build time, but nothing needs it either.
-
-> **Always `clean` after changing this dependency.** Switching which AAR is linked leaves Gradle's incremental
-> packaging producing APKs padded with tens of MB of zero bytes between entries — 96.86 MB reported where the real
-> content was 60.38 MB. `stat` and the sum of ZIP entry sizes disagreeing is the tell; `:app:clean` clears it.
+  `https://storage.flutter-io.cn/download.flutter.io` (or `storage.googleapis.com`). If the consuming
+  app must resolve offline, copy them from the Gradle cache into the local repo's `io/flutter/`
+  tree — `repositories.gradle.kts` already lists both mirrors as fallbacks.
+* On Windows, if the Pub cache is on a different drive than the build tree, Kotlin incremental
+  compilation fails with `this and base files have different roots`; set
+  `kotlin.incremental=false` and `kotlin.incremental.useClasspathSnapshot=false`, and if the daemon
+  then hangs, `kotlin.compiler.execution.strategy=in-process`.
+* **Always `clean` after changing which AAR is linked.** Gradle's incremental packaging otherwise
+  produces APKs padded with tens of MB of zero bytes between entries; `stat` disagreeing with the sum
+  of ZIP entry sizes is the tell.
 
 ### Version constraints between the module and the host
 
-The Flutter toolchain and Throne's are pinned differently, and both sides have to give way where they can:
-
 | Where | Constraint |
 | --- | --- |
-| `flutter/.android/settings.gradle` | Flutter's Gradle plugin requires AGP >= 8.11.1 and KGP >= 2.2.20 (`DependencyVersionChecker`), so the module builds with AGP 9.1.0 / Kotlin 2.2.20 — Kotlin 2.4.0 from the template would also work but produces newer metadata than needed. |
-| `app` (`buildSrc/…/Helpers.kt`) | `compileSdk = 36` because every AAR published above declares `minCompileSdk=36`; `targetSdk` stays 35. |
-| `buildSrc/build.gradle.kts` + Gradle wrapper | The host uses AGP 8.12.3 / Gradle 8.13, satisfying both CameraX 1.6.1's minimum AGP requirement (8.9.1) and KSP 2.3.13's minimum AGP requirement (8.12). |
-| `app` (`buildSrc/…/Helpers.kt`) | Kotlin 2.4.10 reads the 2.4.0 metadata that `mobile_scanner_release` was compiled with; `-Xskip-metadata-version-check` is no longer needed or allowed. |
-| `app/build.gradle.kts` | No dependency `force` remains: CameraX 1.6.1, Kotlin stdlib 2.4.10 and coroutines 1.11.0 resolve normally. CI still scans the Flutter AAR for API references missing from those host versions. |
-
-Put together, that means a rebuild after touching anything under `flutter/lib/` looks like:
-
-```bash
-FLUTTER_STORAGE_BASE_URL=https://storage.flutter-io.cn flutter build aar --debug   # inside the module copy
-cp -r <module copy>/build/host/outputs/repo/. throne-src/flutter/build/host/outputs/repo/
-# then re-publish io/flutter engine artifacts from ~/.gradle if the local repo was wiped
-```
-
-## What the host maps
-
-| Channel call | Throne |
-| --- | --- |
-| `ready` | `BboxBridge.state` + `BboxCatalog` → the bootstrap map the UI expects |
-| `service.start` / `service.stop` | `BboxCommands.toggleService()` / `SagerNet.stopService()` |
-| `service.reload` | `SagerNet.reloadService()` |
-| `mode.set` | `BboxCommands.setMode` (the routing-profile rewrite in `BboxMode`) |
-| `groups.select` | `BboxCommands.selectProxy`, which broadcasts `Action.SWITCH_PROFILE` for a hot switch |
-| `groups.test` | `TestSessionClient` with `TestSpec(KIND_URL, …)` |
-| `profiles.select` / `profiles.delete` | `GroupRepo.setCurrent` / `GroupRepo.delete` |
-| `preferences.set` | a `bbox_ui` `SharedPreferences` file, as B-box keeps its own |
-| `settings.get/set/patch` | `DataStore.proxyApps`, `DataStore.bypass`, … |
-| `url.open` | `ACTION_VIEW` |
-
-Events are pushed by diffing `BboxBridge.state`: `dashboard` and `rates` when the status, totals or speed change,
-`profiles` and `groups` when the catalog changes. The UI's own throttling (30 samples, `sampleRevision`) is untouched.
-
-## Not wired yet
-
-These answer with an `unsupported` error, which the UI shows as a snackbar. All are B-box features
-Throne has no counterpart for; `Capabilities.kt` is the single source of truth and prunes the
-navigation accordingly:
-
-`terminal`, `capture.*` (request debugging), `remote.*`, `reports`, the `stun` / `quality` tools,
-`endpoints` (tailscale / openvpn / openconnect / usbip), `taildrop`, `perAppManaged` (no
-Shizuku-managed package list), `rootQuery` (packages come from PackageManager only), the `dnsObject`
-editor, and `warp` as a dedicated page (WARP is configured through the core). `apps.permission`
-refuses with an explanation rather than being absent: the list needs no Shizuku grant.
-
-Everything else answers: `webdav.*`, `backup.*`, `apps.list` / `apps.icon`, `connections.*`,
-`logs.*`, `updates.check`, `dashboard.probe.*` and the rest are all wired.
-
-## Television entry
-
-`BboxFlutterActivity` carries both launcher filters — `LAUNCHER` for handhelds and `LEANBACK_LAUNCHER` for Android TV —
-so a television boots into the Flutter interface rather than the old native shell. D-pad navigation needs no port:
-Flutter routes those keys through its own focus tree, which `BboxFlutterActivity` leaves alone.
-
-One habit did have to come across by hand, because a television has neither a notification shade nor a quick-settings
-tile: the remote's play/pause button still toggles the proxy. It is caught in `dispatchKeyEvent` (before Flutter's key
-channel can swallow it) and forwarded to `BboxCommands.toggleService()`, exactly as `MainActivity` used to do.
-`MainActivity` keeps its backup-import and quick-settings-tile intent filters and nothing else.
+| `flutter/.android/settings.gradle` | Flutter's Gradle plugin requires AGP >= 8.11.1 and KGP >= 2.2.20, so the module builds with AGP 9.1.0 / Kotlin 2.4.0 |
+| `app` (`buildSrc/.../Helpers.kt`) | `compileSdk = 37` because the AAR declares `minCompileSdk=37`; `targetSdk` stays 35, `minSdk` 24 |
+| `buildSrc/build.gradle.kts` + wrapper | The host uses AGP 8.12.3 / Kotlin 2.4.10 / Gradle 8.13 / KSP 2.3.13. AGP 9 is not an option: `buildSrc` and the wrapper are on 8.x, and androidx.core 1.19.1 (which arrives transitively) declares AGP 9 metadata — it is pinned to 1.18.0 in the root build file instead |
+| `app/build.gradle.kts` | No dependency `force` remains. CI still scans the Flutter AAR for API references missing from the resolved kotlin-stdlib/coroutines |
 
 ## Packaging: dropping the Vulkan validation layer
 
-The debug engine ships `libVkLayer_khronos_validation.so` — 237 MB uncompressed, ~65 MB inside the APK, second only to
-`libflutter.so` itself. It is a graphics-debugging layer with no runtime role, and the release engine jar has zero
-`VkLayer` entries, so nothing can depend on it. `app/build.gradle.kts` excludes it:
-
-```kotlin
-packaging {
-    jniLibs {
-        useLegacyPackaging = true
-        excludes += setOf("**/libVkLayer_khronos_validation.so")
-    }
-}
-```
-
-What remains of the bulk has nothing to do with Flutter either — see below.
+The debug engine ships `libVkLayer_khronos_validation.so` — 237 MB uncompressed, ~65 MB inside the
+APK, second only to `libflutter.so`. It is a graphics-debugging layer with no runtime role and the
+release engine jar has zero `VkLayer` entries, so nothing can depend on it. `app/build.gradle.kts`
+excludes it with `packaging { jniLibs { excludes += setOf("**/libVkLayer_khronos_validation.so") } }`.
 
 ## Why the native libraries were enormous: nothing was being stripped
 
-For a while this app produced a 272 MB debug APK, and `libflutter.so` alone accounted for 377 MB uncompressed.
-Neither figure is Flutter's fault. Both come from every native library shipping with its full debugging symbols,
-because the strip task silently gave up:
-
-```
-Unable to strip the following libraries, packaging them as they are:
-libbarhopper_v3.so, libflutter.so, libimage_processing_util_jni.so,
-libsurface_util_jni.so, libthrone.so
-```
-
-This app has no C/C++ of its own, so nothing had ever set `ndkVersion` — and without it the strip task cannot locate
-`llvm-strip`. Setting `ndkVersion` in `buildSrc/Helpers.kt` was the whole fix:
+A 272 MB debug APK whose `libflutter.so` alone accounted for 377 MB uncompressed was not Flutter's
+fault: every native library shipped with full debug symbols because the strip task silently gave up
+(`Unable to strip the following libraries, packaging them as they are: ... libthrone.so`). The app
+has no C/C++ of its own, so nothing had ever set `ndkVersion` — and without it the strip task cannot
+locate `llvm-strip`. Setting `ndkVersion` in `buildSrc/Helpers.kt` was the whole fix:
 
 | | before | after |
 | --- | --- | --- |
 | `libflutter.so` | 377.53 MB (327.57 MB of it `.debug_*`) | 37.05 MB, zero symbol sections |
 | APK (arm64-v8a) | 272.42 MB | 96.66 MB |
 
-Note that the *release* engine jar is 157 MB for the same reason — 139 MB of it is `.debug_*`, leaving 6 MB of actual
-`.text`. The engine sizes quoted earlier in this file were both measured on unstripped libraries; stripped, the debug
-engine is 37 MB. Any Flutter app that forgets `ndkVersion` pays this, whichever build type it uses.
+The *release* engine jar is 157 MB for the same reason — 139 MB of it is `.debug_*`, leaving 6 MB of
+actual `.text`. Any Flutter app that forgets `ndkVersion` pays this, whichever build type it uses.

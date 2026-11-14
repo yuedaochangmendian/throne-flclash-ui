@@ -1,0 +1,31 @@
+[toolchain]
+# native_toolchain_rust refuses a floating channel; bump this deliberately.
+#
+# Which targets and why:
+#
+#   * The three Android triples are what the app ships. They are the reason this
+#     file exists at all: `plugins/rust_api/hook/build.dart` builds the cdylib
+#     during `flutter build aar` and `flutter test`, and native_toolchain_rust
+#     rejects a build whose triple is missing from this list (a
+#     RustValidationException, not a warning).
+#
+#   * `x86_64-unknown-linux-gnu` is the **host** triple. A build hook builds for
+#     the machine running it, not only for the deployment targets: `flutter test`
+#     on Linux CI compiles the crate as a host cdylib so the editor/native-asset
+#     tests can `DynamicLibrary.open()` it. Without this line `ci.yml`'s
+#     flutter-tests job fails every test with "The rust-toolchain.toml does not
+#     include the target x86_64-unknown-linux-gnu" — the alternative was to flip
+#     `hooks.user_defines.rust_api.build_assets` to false and skip 18 test files,
+#     which trades real coverage for a green badge.
+#
+#   * The MSVC and macOS triples stay out on purpose. This repository has no
+#     desktop build pipeline; listing them here makes every machine's rustup
+#     download a toolchain it cannot link (the GNU vs MSVC conflict the previous
+#     comment recorded), for a target nothing builds.
+channel = "1.99.0"
+targets = [
+  "aarch64-linux-android",
+  "armv7-linux-androideabi",
+  "x86_64-linux-android",
+  "x86_64-unknown-linux-gnu",
+]

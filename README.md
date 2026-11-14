@@ -86,19 +86,23 @@ Deeplinks are also supported, read the [documentation](https://throneproj.github
 ## Development
 
 - **CI** (`ci.yml`, every push): Kotlin unit tests + debug build (with the ThroneCore AAR built from the pinned
-  upstream ref), the Flutter module's `analyze --fatal-infos` + widget tests, a
-  [channel contract audit](tools/diagnostics/channel_audit.py) that fails when a bridge method or event loses an
-  end, and a scan proving the freshly built Flutter AAR only calls APIs the pinned kotlin-stdlib/coroutines
-  provide.
+  upstream ref), the Flutter module's `analyze --fatal-infos` + widget tests, the Prism UI drift check, and a
+  scan proving the freshly built Flutter AAR only calls APIs the pinned kotlin-stdlib/coroutines provide.
+- **Build prerequisites** (for `flutter build aar` and the app): Flutter 3.47.x (CI pins 3.47.9), Rust 1.99.0 with
+  the three Android targets plus libclang (MinGW on Windows), NDK 28.2.13676358, compileSdk 37 / targetSdk 35 /
+  minSdk 24, and `flutter/core/` present as the repository-root marker the `setup` hook probes. The `setup` and
+  `rust_api` build hooks are switched in `flutter/pubspec.yaml` (`build_assets: false` / `true`); details in
+  [docs/bbox-flutter.md](docs/bbox-flutter.md).
 - **Releases** (`release.yml`, manual): tag = `VERSION_NAME` from `nb4a.properties`, notes from the matching
   `CHANGELOG.md` section.
 - **Specs**: `openspec/specs/` holds the governing specifications; changes go through `openspec/changes/`.
-- **Design documents**: [docs/bbox-bridge.md](docs/bbox-bridge.md) (the bridge layer),
-  [docs/bbox-flutter.md](docs/bbox-flutter.md) (the Flutter module), [docs/device-checklist.md](docs/device-checklist.md)
-  (the pre-release device gate), [docs/prism-upstream.md](docs/prism-upstream.md) (the vendored Prism UI
-  baseline and drift policy), [docs/roadmap.md](docs/roadmap.md) (where the project is heading).
-- `Capabilities.kt` is the single source of truth for which B-box-only features exist; the bridge documents
-  every method and event it serves.
+- **Design documents**: [docs/bbox-bridge.md](docs/bbox-bridge.md) (the Core host: how Throne answers FlClash's
+  Core protocol), [docs/bbox-flutter.md](docs/bbox-flutter.md) (the Flutter module),
+  [docs/device-checklist.md](docs/device-checklist.md) (the pre-release device gate),
+  [docs/prism-upstream.md](docs/prism-upstream.md) (the Prism UI upstream baseline and drift policy),
+  [docs/roadmap.md](docs/roadmap.md) (where the project is heading).
+- The interface is upstream [FlClash](https://github.com/chen08209/FlClash) v0.9.3's own Flutter UI; Throne answers
+  its Core wire protocol natively, so there is no page-level bridge between the two.
 - **Contributing**: see [CONTRIBUTING.md](CONTRIBUTING.md) for the development environment, local verification
   commands and the branch / pull-request workflow.
 

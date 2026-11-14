@@ -1,61 +1,79 @@
-/// FlClash parses mihomo's routing lines (`[tag] <endpoint> --> <dst> … using <proxy>`) into
-/// rich text. This fork's core is sing-box / Xray, which never writes that shape, so the same
-/// idea is applied to what they do write: the bridge has already split the level out of the
-/// record, but the line still leads with it, its uptime counter and the subsystem tag —
-/// `INFO[0001] inbound/tun[tun-in]: …` for sing-box, `[Info] [1234] transport/internet/tcp: …`
-/// for Xray, `[Info] core: …` for this app's own log.
-class LogPayload {
-  /// The subsystem the line came from, as `component  ·  tag`; empty when the line has none.
+// Mirrors the wording of the routing and dial-failure lines in mihomo's
+// tunnel/tunnel.go; a line that stops matching falls back to plain text.
+const _endpoint = r'((?:\[[^\]]+\]|[^\s\[\]()]+):\d+|mihomo)(?:\((.*)\))?';
+
+final _tagPattern = RegExp(r'^\[([^\]]+)\] (.+)$', dotAll: true);
+
+final _routePattern = RegExp(
+  '^$_endpoint --> (\\S+) '
+  "(?:(?:match (.+?)|(doesn't match any rule)) )?using (.+)\$",
+);
+
+final _dialPattern = RegExp(
+  '^dial (.+?) (?:\\(match (.+?)\\) )?$_endpoint --> (\\S+) error: (.+)\$',
+  dotAll: true,
+);
+
+class LogRoute {
   final String source;
+  final String sourceDetail;
+  final String destination;
+  final String rule;
+  final String proxy;
+  final String error;
 
-  /// The line with its level, counter and subsystem prefixes removed.
+  const LogRoute({
+    required this.source,
+    this.sourceDetail = '',
+    required this.destination,
+    this.rule = '',
+    required this.proxy,
+    this.error = '',
+  });
+}
+
+class LogPayload {
+  final String tag;
   final String message;
+  final LogRoute? route;
 
-  const LogPayload({this.source = '', required this.message});
+  const LogPayload({this.tag = '', required this.message, this.route});
 
   factory LogPayload.parse(String payload) {
-    final original = payload.trim();
-    final text = original
-        .replaceFirst(_level, '')
-        .replaceFirst(_counter, '')
-        .trim();
-    if (text.isEmpty) return LogPayload(message: original);
-    final component = _component.firstMatch(text);
-    if (component == null) return LogPayload(message: text);
-    final name = component.group(1)!;
-    // A word that is neither a known subsystem nor a path is part of the sentence, so a line
-    // such as `error: context deadline exceeded` keeps reading as one message.
-    if (!name.contains('/') && !_subsystems.contains(name.toLowerCase())) {
-      return LogPayload(message: text);
+    final tagged = _tagPattern.firstMatch(payload);
+    if (tagged == null) {
+      return LogPayload(message: payload);
     }
-    final tag = component.group(2) ?? '';
+    final message = tagged[2]!;
     return LogPayload(
-      source: [name, tag].where((part) => part.isNotEmpty).join('  ·  '),
-      message: component.group(3)!.trim(),
+      tag: tagged[1]!,
+      message: message,
+      route: _parseRoute(message),
     );
   }
 
-  /// The level in any of the shapes the two cores and this app write it.
-  static final _level = RegExp(
-    '^(?:\\[\\s*(?:$_names)\\s*\\]|(?:$_names)\\s*\\[\\s*\\d+\\s*\\]|(?:$_names)(?=\\s))\\s*',
-    caseSensitive: false,
-  );
-
-  /// sing-box and Xray both stamp a per-process counter before the subsystem.
-  static final _counter = RegExp(r'^\[\s*\d+\s*\]\s*');
-
-  static final _component = RegExp(
-    r'^([A-Za-z][A-Za-z0-9_./+-]*)(?:\[([^\]]*)\])?:\s+(\S.*)$',
-    dotAll: true,
-  );
-
-  static const _names = 'trace|debug|info|warn|warning|error|fatal|panic';
-
-  /// Subsystems the cores log under, so a bare `word: …` is only split when it really is one.
-  static const _subsystems = {
-    'core', 'box', 'service', 'dns', 'router', 'inbound', 'outbound', 'connection',
-    'conn', 'tun', 'rule', 'ruleset', 'cache', 'sniff', 'api', 'clash', 'experimental',
-    'transport', 'proxy', 'dispatcher', 'stats', 'policy', 'resolver', 'urltest',
-    'geosite', 'geoip', 'http', 'socks', 'mixed', 'redirect', 'tproxy',
-  };
+  static LogRoute? _parseRoute(String message) {
+    final route = _routePattern.firstMatch(message);
+    if (route != null) {
+      return LogRoute(
+        source: route[1]!,
+        sourceDetail: route[2] ?? '',
+        destination: route[3]!,
+        rule: route[4] ?? route[5] ?? '',
+        proxy: route[6]!,
+      );
+    }
+    final dial = _dialPattern.firstMatch(message);
+    if (dial != null) {
+      return LogRoute(
+        proxy: dial[1]!,
+        rule: dial[2] ?? '',
+        source: dial[3]!,
+        sourceDetail: dial[4] ?? '',
+        destination: dial[5]!,
+        error: dial[6]!,
+      );
+    }
+    return null;
+  }
 }

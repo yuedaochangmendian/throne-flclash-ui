@@ -1,0 +1,62 @@
+// Root build file of the committed Android host for this Flutter module.
+//
+// The host exists so the module's compileSdk is a committed value (37) instead of a
+// template default that a fresh checkout would silently reset. See settings.gradle for
+// how flutter_tools picks this directory over the generated `flutter/.android/`, and
+// `.github/workflows/ci.yml` for the CI side of the same constraint.
+//
+// Why 37 and not `flutter.compileSdkVersion`
+// ------------------------------------------
+// `plugins/wifi_ssid` compiles against 37 and publishes AAR metadata that says so, and
+// `:flutter` consumes that plugin. AGP refuses to build a module whose compileSdk is
+// below a consumed AAR's `minCompileSdk`, so `:flutter` — which the Flutter template
+// generates with `compileSdk = flutter.compileSdkVersion` (= 36 for the pinned SDK) —
+// has to be raised. That template file lives in the gitignored `.android/` tree and is
+// regenerated on every fresh checkout, so it cannot be the place the value lives; the
+// committed `subprojects` block below is.
+
+plugins {
+    // Version comes from settings.gradle's plugin declaration.
+    id "com.android.library"
+}
+
+allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+// The root project is not published and nothing depends on it; it is a library only to
+// mirror the generated host this replaced (`:flutter` publishes through
+// `aar_init_script.gradle`, which walks every project that has an `android` extension).
+android {
+    namespace = "io.flrone.ui"
+    compileSdk = 37
+
+    defaultConfig {
+        minSdk = 24
+        targetSdk = 36
+    }
+}
+
+subprojects {
+    // Runs after each project's own build script, i.e. after
+    // `.android/Flutter/build.gradle` has set `compileSdk = flutter.compileSdkVersion`.
+    // `plugins.withId` would run too early (the module's `android { }` block would
+    // overwrite the value afterwards), so afterEvaluate is the correct hook.
+    afterEvaluate { project ->
+        def androidExtension = project.extensions.findByName("android")
+        if (androidExtension == null) {
+            return
+        }
+        def configured = androidExtension.compileSdk
+        if (configured == null || configured < 37) {
+            project.logger.lifecycle(
+                "${project.path}: compileSdk ${configured} -> 37 (a Flutter plugin in this " +
+                "module requires 37; see flutter/android/build.gradle)"
+            )
+            androidExtension.compileSdk = 37
+        }
+    }
+}

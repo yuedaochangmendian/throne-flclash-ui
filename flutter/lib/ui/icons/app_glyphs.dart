@@ -1,8 +1,8 @@
 import 'dart:math' as math;
 
 import 'package:flutter/widgets.dart';
-import 'package:flrone/ui/icons/glyph.dart';
-import 'package:flrone/ui/icons/glyphs.dart';
+import 'package:prism_ui/icons/glyph.dart';
+import 'package:prism_ui/icons/glyphs.dart';
 
 abstract final class AppGlyphs {
   static const dashboard = Glyph([
