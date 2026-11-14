@@ -30,18 +30,21 @@
 // subproject `include_flutter.groovy` pulls in.
 
 pluginManagement {
-    // `flutter pub get` rewrites `.android/local.properties` on every run and
-    // writes `flutter.sdk` with single backslashes, which Java Properties
-    // silently turns into form feeds (`\f`) on Windows. Read the committed
-    // host's own local.properties first (it is gitignored but written with
-    // escaped separators), then fall back to FLUTTER_ROOT for CI.
-    def localProperties = new Properties()
-    def hostProperties = new File(settingsDir, 'local.properties')
-    if (hostProperties.exists()) {
-        hostProperties.withInputStream { localProperties.load(it) }
+    // FLUTTER_ROOT is set by flutter-action on CI and by the local build
+    // script. Prefer it: the committed host's own local.properties is machine
+    // specific and gitignored, and on Windows Java Properties turns single
+    // backslashes in a written flutter.sdk into form feeds. Fall back to that
+    // file only when the environment has no root (a plain IDE checkout).
+    def flutterSdkPath = System.getenv('FLUTTER_ROOT')
+    if (flutterSdkPath == null || flutterSdkPath.isEmpty()) {
+        def localProperties = new Properties()
+        def hostProperties = new File(settingsDir, 'local.properties')
+        if (hostProperties.exists()) {
+            hostProperties.withInputStream { localProperties.load(it) }
+        }
+        flutterSdkPath = localProperties.getProperty('flutter.sdk')
     }
-    def flutterSdkPath = localProperties.getProperty('flutter.sdk') ?: System.getenv('FLUTTER_ROOT')
-    assert flutterSdkPath != null, "flutter.sdk not set in ${hostProperties} (or FLUTTER_ROOT)"
+    assert flutterSdkPath != null, "FLUTTER_ROOT is unset and flutter/android/local.properties has no flutter.sdk"
 
     includeBuild("$flutterSdkPath/packages/flutter_tools/gradle")
 
