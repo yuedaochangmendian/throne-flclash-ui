@@ -6,19 +6,18 @@
 
 import 'package:flutter/widgets.dart';
 import 'package:flrone/ui/context.dart';
-import 'package:flrone/ui/icons/app_glyphs.dart';
-import 'package:flrone/ui/icons/glyph_icon.dart';
 import 'package:flrone/ui/list.dart';
 import 'package:flrone/ui/list_item.dart';
 import 'package:flrone/ui/sheet.dart';
+import 'package:flrone/ui/selection_mark.dart';
+import 'package:flrone/ui/typography.dart';
 
 /// Shows [options] under [title] and answers the picked value, or null.
 ///
 /// Each option is one row; picking it closes the sheet and returns [T]. The
 /// sheet is prism's own (bottom sheet on a phone, side sheet elsewhere), so
 /// dismissal, drag and the surface come from the same place as every other
-/// sheet in the app. [selected] marks the current value, which the caller's
-/// picker showed as a heavier label.
+/// sheet in the app. [selected] gets the primary check, not a tinted row.
 Future<T?> showOptionSheet<T>({
   required BuildContext context,
   required String title,
@@ -56,12 +55,10 @@ class _OptionSheet<T> extends StatelessWidget {
                 title: Text(
                   label,
                   style: value == selected
-                      ? const TextStyle(fontWeight: FontWeight.bold)
+                      ? AppTextStyle.body.of(context, emphasized: true)
                       : null,
                 ),
-                trailing: value == selected
-                    ? const GlyphIcon(AppGlyphs.check, size: 18)
-                    : null,
+                trailing: value == selected ? const SelectionCheck() : null,
                 onTap: () => Navigator.pop(context, value),
               ),
           ],

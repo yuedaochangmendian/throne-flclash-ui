@@ -142,6 +142,12 @@ void main() {
     await tester.tap(find.text('Proxy bypass'));
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'localhost\n10.0.0.0/8');
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(edits, isEmpty, reason: 'Cancelling the Prism route must not write');
+    await tester.tap(find.text('Proxy bypass'));
+    await tester.pumpAndSettle();
+    await tester.enterText(find.byType(TextField), 'localhost\n10.0.0.0/8');
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();
     expect(edits.last, {'key': 'httpProxyBypass', 'value': ['localhost', '10.0.0.0/8']});
