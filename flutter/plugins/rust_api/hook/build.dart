@@ -103,6 +103,11 @@ Map<String, String> _bindgenEnvironment(BuildInput input) {
       _ => abi,
     };
     final args = <String>[
+      // Override clang's default host /usr/include search: on Linux CI the
+      // host limits.h needs 32-bit bits/libc-header-start.h that is not
+      // installed, and rquickjs's bindgen would pick it up for armv7.
+      // --sysroot makes the NDK sysroot the root of all default include paths.
+      '--sysroot=$sysrootFwd/sysroot',
       '-isystem $sysrootFwd/sysroot/usr/include/$archInclude',
       '-isystem $sysrootFwd/sysroot/usr/include',
     ];

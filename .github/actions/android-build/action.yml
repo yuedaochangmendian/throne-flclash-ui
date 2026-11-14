@@ -69,7 +69,10 @@ runs:
       run: |
         set -euo pipefail
         sudo apt-get update
-        sudo apt-get install -y --no-install-recommends libclang-dev
+        # gcc-multilib provides the 32-bit bits/libc-header-start.h that
+        # rquickjs's bindgen needs when clang falls back to the host include
+        # tree for armv7; the hook also passes --sysroot to prefer the NDK.
+        sudo apt-get install -y --no-install-recommends libclang-dev gcc-multilib
     - name: Set up Rust (channel and targets from rust-toolchain.toml)
       uses: dtolnay/rust-toolchain@stable
       with:
