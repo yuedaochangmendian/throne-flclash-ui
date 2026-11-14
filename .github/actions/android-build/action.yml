@@ -114,15 +114,17 @@ runs:
           echo "::error::fall back to the template host, whose compileSdk is 36."
           exit 1
         }
-        # include_flutter.groovy (evaluated by the committed host's settings.gradle)
-        # asserts that .android/local.properties exists and reads flutter.sdk from
-        # it. With a committed host, `flutter pub get` does not always write that
-        # file on CI, so seed it explicitly from the toolchain the action installed.
-        mkdir -p .android
+        # Both Flutter's native_plugin_loader.gradle.kts (which reads the host
+        # root's local.properties) and include_flutter.groovy (which reads
+        # .android/local.properties) require these files. With a committed host,
+        # `flutter pub get` does not write them on CI; seed both from the
+        # toolchain the action installed. They are gitignored and machine-local.
         {
           echo "sdk.dir=$ANDROID_HOME"
           echo "flutter.sdk=$FLUTTER_ROOT"
-        } > .android/local.properties
+        } > android/local.properties
+        mkdir -p .android
+        cp android/local.properties .android/local.properties
         flutter build aar --no-debug --no-profile
     - name: ThroneCore AAR and schema
       uses: ./.github/actions/throne-core
