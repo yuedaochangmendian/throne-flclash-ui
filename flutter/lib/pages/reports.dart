@@ -22,7 +22,7 @@ class _ReportsPageState extends State<ReportsPage> {
       }
     }),
   ], body: FutureBuilder<List<Json>>(future: _reports, builder: (context, snapshot) => ListView(
-    padding: EdgeInsets.fromLTRB(16, context.contentTopPadding, 16, 24 + context.bottomInset),
+    padding: boxPagePadding(context),
     children: [
       if (snapshot.hasError) ErrorState(snapshot.error!, retry: _refresh),
       if (!snapshot.hasData && !snapshot.hasError) const Center(child: ActivityIndicator()),

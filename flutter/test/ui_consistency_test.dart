@@ -69,6 +69,10 @@ void main() {
                     child: Text('Body'),
                     actions: [
                       TextButton(
+                        onPressed: () => Navigator.pop(dialogContext),
+                        child: const Text('Cancel'),
+                      ),
+                      TextButton(
                         onPressed: () => Navigator.pop(dialogContext, 'saved'),
                         child: const Text('Save'),
                       ),
@@ -92,9 +96,15 @@ void main() {
     expect(result, 'saved');
     expect(find.byType(AlertDialog), findsNothing);
     expect(tester.takeException(), isNull);
+    await tester.tap(find.text('Open'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+    expect(result, isNull, reason: 'Cancelling an alert returns no value');
+    expect(find.byType(AlertDialog), findsNothing);
   });
 
-  testWidgets('showOptionSheet preserves selection and typed cancellation', (
+  testWidgets('showOptionSheet preserves selection and typed result', (
     tester,
   ) async {
     int? result;

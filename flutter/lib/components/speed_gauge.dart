@@ -51,6 +51,20 @@ String speedValueText(double bps) {
 
 String speedUnitText(double bps) => bps / 1e6 >= 1000 ? 'Gbps' : 'Mbps';
 
+/// The second chart/legend series of a speed run: primary at 45% over the card
+/// surface, not an unrelated tertiary hue (surfaces.md). The first series is
+/// [ColorScheme.primary]; gauges, tiles and curves share this blend so the
+/// download/upload palette reads as one accent at two strengths. Blending over
+/// [SurfaceLevel.card] keeps the value identical in the page, the panel and the
+/// chart regardless of the local surface scope.
+Color secondSeriesColor(BuildContext context) {
+  final scheme = context.colorScheme;
+  return Color.alphaBlend(
+    scheme.primary.withValues(alpha: .45),
+    SurfaceLevel.card.colorOf(scheme),
+  );
+}
+
 /// `1.2 Mbps` / `340 kbps`, for the tiles and the curve legend.
 String speedRateText(double bps) {
   if (bps >= 1e9) return '${(bps / 1e9).toStringAsFixed(2)} Gbps';
@@ -160,7 +174,7 @@ class _SpeedGaugeState extends State<SpeedGauge>
           painter: _SpeedGaugePainter(
             fraction: _chase.value,
             color: widget.color,
-            accentColor: widget.accentColor ?? scheme.tertiary,
+            accentColor: widget.accentColor ?? secondSeriesColor(context),
             trackColor: widget.trackColor ?? scheme.surfaceContainerHighest,
             needleColor: widget.needleColor ?? scheme.onSurface,
             passedLabelColor: widget.passedLabelColor ?? scheme.onSurface,
@@ -454,6 +468,11 @@ class SpeedCurves extends StatelessWidget {
     final scheme = context.colorScheme;
     final peak = [0.0, ...download, ...upload].reduce(math.max);
     final scale = peak <= 0 ? 1.0 : peak;
+    // The first series is primary; the second is primary at 45% over the card,
+    // not an unrelated tertiary hue (surfaces.md). The chart itself is custom
+    // paint, but its palette follows the shared surface contract. The panel
+    // hosting it set the current surface scope, so blend over that surface.
+    final second = secondSeriesColor(context);
     return SizedBox(
       height: height,
       child: CustomPaint(
@@ -461,7 +480,7 @@ class SpeedCurves extends StatelessWidget {
           download: [for (final value in download) value / scale],
           upload: [for (final value in upload) value / scale],
           downloadColor: scheme.primary,
-          uploadColor: scheme.tertiary,
+          uploadColor: second,
           gridColor: scheme.outlineVariant.withValues(alpha: .5),
           revision: revision,
         ),

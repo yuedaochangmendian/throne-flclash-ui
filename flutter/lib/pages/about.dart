@@ -19,22 +19,22 @@ class _AboutPageState extends State<AboutPage> {
       final result = json(await box.updatesCheck());
       if (!mounted) return;
       setState(() => _checking = false);
-      await showDialog<void>(context: context, builder: (context) => AlertDialog(
-        title: context.tr(result['available'] == true ? 'Update available' : 'Check for updates'),
+      await showAppDialog<void>(context, child: Builder(builder: (dialogContext) => AlertDialog(
+        title: dialogContext.tr(result['available'] == true ? 'Update available' : 'Check for updates'),
         child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420), child: SingleChildScrollView(child: Column(
           mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, spacing: 12, children: [
-            Text(result['available'] == true ? 'Flrone ${result['version']}' : context.tr(result['hasMetadata'] == false ? 'No release metadata available' : 'You are up to date')),
+            Text(result['available'] == true ? 'Flrone ${result['version']}' : dialogContext.tr(result['hasMetadata'] == false ? 'No release metadata available' : 'You are up to date')),
             if (result['available'] == true && result['notes'] is String && (result['notes'] as String).isNotEmpty) SelectableText(result['notes'] as String),
           ],
         ))),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: Text(context.tr('Close'))),
+          TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(dialogContext.tr('Close'))),
           if (result['available'] == true || result['hasMetadata'] == false) TextButton(onPressed: () {
-            Navigator.pop(context);
+            Navigator.pop(dialogContext);
             box.openUrl(result['downloadUrl'] ?? result['url'] ?? '$repositoryUrl/releases');
-          }, child: Text(context.tr(result['downloadUrl'] == null ? 'Releases' : 'Download'))),
+          }, child: Text(dialogContext.tr(result['downloadUrl'] == null ? 'Releases' : 'Download'))),
         ],
-      ));
+      )));
     } catch (error) { box.report(error); }
     finally { if (mounted) setState(() => _checking = false); }
   }
@@ -48,42 +48,40 @@ class _AboutPageState extends State<AboutPage> {
 
   @override Widget build(BuildContext context) {
     final box = context.box, colors = context.colorScheme;
-    return Scaffold(title: context.tr('About'), isLoading: _checking,
-      body: ListView(padding: EdgeInsets.fromLTRB(16, context.contentTopPadding, 16, 32 + context.bottomInset), children: [
-        Padding(padding: const EdgeInsets.fromLTRB(24, 16, 24, 0), child: Column(children: [
-          // The launcher's own artwork: the watercolour range the app icon is cut from, so the picture
-          // here is the picture on the home screen.
-          DecoratedBox(decoration: ShapeDecoration(
-            shape: AppShape.all(22).copyWith(side: const BorderSide(color: Color(0x14000000), width: 0.5)),
-            shadows: const [BoxShadow(color: Color(0x14000000), blurRadius: 18, offset: Offset(0, 6))],
-            image: const DecorationImage(image: AssetImage('assets/images/app_icon.webp'), fit: BoxFit.cover),
-          ), child: const SizedBox.square(dimension: 96)),
-          const SizedBox(height: 20),
-          Text('Flrone', style: AppTextStyle.title2.of(context, emphasized: true)),
-          const SizedBox(height: 10),
-          Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
-            _Pill(label: 'v${box.version}', color: colors.primary, foreground: colors.onPrimary),
-            _Pill(label: 'GPL-3.0', color: context.raisedSurfaceLevel.colorOf(colors), foreground: colors.onSurfaceVariant),
-          ]),
-          const SizedBox(height: 16),
-          ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420), child: Text(context.tr('A sing-box client with the FlClash Android interface.'),
-            textAlign: TextAlign.center, style: AppTextStyle.subheadline.of(context).copyWith(color: colors.onSurfaceVariant, height: 1.5))),
-          const SizedBox(height: 20),
-          TonalButton(size: TonalButtonSize.bar, glyph: AppGlyphs.sync, label: context.tr('Check for updates'), onPressed: _checking ? null : _check),
-        ])),
-        const SizedBox(height: 8),
-        generateSection(title: context.tr('More'), items: [
-          _link(AppGlyphs.code, 'Source code', 'yuedaochangmendian/throne-flclash-ui', repositoryUrl),
-          _link(AppGlyphs.cpu, 'Core', 'sing-box ${box.coreVersion}', 'https://github.com/SagerNet/sing-box'),
-          _link(AppGlyphs.paintbrush, 'FlClash interface', 'chen08209/FlClash · v0.9.2 · GPL-3.0', 'https://github.com/chen08209/FlClash/tree/7fd417fb9a9a277c6a9339a8ac87f907df7c25f7'),
-          // Credit where it is due: B-box's bridge + Flutter-module setup is the migration
-          // approach this port follows, so the thanks belongs in the app, not just the README.
-          _link(AppGlyphs.star, 'Thanks for the migration approach', 'giturass/B-box', 'https://github.com/giturass/B-box'),
-          ListItem(leading: const _LinkBadge(glyph: AppGlyphs.info), title: Text(context.tr('Open-source licenses')),
-            onTap: () => showLicensePage(context: context, applicationName: 'Flrone', applicationVersion: box.version)),
+    return BoxPage(title: 'About', loading: _checking, children: [
+      Column(children: [
+        // The launcher's own artwork: the watercolour range the app icon is cut from, so the picture
+        // here is the picture on the home screen. App artwork keeps its rounded shape; the generic
+        // shadow/border stack is gone, since structure now comes from surface levels.
+        DecoratedBox(decoration: ShapeDecoration(
+          shape: AppShape.all(AppCorner.lg),
+          image: const DecorationImage(image: AssetImage('assets/images/app_icon.webp'), fit: BoxFit.cover),
+        ), child: const SizedBox.square(dimension: 96)),
+        const SizedBox(height: 20),
+        Text('Flrone', style: AppTextStyle.title2.of(context, emphasized: true)),
+        const SizedBox(height: 10),
+        Wrap(spacing: 8, runSpacing: 8, alignment: WrapAlignment.center, children: [
+          _Pill(label: 'v${box.version}', color: colors.primary, foreground: colors.onPrimary),
+          _Pill(label: 'GPL-3.0', color: context.raisedSurfaceLevel.colorOf(colors), foreground: colors.onSurfaceVariant),
         ]),
+        const SizedBox(height: 16),
+        ConstrainedBox(constraints: const BoxConstraints(maxWidth: 420), child: Text(context.tr('A sing-box client with the FlClash Android interface.'),
+          textAlign: TextAlign.center, style: AppTextStyle.subheadline.of(context).copyWith(color: colors.onSurfaceVariant, height: 1.5))),
+        const SizedBox(height: 20),
+        TonalButton(size: TonalButtonSize.bar, glyph: AppGlyphs.sync, label: context.tr('Check for updates'), onPressed: _checking ? null : _check),
       ]),
-    );
+      const SizedBox(height: 8),
+      generateSection(title: context.tr('More'), items: [
+        _link(AppGlyphs.code, 'Source code', 'yuedaochangmendian/throne-flclash-ui', repositoryUrl),
+        _link(AppGlyphs.cpu, 'Core', 'sing-box ${box.coreVersion}', 'https://github.com/SagerNet/sing-box'),
+        _link(AppGlyphs.paintbrush, 'FlClash interface', 'chen08209/FlClash · v0.9.2 · GPL-3.0', 'https://github.com/chen08209/FlClash/tree/7fd417fb9a9a277c6a9339a8ac87f907df7c25f7'),
+        // Credit where it is due: B-box's bridge + Flutter-module setup is the migration
+        // approach this port follows, so the thanks belongs in the app, not just the README.
+        _link(AppGlyphs.star, 'Thanks for the migration approach', 'giturass/B-box', 'https://github.com/giturass/B-box'),
+        ListItem(leading: const _LinkBadge(glyph: AppGlyphs.info), title: Text(context.tr('Open-source licenses')),
+          onTap: () => showLicensePage(context: context, applicationName: 'Flrone', applicationVersion: box.version)),
+      ]),
+    ]);
   }
 }
 

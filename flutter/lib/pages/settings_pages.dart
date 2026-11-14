@@ -150,8 +150,10 @@ class DnsPage extends StatelessWidget {
           subtitle: Text(context.tr('Paste a sing-box fragment with dns.rules; it is checked against the schema first.')),
           onTap: () async {
             final box = context.box;
-            final request = await showDialog<RuleImportRequest>(context: context,
-              builder: (_) => const RuleImportPage());
+            final request = await showAppDialog<RuleImportRequest>(
+              context,
+              child: const RuleImportPage(),
+            );
             if (request == null || !context.mounted) return;
             try {
               await applyRuleImport(box, request);
@@ -248,12 +250,7 @@ class _RoutingPageState extends State<RoutingPage> {
           ),
         ],
         body: ListView(
-          padding: EdgeInsets.fromLTRB(
-            16,
-            context.sectionsTopPadding,
-            16,
-            24 + context.bottomInset,
-          ),
+          padding: boxPagePadding(context),
           children: [
             // The title card sits above the list, as FlClash's RuleTitle does,
             // and carries this page's primary actions: the bar's icons moved

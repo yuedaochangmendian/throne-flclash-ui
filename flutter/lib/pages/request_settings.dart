@@ -137,7 +137,7 @@ class _CaptureAppsPageState extends State<CaptureAppsPage> {
       final installed = apps.map((app) => app['package']).toSet();
       for (final package in _selected.difference(installed.cast<String>())) { apps.add({'name': package, 'package': package}); }
       final visible = apps.where((app) => '${app['name']} ${app['package']}'.toLowerCase().contains(_query)).toList();
-      return ListView.builder(padding: EdgeInsets.fromLTRB(16, context.contentTopPadding, 16, 24 + context.bottomInset),
+      return ListView.builder(padding: boxPagePadding(context),
         itemCount: visible.length + 1, itemBuilder: (context, index) {
           if (index == 0) {
             return Column(children: [

@@ -42,7 +42,7 @@ class _CaptureDomainsPageState extends State<CaptureDomainsPage> {
           }),
           IconButtonData(glyph: AppGlyphs.refresh, tooltip: context.tr('Refresh'), onPressed: () => setState(() => _domains = _load())),
         ],
-        body: ListView.builder(padding: EdgeInsets.fromLTRB(16, context.contentTopPadding, 16, 24 + context.bottomInset),
+        body: ListView.builder(padding: boxPagePadding(context),
           itemCount: domains.length + 1, itemBuilder: (context, index) {
             if (index == 0) {
               return Column(children: [

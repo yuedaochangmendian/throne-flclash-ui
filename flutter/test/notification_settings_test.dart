@@ -117,9 +117,9 @@ void main() {
     await tester.tap(find.text('Notification buttons'));
     await tester.pumpAndSettle();
     // Stop is checked (part of the defaults); untick it and add Reset.
-    await tester.tap(find.widgetWithText(CheckboxListTile, 'Stop'));
+    await tester.tap(find.widgetWithText(ListItem, 'Stop'));
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(CheckboxListTile, 'Reset connections'));
+    await tester.tap(find.widgetWithText(ListItem, 'Reset connections'));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Save'));
     await tester.pumpAndSettle();

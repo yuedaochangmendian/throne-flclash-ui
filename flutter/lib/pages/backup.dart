@@ -128,18 +128,18 @@ class _BackupPageState extends State<BackupPage> {
   }
 
   Future<void> _success(String title, String message) =>
-      showFloatingDialog<void>(
-        context: context,
-        child: AlertDialog(
-          title: context.tr(title),
+      showAppDialog<void>(
+        context,
+        child: Builder(builder: (dialogContext) => AlertDialog(
+          title: dialogContext.tr(title),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(context.tr('Close')),
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(dialogContext.tr('Close')),
             ),
           ],
-          child: Text(context.tr(message)),
-        ),
+          child: Text(dialogContext.tr(message)),
+        )),
       );
 
   Future<void> _backup(bool remote) async {
@@ -193,10 +193,7 @@ class _BackupPageState extends State<BackupPage> {
         return;
       }
       // The scope narrows what the envelope read brings back.
-      final scope = await showFloatingDialog<String>(
-        context: context,
-        child: const RestoreScopeDialog(),
-      );
+      final scope = await askRestoreScope(context);
       if (scope == null || !mounted) return;
       await restorePayload(
         context,
@@ -260,11 +257,14 @@ class _BackupPageState extends State<BackupPage> {
         body: AbsorbPointer(
           absorbing: _locked,
           child: ListView(
+            // This body opens on a grouped section, so it keeps
+            // sectionsTopPadding (the section header brings its own gap);
+            // the horizontal gutters and foot match boxPagePadding.
             padding: EdgeInsets.fromLTRB(
               16,
               context.sectionsTopPadding,
               16,
-              16 + context.bottomInset,
+              24 + context.bottomInset,
             ),
             children: [
               generateSection(
@@ -392,25 +392,25 @@ Future<void> restorePayload(
   // A backup with no profiles cannot fill a profiles-only restore; saying "Restore 0 profiles?"
   // and then doing nothing is worse than saying so.
   if (count == 0 && scope != 'all') {
-    await showFloatingDialog<void>(
-      context: context,
-      child: AlertDialog(
-        title: context.tr('Restore'),
+    await showAppDialog<void>(
+      context,
+      child: Builder(builder: (dialogContext) => AlertDialog(
+        title: dialogContext.tr('Restore'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(context.tr('Close')),
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(dialogContext.tr('Close')),
           ),
         ],
-        child: Text(context.tr('This backup holds no profiles')),
-      ),
+        child: Text(dialogContext.tr('This backup holds no profiles')),
+      )),
     );
     return;
   }
   final strategy =
       box.preferences['restoreStrategy'] as String? ?? 'Compatible';
-  final approved = await showFloatingDialog<bool>(
-    context: context,
+  final approved = await showAppDialog<bool>(
+    context,
     child: _RestoreConfirm(
       count: count,
       scope: scope,
@@ -425,28 +425,25 @@ Future<void> restorePayload(
     onLoading?.call(false);
   }
   if (!context.mounted) return;
-  await showFloatingDialog<void>(
-    context: context,
-    child: AlertDialog(
-      title: context.tr('Restore'),
+  await showAppDialog<void>(
+    context,
+    child: Builder(builder: (dialogContext) => AlertDialog(
+      title: dialogContext.tr('Restore'),
       actions: [
         TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(context.tr('Close')),
+          onPressed: () => Navigator.pop(dialogContext),
+          child: Text(dialogContext.tr('Close')),
         ),
       ],
-      child: Text(context.tr('Restore complete')),
-    ),
+      child: Text(dialogContext.tr('Restore complete')),
+    )),
   );
 }
 
 /// A .thrbackup opened from outside: the host read it before it got here, so only the scope is left
 /// to ask. A refusal asks nothing further and restores nothing.
 Future<void> restoreBackupFile(BuildContext context, Json payload) async {
-  final scope = await showFloatingDialog<String>(
-    context: context,
-    child: const RestoreScopeDialog(),
-  );
+  final scope = await askRestoreScope(context);
   if (scope == null || !context.mounted) return;
   await restorePayload(context, payload, scope: scope);
 }
@@ -518,26 +515,17 @@ String? backupFileIssue(String? value) =>
     ? 'Invalid backup file name'
     : null;
 
-class RestoreScopeDialog extends StatelessWidget {
-  const RestoreScopeDialog({super.key});
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: context.tr('Restore'),
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 16),
-    child: Wrap(
-      children: [
-        ListItem(
-          title: Text(context.tr('Restore profiles only')),
-          onTap: () => Navigator.pop(context, 'profiles'),
-        ),
-        ListItem(
-          title: Text(context.tr('Restore all data')),
-          onTap: () => Navigator.pop(context, 'all'),
-        ),
-      ],
-    ),
-  );
-}
+/// What the restore is about to replace, in Prism's single-choice sheet. The
+/// option identifiers and labels are the ones the restore flow and its callers
+/// already use; a cancelled or dismissed sheet answers null, as before.
+Future<String?> askRestoreScope(BuildContext context) => showOptionSheet<String>(
+  context: context,
+  title: context.tr('Restore'),
+  options: [
+    ('profiles', context.tr('Restore profiles only')),
+    ('all', context.tr('Restore all data')),
+  ],
+);
 
 class WebDAVForm extends StatefulWidget {
   const WebDAVForm({super.key, this.initial});

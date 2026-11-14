@@ -298,18 +298,14 @@ class _AutoSelectorPageState extends State<AutoSelectorPage>
                   style: context.listValueStyle,
                 ),
                 onTap: () async {
-                  final picked = await showDialog<String>(
+                  final picked = await showOptionSheet<String>(
                     context: context,
-                    builder: (context) => SimpleDialog(
-                      title: Text(context.tr('Balance mode')),
-                      children: [
-                        for (final value in const ['rotate', 'sticky'])
-                          SimpleDialogOption(
-                            onPressed: () => Navigator.pop(context, value),
-                            child: Text(context.tr(_balanceName(value))),
-                          ),
-                      ],
-                    ),
+                    title: context.tr('Balance mode'),
+                    options: [
+                      for (final value in const ['rotate', 'sticky'])
+                        (value, context.tr(_balanceName(value))),
+                    ],
+                    selected: '${_info['balanceMode'] ?? 'rotate'}',
                   );
                   if (picked != null) _set('balanceMode', picked);
                 },
@@ -467,21 +463,16 @@ class _AutoSelectorPageState extends State<AutoSelectorPage>
   }
 
   Future<void> _memberMenu(Json member) async {
-    final picked = await showDialog<String>(
+    final pinnedId = (_status['pinned_id'] as num?)?.toInt() ?? -1;
+    final pinned = member['id'] == pinnedId;
+    final picked = await showOptionSheet<String>(
       context: context,
-      builder: (context) => SimpleDialog(
-        title: Text('${member['name'] ?? member['tag']}'),
-        children: [
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, 'pin'),
-            child: Text(context.tr('Pin')),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, 'auto'),
-            child: Text(context.tr('Use automatic')),
-          ),
-        ],
-      ),
+      title: '${member['name'] ?? member['tag']}',
+      options: [
+        ('pin', context.tr('Pin')),
+        ('auto', context.tr('Use automatic')),
+      ],
+      selected: pinned ? 'pin' : 'auto',
     );
     if (!mounted) return;
     if (picked == 'pin') await _pin((member['id'] as num?)?.toInt() ?? -1);

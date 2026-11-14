@@ -132,9 +132,9 @@ class NotificationActionsSetting extends StatelessWidget {
       title: Text(context.tr('Notification buttons')),
       subtitle: Text(_summary(context, selected), maxLines: 1, overflow: TextOverflow.ellipsis),
       onTap: () async {
-        final saved = await showDialog<List<String>>(
-          context: context,
-          builder: (context) => _NotificationActionsEditor(initial: selected),
+        final saved = await showAppDialog<List<String>>(
+          context,
+          child: _NotificationActionsEditor(initial: selected),
         );
         if (saved != null) await box.setSetting('notificationActions', saved, restart: false);
       },
@@ -175,30 +175,27 @@ class _NotificationActionsEditorState extends State<_NotificationActionsEditor> 
         child: Text(context.tr('Save')),
       ),
     ],
-    child: Material(
-      type: MaterialType.transparency,
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Text(context.tr('The first three of the enabled ones show, in a fixed order'),
-              style: AppTextStyle.caption1.of(context)),
+    // Prism's own checkbox row; a Material CheckboxListTile would need a
+    // Material ancestor beyond the alert's transparent pane.
+    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: Text(context.tr('The first three of the enabled ones show, in a fixed order'),
+            style: AppTextStyle.caption1.of(context)),
+      ),
+      for (final (id, label) in NotificationActionsSetting.actions)
+        ListItem.checkbox(
+          value: _selected.contains(id),
+          title: Text(context.tr(label)),
+          onChanged: (value) => setState(() {
+            if (value == true) {
+              _selected.add(id);
+            } else {
+              _selected.remove(id);
+            }
+          }),
         ),
-        for (final (id, label) in NotificationActionsSetting.actions)
-          CheckboxListTile(
-            value: _selected.contains(id),
-            title: Text(context.tr(label)),
-            controlAffinity: ListTileControlAffinity.leading,
-            contentPadding: EdgeInsets.zero,
-            onChanged: (value) => setState(() {
-              if (value == true) {
-                _selected.add(id);
-              } else {
-                _selected.remove(id);
-              }
-            }),
-          ),
-      ]),
-    ),
+    ]),
   );
 }
 
@@ -218,7 +215,7 @@ class _RemotePageState extends State<RemotePage> {
     title: context.tr('Remote control'),
     primaryAction: IconButtonData(glyph: AppGlyphs.add, tooltip: context.tr('Add server'), onPressed: _edit),
     body: FutureBuilder<List<Json>>(future: _servers, builder: (context, snapshot) => ListView(
-      padding: EdgeInsets.fromLTRB(16, context.contentTopPadding, 16, 24 + context.bottomInset),
+      padding: boxPagePadding(context),
       children: [
         if (context.box.remote) ListItem(title: Text(context.box.dashboard['remote'].toString()), trailing: TextButton(
           onPressed: () => context.box.remoteDisconnect(), child: Text(context.tr('Disconnect')))),

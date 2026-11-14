@@ -282,22 +282,45 @@ class _ProxiesPageState extends State<ProxiesPage>
         );
 
   /// FlClash's DelayTestButton: the current group's latency run, over the list.
+  ///
+  /// A Prism press region on a primary circular fill is the app's equivalent of
+  /// the small FAB it replaces: same position, tooltip, 40 dp hit area and a
+  /// disabled state while a test is in flight, with Prism's [ActivityIndicator]
+  /// as the spinner. It is built from the low-level [PressRegion] (rather than
+  /// the shared icon-button widget) because this floating button is recreated on
+  /// every state change, and a stateful button there re-enters the frame's build.
   Widget _delayTestFab() {
     final tag = _currentGroup;
     if (tag == null) return const SizedBox.shrink();
+    final testing = _testLabels.contains(tag);
+    final scheme = context.colorScheme;
+    final label = context.tr('Test latency');
     return Positioned(
       right: 16,
       bottom: 16 + context.bottomInset,
-      child: FloatingActionButton.small(
-        tooltip: context.tr('Test latency'),
-        onPressed: _testLabels.contains(tag) ? null : () => _testGroup(tag),
-        child: _testLabels.contains(tag)
-            ? const SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const GlyphIcon(AppGlyphs.bolt),
+      child: Tooltip(
+        message: label,
+        child: Semantics(
+          button: true,
+          enabled: !testing,
+          label: label,
+          child: PressRegion(
+            onTap: testing ? null : () => _testGroup(tag),
+            shape: AppShape.full,
+            fill: testing
+                ? scheme.onSurface.withValues(alpha: .12)
+                : scheme.primary,
+            overlay: PressRegion.pressOverlay,
+            child: SizedBox.square(
+              dimension: 40,
+              child: Center(
+                child: testing
+                    ? ActivityIndicator(size: 18, semanticLabel: label)
+                    : GlyphIcon(AppGlyphs.bolt, color: scheme.onPrimary),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

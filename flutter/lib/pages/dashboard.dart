@@ -8,6 +8,7 @@ import '../components/dashboard_editor.dart';
 import '../components/connected_buttons.dart';
 import '../components/status_panel.dart';
 import '../components/memory_panel.dart';
+import '../components/speed_gauge.dart';
 import '../components/intranet_panel.dart';
 import '../components/profile_panel.dart';
 import '../components/service_status_panel.dart';
@@ -186,7 +187,9 @@ class _SpeedTile extends StatelessWidget {
 
   @override Widget build(BuildContext context) {
     final box = context.watchBox(BoxAspect.traffic), colors = context.colorScheme;
-    final color = upload ? colors.tertiary : colors.primary;
+    // Download is the first chart series (primary); upload is the second,
+    // primary at 45% over the card surface, not an unrelated tertiary hue.
+    final color = upload ? secondSeriesColor(context) : colors.primary;
     final show = bytes(box.rates[upload ? 'upload' : 'download'] as num? ?? 0).split(' ');
     // The bridge sends the session total as a raw byte count; a pre-formatted string passes through.
     final raw = box.dashboard[upload ? 'uploadTotal' : 'downloadTotal'];

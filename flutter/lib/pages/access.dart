@@ -113,14 +113,14 @@ class _AccessPageState extends State<AccessPage> {
 
   Future<bool> _back(BuildContext context) async {
     if (_saving) return false;
-    final decision = await showDialog<String>(context: context, builder: (context) => AlertDialog(
-      title: context.tr('Unsaved changes'),
+    final decision = await showAppDialog<String>(context, child: Builder(builder: (dialogContext) => AlertDialog(
+      title: dialogContext.tr('Unsaved changes'),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: Text(context.tr('Cancel'))),
-        TextButton(onPressed: () => Navigator.pop(context, 'discard'), child: Text(context.tr('Discard'))),
-        TextButton(onPressed: () => Navigator.pop(context, 'save'), child: Text(context.tr('Save'))),
+        TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(dialogContext.tr('Cancel'))),
+        TextButton(onPressed: () => Navigator.pop(dialogContext, 'discard'), child: Text(dialogContext.tr('Discard'))),
+        TextButton(onPressed: () => Navigator.pop(dialogContext, 'save'), child: Text(dialogContext.tr('Save'))),
       ],
-    ));
+    )));
     return decision == 'discard' || decision == 'save' && await _save();
   }
 

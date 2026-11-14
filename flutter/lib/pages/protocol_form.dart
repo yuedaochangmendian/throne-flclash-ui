@@ -1164,18 +1164,11 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
             style: context.listValueStyle,
           ),
           onTap: () async {
-            final picked = await showDialog<String>(
+            final picked = await showOptionSheet<String>(
               context: context,
-              builder: (context) => SimpleDialog(
-                title: Text(context.tr(field.label)),
-                children: [
-                  for (final (value, label) in choices)
-                    SimpleDialogOption(
-                      onPressed: () => Navigator.pop(context, value),
-                      child: Text(label),
-                    ),
-                ],
-              ),
+              title: context.tr(field.label),
+              options: choices,
+              selected: current,
             );
             if (picked == null || !mounted) return;
             setState(() {
@@ -1297,55 +1290,52 @@ class _ProtocolFormPageState extends State<ProtocolFormPage> {
                     (node['id'] as num?)?.toInt() != widget.id)
                   node,
             ];
-            final picked = await showDialog<List<int>>(
-              context: context,
-              builder: (dialogContext) => StatefulBuilder(
-                builder: (context, setDialogState) => AlertDialog(
-                  title: context.tr('Proxy chain'),
+            final picked = await showAppDialog<List<int>>(
+              context,
+              child: StatefulBuilder(
+                builder: (dialogContext, setDialogState) => AlertDialog(
+                  title: dialogContext.tr('Proxy chain'),
                   actions: [
                     TextButton(
-                      onPressed: () => Navigator.pop(context),
-                      child: Text(context.tr('Cancel')),
+                      onPressed: () => Navigator.pop(dialogContext),
+                      child: Text(dialogContext.tr('Cancel')),
                     ),
                     TextButton(
                       onPressed: () =>
-                          Navigator.pop(context, List<int>.of(selected)),
-                      child: Text(context.tr('Save')),
+                          Navigator.pop(dialogContext, List<int>.of(selected)),
+                      child: Text(dialogContext.tr('Save')),
                     ),
                   ],
-                  child: SizedBox(
-                    width: double.maxFinite,
-                    // Prism's own checkbox row: Material's CheckboxListTile
-                    // wants a Material ancestor the dialog frame does not
-                    // provide, and threw on every open.
-                    child: ListView(
-                      shrinkWrap: true,
-                      children: [
-                        if (hops.isEmpty)
-                          ListItem(title: Text(context.tr('No results')))
-                        else
-                          for (final node in hops)
-                            ListItem.checkbox(
-                              value: selected.contains(
-                                (node['id'] as num?)?.toInt(),
-                              ),
-                              title: Text(node['tag'].toString()),
-                              subtitle:
-                                  selected.contains(
-                                    (node['id'] as num?)?.toInt(),
-                                  )
-                                  ? Text(
-                                      '#${selected.indexOf((node['id'] as num).toInt()) + 1}',
-                                    )
-                                  : null,
-                              onChanged: (value) => setDialogState(() {
-                                final id = (node['id'] as num).toInt();
-                                selected.remove(id);
-                                if (value == true) selected.add(id);
-                              }),
+                  // Prism's own checkbox row: Material's CheckboxListTile
+                  // wants a Material ancestor the dialog frame does not
+                  // provide, and threw on every open.
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      if (hops.isEmpty)
+                        ListItem(title: Text(dialogContext.tr('No results')))
+                      else
+                        for (final node in hops)
+                          ListItem.checkbox(
+                            value: selected.contains(
+                              (node['id'] as num?)?.toInt(),
                             ),
-                      ],
-                    ),
+                            title: Text(node['tag'].toString()),
+                            subtitle:
+                                selected.contains(
+                                  (node['id'] as num?)?.toInt(),
+                                )
+                                ? Text(
+                                    '#${selected.indexOf((node['id'] as num).toInt()) + 1}',
+                                  )
+                                : null,
+                            onChanged: (value) => setDialogState(() {
+                              final id = (node['id'] as num).toInt();
+                              selected.remove(id);
+                              if (value == true) selected.add(id);
+                            }),
+                          ),
+                    ],
                   ),
                 ),
               ),

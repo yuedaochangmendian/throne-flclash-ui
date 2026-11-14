@@ -143,12 +143,12 @@ class _GhosttySurfaceState extends State<GhosttySurface> {
         case 'modifiers': setState(() => _modifiers = json(call.arguments)); return null;
         case 'unsafePaste': return confirm(context, 'Paste multiple lines?', message: 'Pasted text may execute commands in this terminal.', action: 'Paste');
         case 'clipboardRead': return confirm(context, 'Allow terminal to read clipboard?', action: 'Allow');
-        case 'link': return showDialog<String>(context: context, builder: (context) => AlertDialog(
-          title: context.tr('Link'), child: SelectableText(call.arguments.toString()), actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: Text(context.tr('Cancel'))),
-            TextButton(onPressed: () => Navigator.pop(context, 'copy'), child: Text(context.tr('Copy'))),
-            TextButton(onPressed: () => Navigator.pop(context, 'open'), child: Text(context.tr('Open'))),
-          ]));
+        case 'link': return showAppDialog<String>(context, child: Builder(builder: (dialogContext) => AlertDialog(
+          title: dialogContext.tr('Link'), child: SelectableText(call.arguments.toString()), actions: [
+            TextButton(onPressed: () => Navigator.pop(dialogContext), child: Text(dialogContext.tr('Cancel'))),
+            TextButton(onPressed: () => Navigator.pop(dialogContext, 'copy'), child: Text(dialogContext.tr('Copy'))),
+            TextButton(onPressed: () => Navigator.pop(dialogContext, 'open'), child: Text(dialogContext.tr('Open'))),
+          ])));
       }
       return null;
     });
@@ -166,8 +166,10 @@ class _GhosttySurfaceState extends State<GhosttySurface> {
     if (!widget.preview) SingleChildScrollView(scrollDirection: Axis.horizontal, child: Row(children: [
       for (final key in const ['Esc', 'Tab', 'Ctrl', 'Alt', '↑', '↓', '←', '→', 'Home', 'End', 'PgUp', 'PgDn', 'Paste', 'Keyboard'])
         TextButton(onPressed: _channel == null ? null : () => _key(key),
+          // A chosen modifier key is a chosen segment: a solid primary fill with
+          // onPrimary, not a tonal-container tint.
           style: _modifiers[key.toLowerCase()] == 'ARMED' || _modifiers[key.toLowerCase()] == 'LOCKED'
-            ? ButtonStyle.from(backgroundColor: context.colorScheme.primaryContainer) : null,
+            ? ButtonStyle.from(backgroundColor: context.colorScheme.primary, foregroundColor: context.colorScheme.onPrimary) : null,
           child: Text(context.tr(key) + (_modifiers[key.toLowerCase()] == 'LOCKED' ? ' •' : ''))),
     ])),
   ]);
