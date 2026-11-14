@@ -114,7 +114,7 @@ class _TestPanelPageState extends State<TestPanelPage> {
             child: FractionallySizedBox(
               heightFactor: count / peak,
               child: DecoratedBox(
-                decoration: BoxDecoration(color: band(index), borderRadius: BorderRadius.circular(3)),
+                decoration: BoxDecoration(color: band(index), borderRadius: AppRadius.xs),
                 child: const SizedBox.shrink()),
             ),
           )),
@@ -136,7 +136,9 @@ class _TestPanelPageState extends State<TestPanelPage> {
     final upload = [for (final sample in samples) sample[2] == true ? sample[1] as double : 0.0];
     final running = session['running'] == true;
     final downloadColor = context.colorScheme.primary;
-    final uploadColor = context.colorScheme.tertiary;
+    // The batch panel draws the speed screen's own curve: download is primary,
+    // upload is primary at 45% over the card (surfaces.md), not tertiary.
+    final uploadColor = secondSeriesColor(context);
     Widget legend(String label, double value, Color color) => Text(
       '● ${context.tr(label)}: ${speedRateText(value)}',
       style: context.listCaptionStyle.copyWith(color: color),
@@ -195,8 +197,11 @@ class _TestPanelPageState extends State<TestPanelPage> {
         if (finished) PopupMenuItem(glyph: AppGlyphs.close, label: context.tr('Dismiss'),
           onPressed: () => box.groupTestSessionDismiss()),
       ],
+      // This page opens on a grouped section, so it keeps sectionsTopPadding
+      // above the first header while the horizontal gutters and the foot follow
+      // the same boxPagePadding contract as every other page body.
       body: ListView(shrinkWrap: true,
-        padding: EdgeInsets.fromLTRB(16, context.sectionsTopPadding, 16, 20 + context.bottomInset),
+        padding: boxPagePadding(context).copyWith(top: context.sectionsTopPadding),
         children: [
           generateSection(items: [
             if (!widget.speedOnly)
@@ -204,40 +209,44 @@ class _TestPanelPageState extends State<TestPanelPage> {
                 1 => context.tr('IP check'), 2 => context.tr('Speed test'),
                 _ => context.tr('Latency'),
               }, () async {
-                final picked = await showDialog<int>(context: context, builder: (context) => SimpleDialog(
-                  title: Text(context.tr('Test kind')),
-                  children: [
+                final picked = await showOptionSheet<int>(
+                  context: context,
+                  title: context.tr('Test kind'),
+                  selected: _kind,
+                  options: [
                     for (final (value, label) in [(0, 'Latency'), (1, 'IP check'), (2, 'Speed test')])
-                      SimpleDialogOption(onPressed: () => Navigator.pop(context, value), child: Text(context.tr(label))),
+                      (value, context.tr(label)),
                   ],
-                ));
+                );
                 if (picked != null) setState(() => _kind = picked);
               }),
             // A speed session measures one direction or both; the mode starts from the Testing
             // setting so the panel and the stored default agree until it is changed here.
             if (widget.speedOnly || _kind == 2)
               _menuRow(context.tr('Speed test mode'), context.tr(speedTestModeName(_effectiveSpeedMode)), () async {
-                final picked = await showDialog<int>(context: context, builder: (context) => SimpleDialog(
-                  title: Text(context.tr('Speed test mode')),
-                  children: [
-                    for (final value in speedTestModes) SimpleDialogOption(
-                      onPressed: () => Navigator.pop(context, value),
-                      child: Text(context.tr(speedTestModeName(value)))),
+                final picked = await showOptionSheet<int>(
+                  context: context,
+                  title: context.tr('Speed test mode'),
+                  selected: _effectiveSpeedMode,
+                  options: [
+                    for (final value in speedTestModes)
+                      (value, context.tr(speedTestModeName(value))),
                   ],
-                ));
+                );
                 if (picked != null) setState(() => _speedMode = picked);
               }),
             if (!widget.speedOnly)
               _menuRow(context.tr('Scope'), scopes.where((profile) => profile['id'] == _scopeId)
                   .firstOrNull?['name']?.toString() ?? context.tr('None'), () async {
-                final picked = await showDialog<int>(context: context, builder: (context) => SimpleDialog(
-                  title: Text(context.tr('Scope')),
-                  children: [
-                    for (final profile in scopes) SimpleDialogOption(
-                      onPressed: () => Navigator.pop(context, (profile['id'] as num).toInt()),
-                      child: Text(profile['name'].toString())),
+                final picked = await showOptionSheet<int>(
+                  context: context,
+                  title: context.tr('Scope'),
+                  selected: _scopeId,
+                  options: [
+                    for (final profile in scopes)
+                      ((profile['id'] as num).toInt(), profile['name'].toString()),
                   ],
-                ));
+                );
                 if (picked != null) setState(() => _groupId = picked);
               }),
           ]),

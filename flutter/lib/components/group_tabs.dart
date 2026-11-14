@@ -172,10 +172,10 @@ class _GroupTabsState extends State<GroupTabs> {
                   runSpacing: 8,
                   children: [
                     for (final (index, group) in widget.groups.indexed)
-                      ChoiceChip(
-                        label: Text(group['tag'].toString()),
+                      Chip(
+                        label: group['tag'].toString(),
                         selected: index == widget.controller.index,
-                        onSelected: (_) => Navigator.pop(sheetContext, index),
+                        onPressed: () => Navigator.pop(sheetContext, index),
                       ),
                   ],
                 ),

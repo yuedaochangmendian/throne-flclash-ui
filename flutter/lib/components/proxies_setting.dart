@@ -37,10 +37,10 @@ class _ChoiceRow extends StatelessWidget {
             runSpacing: 8,
             children: [
               for (final option in options)
-                ChoiceChip(
-                  label: Text(context.tr(option)),
+                Chip(
+                  label: context.tr(option),
                   selected: option == value,
-                  onSelected: (_) => onChanged(option),
+                  onPressed: () => onChanged(option),
                 ),
             ],
           ),

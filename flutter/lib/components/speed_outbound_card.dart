@@ -189,59 +189,23 @@ class SpeedOutboundCard extends StatelessWidget {
 /// The outbound picker: the box's default first, then DIRECT, then every tag.
 ///
 /// Bettbox's picker groups nodes under their groups; this one lists the box's
-/// own outbound tags because that is what the kernel's pin accepts.
+/// own outbound tags because that is what the kernel's pin accepts. A Prism
+/// single-choice option sheet keeps the typed result, the current selection's
+/// check mark and the sheet's own scrolling for a long catalog.
 Future<String?> pickSpeedTestOutbound(
   BuildContext context, {
   required List<String> outbounds,
   required String current,
 }) {
-  return showDialog<String>(
+  return showOptionSheet<String>(
     context: context,
-    builder: (context) {
-      final scheme = context.colorScheme;
-      final options = <(String, String)>[
-        ('', context.tr('Follow the box default')),
-        ('DIRECT', 'DIRECT'),
-        for (final tag in outbounds) (tag, tag),
-      ];
-      return SimpleDialog(
-        title: Text(context.tr('Outbound')),
-        children: [
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 420),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  for (final (value, label) in options)
-                    SimpleDialogOption(
-                      onPressed: () => Navigator.pop(context, value),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (value == current)
-                            GlyphIcon(
-                              AppGlyphs.checkCircle,
-                              size: 18,
-                              color: scheme.primary,
-                            ),
-                        ],
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      );
-    },
+    title: context.tr('Outbound'),
+    selected: current,
+    options: [
+      ('', context.tr('Follow the box default')),
+      ('DIRECT', 'DIRECT'),
+      for (final tag in outbounds) (tag, tag),
+    ],
   );
 }
 

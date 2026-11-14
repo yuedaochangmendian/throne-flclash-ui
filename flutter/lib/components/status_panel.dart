@@ -345,7 +345,9 @@ class _StatusPanelState extends State<StatusPanel> with WidgetsBindingObserver {
             Positioned.fill(
               child: ClipPath(
                 clipper: ShapeBorderClipper(
-                  shape: AppShape.all(34),
+                  // Match the BoxPanel's full-width xl card radius; the alert
+                  // radius belongs to dialogs, not ordinary cards.
+                  shape: AppShape.all(AppCorner.xl),
                   textDirection: Directionality.of(context),
                 ),
                 child: Stack(

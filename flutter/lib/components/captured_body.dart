@@ -49,7 +49,11 @@ class _CapturedBodyState extends State<CapturedBody> {
           onPressed: () { setState(() { _formatted = !_formatted; _limit = _pageSize; }); if (_scroll.hasClients) _scroll.jumpTo(0); }),
         IconButtonData(glyph: AppGlyphs.copy, tooltip: context.tr('Copy body preview'), onPressed: _text.isEmpty ? null : _copy),
       ]),
-      Card(shape: AppShape.xl, padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 12, children: [
+      // A body preview is a content panel, not an interactive card: BoxPanel
+      // gives it the full-width xl surface and the inherited SurfaceScope. The
+      // radius, padding and clip stay explicit so the layout is unchanged.
+      BoxPanel(radius: AppCorner.xl, padding: const EdgeInsets.all(16),
+        clipBehavior: Clip.antiAlias, child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, spacing: 12, children: [
         Text([
           if (contentType.isNotEmpty) contentType,
           '${bytes(message['capturedBytes'] as num? ?? 0)} / ${bytes(message['bodyBytes'] as num? ?? 0)}',

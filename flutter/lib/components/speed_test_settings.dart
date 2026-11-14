@@ -100,9 +100,9 @@ Future<SpeedTestSettings?> showSpeedTestSettings(
   BuildContext context,
   SpeedTestSettings initial,
 ) {
-  return showDialog<SpeedTestSettings>(
-    context: context,
-    builder: (context) => _SpeedTestSettingsDialog(initial: initial),
+  return showAppDialog<SpeedTestSettings>(
+    context,
+    child: _SpeedTestSettingsDialog(initial: initial),
   );
 }
 
@@ -119,7 +119,6 @@ class _SpeedTestSettingsDialogState extends State<_SpeedTestSettingsDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = context.colorScheme;
     return AlertDialog(
       title: context.tr('Speed test settings'),
       actions: [
@@ -203,9 +202,7 @@ class _SpeedTestSettingsDialogState extends State<_SpeedTestSettingsDialog> {
                             ].where((part) => part.isNotEmpty).join(' · '),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: AppTextStyle.footnote.of(context).copyWith(
-                              color: scheme.onSurfaceVariant,
-                            ),
+                            style: context.listSubtitleStyle,
                           ),
                         ],
                       ),
@@ -238,16 +235,15 @@ class _Label extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Padding(
     padding: const EdgeInsets.only(bottom: 6),
-    child: Text(
-      text,
-      style: AppTextStyle.caption1.of(context).copyWith(
-        color: context.colorScheme.onSurfaceVariant,
-      ),
-    ),
+    child: Text(text, style: context.listCaptionStyle),
   );
 }
 
-/// A row of chips, one per value, the chosen one filled.
+/// A row of Prism chips, one per value, the chosen one filled.
+///
+/// `Chip` owns the selection fill (primary + onPrimary), the pill shape and the
+/// semantic label style, so this segment group no longer paints a call-site
+/// radius or a generic container fill of its own.
 class _Choice<T> extends StatelessWidget {
   const _Choice({
     required this.values,
@@ -263,30 +259,15 @@ class _Choice<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = context.colorScheme;
     return Wrap(
       spacing: 6,
       runSpacing: 6,
       children: [
         for (final option in values)
-          GestureDetector(
-            onTap: () => onChanged(option),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-              decoration: ShapeDecoration(
-                color: option == value
-                    ? scheme.primary
-                    : scheme.surfaceContainerHighest,
-                shape: AppShape.all(10),
-              ),
-              child: Text(
-                labelOf(option),
-                style: AppTextStyle.caption1.of(context).copyWith(
-                  color: option == value ? scheme.onPrimary : scheme.onSurface,
-                  fontWeight: option == value ? FontWeight.w600 : null,
-                ),
-              ),
-            ),
+          Chip(
+            label: labelOf(option),
+            selected: option == value,
+            onPressed: () => onChanged(option),
           ),
       ],
     );
@@ -300,10 +281,13 @@ Future<void> showSpeedTestHistory(
 }) async {
   final records = await readSpeedTestHistory(box);
   if (!context.mounted) return;
-  await showModalBottomSheet<void>(
+  // Prism's own sheet (bottom sheet on a phone, side sheet elsewhere) keeps
+  // the drag handle, the surface and dismissal in one place. Its content is a
+  // shrink-wrapping list, so a long history is reachable without a separate
+  // isScrollControlled flag.
+  await showSheet<void>(
     context: context,
-    isScrollControlled: true,
-    builder: (context) => _HistorySheet(records: records, box: box),
+    builder: (sheetContext) => _HistorySheet(records: records, box: box),
   );
 }
 
@@ -331,59 +315,53 @@ class _HistorySheetState extends State<_HistorySheet> {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = context.colorScheme;
-    return SafeArea(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 8, 4),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    context.tr('Speed test history'),
-                    style: AppTextStyle.title3.of(context, emphasized: true),
-                  ),
-                ),
-                if (_records.isNotEmpty)
-                  TextButton(
-                    onPressed: _clear,
-                    child: Text(context.tr('Clear')),
-                  ),
-                IconButton(
-                  tooltip: context.tr('Close'),
-                  onPressed: () => Navigator.pop(context),
-                  icon: const GlyphIcon(AppGlyphs.close),
-                ),
-              ],
-            ),
-          ),
-          if (_records.isEmpty)
-            Padding(
-              padding: const EdgeInsets.symmetric(vertical: 48),
-              child: Text(
-                context.tr('No speed tests yet'),
-                style: AppTextStyle.footnote.of(context).copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-            )
-          else
-            Flexible(
-              child: ListView.separated(
-                shrinkWrap: true,
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                itemCount: _records.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (context, index) {
-                  final record = _records[index];
-                  return _HistoryItem(record: record);
-                },
-              ),
-            ),
-        ],
+    // A sheet's own header and a shrink-wrapping list, like every other sheet
+    // in the app: scrolling comes from Prism's sheet, not a Material
+    // isScrollControlled flag. The foot clears bottomInset.
+    return ListView(
+      shrinkWrap: true,
+      padding: EdgeInsets.fromLTRB(
+        16,
+        context.sectionsTopPadding,
+        16,
+        24 + context.bottomInset,
       ),
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                context.tr('Speed test history'),
+                style: AppTextStyle.title3.of(context, emphasized: true),
+              ),
+            ),
+            if (_records.isNotEmpty)
+              TextButton(
+                onPressed: _clear,
+                child: Text(context.tr('Clear')),
+              ),
+            IconButton(
+              tooltip: context.tr('Close'),
+              onPressed: () => Navigator.pop(context),
+              icon: const GlyphIcon(AppGlyphs.close),
+            ),
+          ],
+        ),
+        if (_records.isEmpty)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 48),
+            child: Text(
+              context.tr('No speed tests yet'),
+              style: context.listSubtitleStyle,
+              textAlign: TextAlign.center,
+            ),
+          )
+        else
+          for (final (index, record) in _records.indexed) ...[
+            if (index > 0) const SizedBox(height: 8),
+            _HistoryItem(record: record),
+          ],
+      ],
     );
   }
 }
@@ -454,39 +432,39 @@ class _HistoryItem extends StatelessWidget {
 
   Future<void> _showDetails(BuildContext context) async {
     final record = this.record;
-    await showDialog<void>(
-      context: context,
-      builder: (context) {
-        final rows = <(String, String)>[
-          ('Provider', record.provider),
-          ('Protocol', record.protocol.toUpperCase()),
-          ('Delay', '${record.latency.round()} ms'),
-          ('Jitter', '${record.jitter.round()} ms'),
-          ('Download', speedRateText(record.download)),
-          ('Upload', speedRateText(record.upload)),
-          (
-            'Loaded latency',
-            speedLoadedText(record.downloadLatency, record.uploadLatency),
-          ),
-          ('RPM', '${record.rpm}'),
-          ('Transferred', bytes(record.bytes)),
-          if (record.exitIp.isNotEmpty) ('Exit IP', record.exitIp),
-          if (record.route.isNotEmpty)
-            (
-              'Route',
-              [
-                for (final item in (record.route['chains'] as List? ?? const []))
-                  '$item',
-              ].join(' › '),
-            ),
-          if (record.error.isNotEmpty) ('Error', record.error),
-        ];
-        return AlertDialog(
-          title: context.tr('Speed test result'),
+    final rows = <(String, String)>[
+      ('Provider', record.provider),
+      ('Protocol', record.protocol.toUpperCase()),
+      ('Delay', '${record.latency.round()} ms'),
+      ('Jitter', '${record.jitter.round()} ms'),
+      ('Download', speedRateText(record.download)),
+      ('Upload', speedRateText(record.upload)),
+      (
+        'Loaded latency',
+        speedLoadedText(record.downloadLatency, record.uploadLatency),
+      ),
+      ('RPM', '${record.rpm}'),
+      ('Transferred', bytes(record.bytes)),
+      if (record.exitIp.isNotEmpty) ('Exit IP', record.exitIp),
+      if (record.route.isNotEmpty)
+        (
+          'Route',
+          [
+            for (final item in (record.route['chains'] as List? ?? const []))
+              '$item',
+          ].join(' › '),
+        ),
+      if (record.error.isNotEmpty) ('Error', record.error),
+    ];
+    await showAppDialog<void>(
+      context,
+      child: Builder(
+        builder: (dialogContext) => AlertDialog(
+          title: dialogContext.tr('Speed test result'),
           actions: [
             TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: Text(context.tr('Close')),
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(dialogContext.tr('Close')),
             ),
           ],
           child: SizedBox(
@@ -506,19 +484,14 @@ class _HistoryItem extends StatelessWidget {
                             SizedBox(
                               width: 120,
                               child: Text(
-                                context.tr(label),
-                                style: AppTextStyle.caption1.of(context)
-                                    .copyWith(
-                                      color: context
-                                          .colorScheme
-                                          .onSurfaceVariant,
-                                    ),
+                                dialogContext.tr(label),
+                                style: dialogContext.listCaptionStyle,
                               ),
                             ),
                             Expanded(
                               child: Text(
                                 value,
-                                style: AppTextStyle.footnote.of(context),
+                                style: dialogContext.listSubtitleStyle,
                               ),
                             ),
                           ],
@@ -528,8 +501,8 @@ class _HistoryItem extends StatelessWidget {
               ),
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 

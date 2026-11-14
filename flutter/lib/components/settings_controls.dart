@@ -87,9 +87,9 @@ class SettingJson extends StatelessWidget {
       subtitle: Text(value.isEmpty ? context.tr(hint ?? 'Empty') : value,
         maxLines: 2, overflow: TextOverflow.ellipsis),
       onTap: () async {
-        final saved = await showDialog<String>(
-          context: context,
-          builder: (context) => _JsonEditor(title: context.tr(title), initial: value, hint: hint),
+        final saved = await showAppDialog<String>(
+          context,
+          child: _JsonEditor(title: context.tr(title), initial: value, hint: hint),
         );
         if (saved != null && context.mounted) {
           context.box.setSetting(setting, saved, autoRestart: autoRestart);
@@ -114,6 +114,7 @@ class _JsonEditorState extends State<_JsonEditor> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
+    hasFields: true,
     title: widget.title,
     child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
       if (widget.hint != null) Padding(
@@ -121,10 +122,10 @@ class _JsonEditorState extends State<_JsonEditor> {
         child: Text(context.tr(widget.hint!), style: AppTextStyle.caption1.of(context)),
       ),
       TextField(
-        controller: _controller, minLines: 6, maxLines: 16, autocorrect: false,
+        controller: _controller, minLines: 6, maxLines: null, autocorrect: false,
         keyboardType: TextInputType.multiline,
         style: const TextStyle(fontFamily: 'JetBrainsMono'),
-        decoration: const InputDecoration(border: AppShape.input),
+        decoration: const InputDecoration(),
       ),
     ]),
     actions: [
@@ -159,7 +160,7 @@ class SettingDnsServer extends StatelessWidget {
           suggestions = (wire[kind] as List? ?? const []).whereType<String>().toList();
         } catch (_) {}
         if (!context.mounted) return;
-        final picked = await showDialog<String>(context: context, builder: (context) => _DnsServerDialog(
+        final picked = await showAppDialog<String>(context, child: _DnsServerDialog(
           title: context.tr(title), initial: value, suggestions: suggestions,
         ));
         if (picked != null && context.mounted) context.box.setSetting(setting, picked);
@@ -180,26 +181,24 @@ class _DnsServerDialogState extends State<_DnsServerDialog> {
   @override void dispose() { _controller.dispose(); super.dispose(); }
 
   @override Widget build(BuildContext context) => AlertDialog(
+    hasFields: true,
     title: widget.title,
-    child: SizedBox(
-      width: 360,
-      child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        TextField(
-          controller: _controller, autocorrect: false,
-          keyboardType: TextInputType.text,
-          decoration: const InputDecoration(border: AppShape.input),
-        ),
-        if (widget.suggestions.isNotEmpty) Flexible(
-          child: ListView(shrinkWrap: true, children: [
-            for (final server in widget.suggestions)
-              ListTile(
-                dense: true, title: Text(server),
-                onTap: () => Navigator.pop(context, server),
-              ),
-          ]),
-        ),
-      ]),
-    ),
+    child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      TextField(
+        controller: _controller, autocorrect: false,
+        keyboardType: TextInputType.text,
+        decoration: const InputDecoration(),
+      ),
+      if (widget.suggestions.isNotEmpty) Flexible(
+        child: ListView(shrinkWrap: true, children: [
+          for (final server in widget.suggestions)
+            ListItem(
+              title: Text(server, style: AppTextStyle.footnote.of(context)),
+              onTap: () => Navigator.pop(context, server),
+            ),
+        ]),
+      ),
+    ]),
     actions: [
       TextButton(onPressed: () => Navigator.pop(context), child: Text(context.tr('Cancel'))),
       TextButton(onPressed: () => Navigator.pop(context, _controller.text), child: Text(context.tr('Save'))),
@@ -252,9 +251,9 @@ class SettingLines extends StatelessWidget {
 
   Future<void> _edit(BuildContext context, List<String> lines) async {
     final box = context.box;
-    final saved = await showDialog<String>(
-      context: context,
-      builder: (context) => _LinesEditor(
+    final saved = await showAppDialog<String>(
+      context,
+      child: _LinesEditor(
         title: context.tr(title),
         hint: hint == null ? null : context.tr(hint!),
         initial: lines.join('\n'),
@@ -292,6 +291,7 @@ class _LinesEditorState extends State<_LinesEditor> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
+    hasFields: true,
     title: widget.title,
     child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
       if (widget.hint != null) Padding(
@@ -299,9 +299,9 @@ class _LinesEditorState extends State<_LinesEditor> {
         child: Text(widget.hint!, style: AppTextStyle.caption1.of(context)),
       ),
       TextField(
-        controller: _controller, minLines: 3, maxLines: 10, autocorrect: false,
+        controller: _controller, minLines: 3, maxLines: null, autocorrect: false,
         keyboardType: TextInputType.multiline,
-        decoration: const InputDecoration(border: AppShape.input),
+        decoration: const InputDecoration(),
       ),
     ]),
     actions: [

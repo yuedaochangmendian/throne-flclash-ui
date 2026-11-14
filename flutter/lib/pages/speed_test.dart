@@ -331,26 +331,18 @@ class _SpeedTestPageState extends State<SpeedTestPage>
   }
 
   Future<void> _pickOutbound() async {
-    final picked = await showDialog<String>(
+    // A single-choice list is a titled option sheet in Prism: the value is the
+    // outbound tag ('' follows the box's default), the sheet keeps its typing,
+    // marks the current choice, and scrolls when the catalog is long.
+    final picked = await showOptionSheet<String>(
       context: context,
-      builder: (context) => SimpleDialog(
-        title: Text(context.tr('Outbound')),
-        children: [
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, ''),
-            child: Text(context.tr('The selected outbound')),
-          ),
-          SimpleDialogOption(
-            onPressed: () => Navigator.pop(context, 'DIRECT'),
-            child: Text(context.tr('Direct')),
-          ),
-          for (final tag in _outbounds)
-            SimpleDialogOption(
-              onPressed: () => Navigator.pop(context, tag),
-              child: Text(tag),
-            ),
-        ],
-      ),
+      title: context.tr('Outbound'),
+      selected: _outbound,
+      options: [
+        ('', context.tr('The selected outbound')),
+        ('DIRECT', context.tr('Direct')),
+        for (final tag in _outbounds) (tag, tag),
+      ],
     );
     if (picked == null || !mounted) return;
     setState(() => _outbound = picked);
@@ -427,9 +419,13 @@ class _SpeedTestPageState extends State<SpeedTestPage>
   @override
   Widget build(BuildContext context) {
     final scheme = context.colorScheme;
+    // Download is the primary series; upload is primary at 45% over the card,
+    // not a separate tertiary hue (surfaces.md). The gauge, its gradient, the
+    // curve legend and the result tiles all read the same two strengths.
+    final second = secondSeriesColor(context);
     final error = _state['error']?.toString() ?? _error ?? '';
     final isUpload = _phase == 'upload';
-    final gaugeColor = isUpload ? scheme.tertiary : scheme.primary;
+    final gaugeColor = isUpload ? second : scheme.primary;
     final errorText = error.isEmpty
         ? null
         : switch (error) {
@@ -461,12 +457,7 @@ class _SpeedTestPageState extends State<SpeedTestPage>
         ),
       ],
       body: ListView(
-        padding: EdgeInsets.fromLTRB(
-          16,
-          context.sectionsTopPadding,
-          16,
-          32 + context.bottomInset,
-        ),
+        padding: boxPagePadding(context),
         children: [
           // The outbound card, in Bettbox's three-row shape: the node the run
           // dialled, the route that sent it there, and the provider's server.
@@ -509,7 +500,7 @@ class _SpeedTestPageState extends State<SpeedTestPage>
                         ),
                         fraction: _hasValue ? _gaugeValue : 0,
                         color: gaugeColor,
-                        accentColor: isUpload ? scheme.primary : scheme.tertiary,
+                        accentColor: isUpload ? scheme.primary : second,
                         spin: _connecting ? _spin.value : null,
                         showNeedle: _hasValue || _connecting,
                       ),
@@ -585,7 +576,7 @@ class _SpeedTestPageState extends State<SpeedTestPage>
                       color: scheme.primary,
                     ),
                     const SizedBox(width: 12),
-                    _Legend(label: context.tr('Upload'), color: scheme.tertiary),
+                    _Legend(label: context.tr('Upload'), color: second),
                   ],
                 ),
                 const SizedBox(height: 8),
@@ -726,7 +717,7 @@ class _ResultTiles extends StatelessWidget {
       (
         context.tr('Upload'),
         value('upload') > 0 ? speedRateText(value('upload')) : '—',
-        scheme.tertiary,
+        secondSeriesColor(context),
       ),
       (
         context.tr('Loaded latency'),

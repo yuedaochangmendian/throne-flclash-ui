@@ -385,7 +385,10 @@ class _LiftedCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final shadows = DashboardShadows.e2(context);
-    final shape = AppShape.all(34);
+    // A lifted dashboard card keeps the measured shadow but uses the same
+    // full-width xl radius as the card beneath it; the alert radius is not a
+    // sizing reference for a normal card.
+    final shape = AppShape.all(AppCorner.xl);
     return AnimatedBuilder(
       animation: animation,
       builder: (context, child) {

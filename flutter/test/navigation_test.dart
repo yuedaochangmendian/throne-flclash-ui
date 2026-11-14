@@ -20,7 +20,19 @@ void main() {
       if (font.existsSync()) await (FontLoader('Roboto')..addFont(Future.value(ByteData.sublistView(await font.readAsBytes())))).load();
     }
   });
-  for (final (size, dark, fontScale) in [(const Size(360, 800), false, 1.0), (const Size(360, 800), true, 1.4), (const Size(800, 1000), false, 1.0)]) {
+  // Exercise both sides of Prism's 600 dp navigation boundary, its compact
+  // desktop range and a wide layout. Text scaling and brightness are varied
+  // independently so a large-font case is not implicitly a dark-mode case.
+  for (final (size, dark, fontScale) in [
+    (const Size(360, 800), false, 1.0),
+    (const Size(360, 800), true, 1.4),
+    (const Size(600, 1000), false, 1.4),
+    (const Size(600, 1000), true, 1.0),
+    (const Size(840, 1000), false, 1.0),
+    (const Size(840, 1000), true, 1.4),
+    (const Size(1280, 1000), false, 1.4),
+    (const Size(1280, 1000), true, 1.0),
+  ]) {
     testWidgets('all primary routes render at $size dark=$dark scale=$fontScale', (tester) async {
       tester.binding.platformDispatcher.localesTestValue = const [Locale('en')];
       addTearDown(tester.binding.platformDispatcher.clearLocalesTestValue);

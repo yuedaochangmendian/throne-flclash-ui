@@ -88,7 +88,7 @@ class _TerminalThemePageState extends State<TerminalThemePage> {
     return Scaffold(title: context.tr(widget.dark ? 'Dark theme' : 'Light theme'), isLoading: _themes == null && _error == null,
       searchState: AppBarSearchState(onSearch: (query) => setState(() => _query = query)),
       body: _error != null ? ErrorState(_error!, retry: _load) : ListView.builder(
-        padding: EdgeInsets.fromLTRB(16, context.contentTopPadding, 16, 24 + context.bottomInset), itemCount: themes.length,
+        padding: boxPagePadding(context), itemCount: themes.length,
         itemBuilder: (context, index) {
           final theme = themes[index];
           final background = Color((theme['background'] as num?)?.toInt() ?? (widget.dark ? 0xff000000 : 0xffffffff));

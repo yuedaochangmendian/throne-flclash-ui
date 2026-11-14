@@ -22,8 +22,12 @@ class AppearancePage extends StatelessWidget {
         progress: animation == null ? 1 : .55, tabAnimation: animation ?? tabAnimationOf(prefs),
       ),
     );
+    // The preview groups own their 16 dp gutters (each group draws its own
+    // section), so this bespoke page keeps zero horizontal padding and takes
+    // the box contract's top clearance and foot from boxPagePadding.
+    final pagePadding = boxPagePadding(context);
     return Scaffold(title: context.tr('Appearance'), body: ListView(
-      padding: EdgeInsets.only(top: context.contentTopPadding, bottom: 32 + context.bottomInset),
+      padding: EdgeInsets.only(top: pagePadding.top, bottom: pagePadding.bottom),
       children: [
         const ThemeLivePreview(), const SizedBox(height: 16),
         PreviewChoiceGroup<String>(
@@ -205,7 +209,7 @@ class _FontFamilyPageState extends State<FontFamilyPage> {
     final fonts = (_fonts ?? <String>[]).where((v) => v.toLowerCase().contains(_query.toLowerCase())).toList();
     return Scaffold(title: context.tr('Font family'), isLoading: _fonts == null,
       searchState: AppBarSearchState(onSearch: (v) => setState(() => _query = v)),
-      body: ListView.builder(padding: EdgeInsets.fromLTRB(16, context.contentTopPadding, 16, 24 + context.bottomInset),
+      body: ListView.builder(padding: boxPagePadding(context),
         itemCount: fonts.length + 1, itemBuilder: (context, i) {
           final family = i == 0 ? null : fonts[i - 1];
           return DecorationListItem(title: Text(family ?? context.tr('Default'), style: TextStyle(fontFamily: family)),

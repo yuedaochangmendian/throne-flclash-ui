@@ -321,21 +321,23 @@ class ProxyNodeCard extends StatelessWidget {
           onPressed: () async {
             final box = context.box;
             try {
-              final confirmed = await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: context.tr('Delete node?'),
-                  child: Text(node['tag'].toString()),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, false),
-                      child: Text(context.tr('Cancel')),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.pop(context, true),
-                      child: Text(context.tr('Delete')),
-                    ),
-                  ],
+              final confirmed = await showAppDialog<bool>(
+                context,
+                child: Builder(
+                  builder: (dialogContext) => AlertDialog(
+                    title: dialogContext.tr('Delete node?'),
+                    child: Text(node['tag'].toString()),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.pop(dialogContext, false),
+                        child: Text(dialogContext.tr('Cancel')),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.pop(dialogContext, true),
+                        child: Text(dialogContext.tr('Delete')),
+                      ),
+                    ],
+                  ),
                 ),
               );
               if (confirmed == true) await box.profileNodeDelete(node['id']);

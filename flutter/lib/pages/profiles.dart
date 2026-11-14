@@ -302,13 +302,11 @@ class _AddProfilePageState extends State<AddProfilePage> {
   }
   Future<void> _pickNode() async {
     if (_loading) return;
-    final type = await showDialog<String>(context: context, builder: (context) => SimpleDialog(
-      title: Text(context.tr('New node')),
-      children: [
-        for (final (type, label) in manualProtocols)
-          SimpleDialogOption(onPressed: () => Navigator.pop(context, type), child: Text(label)),
-      ],
-    ));
+    final type = await showOptionSheet<String>(
+      context: context,
+      title: context.tr('New node'),
+      options: [for (final (type, label) in manualProtocols) (type, label)],
+    );
     if (type == null || !mounted) return;
     await _createNode(type);
   }
