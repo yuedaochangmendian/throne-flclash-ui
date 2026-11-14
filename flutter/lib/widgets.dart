@@ -105,6 +105,11 @@ class BoxMenu extends StatelessWidget {
   );
 }
 
+/// The ordinary page's gutters and its clearance above and below the chrome.
+EdgeInsets boxPagePadding(BuildContext context) => EdgeInsets.fromLTRB(
+  16, context.contentTopPadding, 16, 24 + context.bottomInset,
+);
+
 /// The one page shell: title bar, optional validation line, and a scrolling
 /// body. Forms, settings screens and plain lists all use it.
 class BoxPage extends StatelessWidget {
@@ -135,7 +140,7 @@ class BoxPage extends StatelessWidget {
     body: AbsorbPointer(
       absorbing: absorbing,
       child: ListView(
-        padding: EdgeInsets.fromLTRB(16, context.contentTopPadding, 16, 24 + context.bottomInset),
+        padding: boxPagePadding(context),
         children: [
           if (error != null)
             Padding(padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
@@ -148,6 +153,13 @@ class BoxPage extends StatelessWidget {
     ),
   );
 }
+
+/// Opens an app alert on Prism's floating-surface route, preserving its result.
+Future<T?> showAppDialog<T>(
+  BuildContext context, {
+  required Widget child,
+  bool dismissible = true,
+}) => showFloatingDialog<T>(context: context, dismissible: dismissible, child: child);
 
 /// The app's transient message, as prism layers it over the page.
 void showAppBanner(BuildContext context, String text, {BannerLevel level = BannerLevel.info}) =>
@@ -266,29 +278,33 @@ class DetailRows extends StatelessWidget {
   ]);
 }
 
-/// A floating content block above the page surface.
+/// A full-width content panel, one lightness step above its parent surface.
 ///
-/// Prism separates depth with colour steps, not drop shadows, so this is a
-/// card-level surface at the alert corner radius — the same shape the sheets
-/// and dialogs above it use — rather than the hand-rolled shadow stack it used
-/// to be. A press, when present, runs through prism's card so the ripple and
-/// the selection state match every other pressable row.
+/// The alert radius belongs to dialogs, not ordinary cards. [BoxPanel] uses
+/// the full-width `xl` token by default; a medium card can opt into `lg`.
 class BoxPanel extends StatelessWidget {
-  const BoxPanel({super.key, required this.child, this.onTap, this.padding = const EdgeInsets.symmetric(horizontal: 20, vertical: 18), this.clipBehavior = Clip.antiAlias});
+  const BoxPanel({super.key, required this.child, this.onTap, this.padding = const EdgeInsets.symmetric(horizontal: 20, vertical: 18), this.radius = AppCorner.xl, this.clipBehavior = Clip.antiAlias});
   final Widget child;
   final VoidCallback? onTap;
   final EdgeInsetsGeometry padding;
+  final double radius;
   final Clip clipBehavior;
   @override
   Widget build(BuildContext context) {
-    final surface = SurfaceLevel.card.colorOf(context.colorScheme);
-    final shape = AppShape.all(AppCorner.alert);
+    final level = context.raisedSurfaceLevel;
+    final surface = level.colorOf(context.colorScheme);
     final inset = padding is EdgeInsets ? padding as EdgeInsets : const EdgeInsets.symmetric(horizontal: 20, vertical: 18);
+    final content = SurfaceScope(level: level, child: child);
     return onTap == null
-        ? Surface(color: surface, shape: shape, clipBehavior: clipBehavior, child: Padding(padding: padding, child: child))
+        ? Surface(
+            color: surface,
+            shape: AppShape.all(radius),
+            clipBehavior: clipBehavior,
+            child: Padding(padding: padding, child: content),
+          )
         : Card(
             onPressed: onTap,
-            radius: AppCorner.alert,
+            radius: radius,
             padding: inset,
             child: child,
           );
