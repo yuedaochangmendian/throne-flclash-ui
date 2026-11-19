@@ -109,8 +109,12 @@ object DartProfileStore {
     private fun snapshot(): Snapshot? {
         val file = file()
         if (file == null || !file.isFile) return null
-        val stamp = file.lastModified() * 31 + file.length()
         synchronized(cacheLock) {
+            // The stamp belongs inside the lock: computing it before the lock
+            // lets a reader that lost the race cache a snapshot under the
+            // pre-write stamp, so a same-millisecond, equal-length edit would
+            // keep answering the old rows even after invalidate().
+            val stamp = file.lastModified() * 31 + file.length()
             val hit = cached
             if (hit != null && hit.stamp == stamp) return hit
             val parsed = try {

@@ -6,7 +6,10 @@ import io.flutter.plugin.common.BinaryMessenger
 import io.flutter.plugin.common.MethodChannel
 import io.nekohasekai.sagernet.database.ProxyEntity
 import io.nekohasekai.sagernet.database.ProxyGroup
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.suspendCancellableCoroutine
+import java.util.Collections
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -51,6 +54,16 @@ object DartProfileWriter {
     @Volatile
     private var channel: MethodChannel? = null
 
+    /**
+     * Calls waiting for a Dart reply, as `fail(exception)` closures. [detach]
+     * fails them explicitly: the old implementation only dropped the channel,
+     * so a write in flight when the UI engine went away never resumed and its
+     * `runBlocking(Dispatchers.IO)` caller parked a thread forever. A closure
+     * keeps the cancellation type out of the set's signature.
+     */
+    private val pending: MutableSet<(Throwable) -> Unit> =
+        Collections.newSetFromMap(ConcurrentHashMap<(Throwable) -> Unit, Boolean>())
+
     fun attach(messenger: BinaryMessenger) {
         channel = MethodChannel(messenger, "io.flrone/profiles_doc")
         DartProfileStore.invalidate()
@@ -58,6 +71,10 @@ object DartProfileWriter {
 
     fun detach() {
         channel = null
+        val stuck = synchronized(pending) { pending.toList().also { pending.clear() } }
+        for (fail in stuck) {
+            fail(IllegalStateException("profiles_doc engine detached"))
+        }
     }
 
     /** True while a Dart engine is attached to receive writes. */
@@ -216,7 +233,14 @@ object DartProfileWriter {
             rows.add(profileRow(p))
         }
         val originalIds = profiles.map { it.id }
-        val ack = applyDocument(profiles = rows, allocateIds = true)
+        val ack = try {
+            applyDocument(profiles = rows, allocateIds = true)
+        } catch (cancelled: CancellationException) {
+            // Cancelled between the post and the reply: restore the caller's ids
+            // so no negative temporary id escapes into an in-memory entity.
+            profiles.forEachIndexed { i, p -> p.id = originalIds[i] }
+            return profiles
+        }
         if (ack == null) {
             // The engine detached mid-call: restore the caller's ids so no
             // negative temporary id escapes into an in-memory entity.
@@ -244,7 +268,12 @@ object DartProfileWriter {
             rows.add(groupRow(g))
         }
         val originalIds = groups.map { it.id }
-        val ack = applyDocument(groups = rows, allocateIds = true)
+        val ack = try {
+            applyDocument(groups = rows, allocateIds = true)
+        } catch (cancelled: CancellationException) {
+            groups.forEachIndexed { i, g -> g.id = originalIds[i] }
+            return groups
+        }
         if (ack == null) {
             groups.forEachIndexed { i, g -> g.id = originalIds[i] }
             return groups
@@ -382,24 +411,48 @@ object DartProfileWriter {
                 cont.resume(null)
                 return@suspendCancellableCoroutine
             }
+            val fail: (Throwable) -> Unit = { error -> cont.resumeWithException(error) }
+            pending.add(fail)
+            fun settle() {
+                pending.remove(fail)
+            }
+            cont.invokeOnCancellation { settle() }
             dispatchToMain(isMainThread(), postToMain) {
-                if (cont.isActive) {
+                if (!cont.isActive) {
+                    settle()
+                    return@dispatchToMain
+                }
+                // The engine may have been replaced between the channel read and
+                // the main-thread post. Calling the old messenger would throw on
+                // a destroyed engine and the caller would wait forever.
+                if (channel !== ch) {
+                    settle()
+                    cont.resume(null)
+                    return@dispatchToMain
+                }
+                runCatching {
                     ch.invokeMethod(method, args, object : MethodChannel.Result {
                         override fun success(result: Any?) {
+                            settle()
                             @Suppress("UNCHECKED_CAST")
                             cont.resume(result as T?)
                         }
 
                         override fun error(code: String, message: String?, details: Any?) {
+                            settle()
                             cont.resumeWithException(
                                 IllegalStateException("profiles_doc.$method: $code ${message.orEmpty()}")
                             )
                         }
 
                         override fun notImplemented() {
+                            settle()
                             cont.resume(null)
                         }
                     })
+                }.onFailure { failure ->
+                    settle()
+                    cont.resumeWithException(failure)
                 }
             }
         }

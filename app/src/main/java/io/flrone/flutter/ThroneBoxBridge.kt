@@ -605,6 +605,12 @@ class ThroneBoxBridge(
                 // A kernel-side write to the Room profile/group tables cannot fire
                 // GroupRepo's listeners, so the catalog Dart renders would stay stale.
                 "data.refresh" -> {
+                    // A Dart-side document write (the one-time migration, a backup
+                    // restore's replaceAll) does not pass through
+                    // DartProfileWriter.applyDocument, so it would miss that
+                    // path's cache invalidation; drop the Kotlin snapshot here
+                    // or the catalog can answer the pre-write rows.
+                    DartProfileStore.invalidate()
                     BboxBridge.scheduleRefresh(immediate = true)
                     result.success(null)
                 }
