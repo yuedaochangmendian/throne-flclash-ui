@@ -154,6 +154,10 @@ class _ThemeLivePreviewState extends ConsumerState<ThemeLivePreview>
   Widget build(BuildContext context) {
     final box = ref.read(boxControllerProvider);
     final prefs = ref.watch(preferencesProvider);
+    // `systemColor` makes the scheme follow the wallpaper accent, which arrives
+    // as a separate appearance event and never touches the preferences map.
+    // Watching the accent provider keeps the preview live on that event.
+    ref.watch(systemAccentColorProvider);
     // The old `context.box` in didChangeDependencies watched the state aspect,
     // so a tabAnimation preference change replayed the preview. Watching the
     // narrow preferences provider reproduces that on rebuild.

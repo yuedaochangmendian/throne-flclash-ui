@@ -179,6 +179,22 @@ T _readField<T>(Ref ref, T Function(BoxController box) select) {
 
 /// Shared state fields, each read fresh from the controller on notification.
 final dashboardProvider = Provider<Json>((ref) => _readField(ref, (b) => b.dashboard));
+
+/// The dashboard fields the status card and the network-takeover row render.
+///
+/// `dashboard` is replaced on every traffic tick (`box.dart` assigns the whole
+/// map), so watching it directly rebuilt both widgets about once a second for
+/// counters neither one shows. A record compares structurally, so only a real
+/// change to one of these fields notifies.
+typedef DashboardStatus = ({String status, int? startedAt, bool systemProxy});
+final dashboardStatusProvider = Provider<DashboardStatus>((ref) {
+  final dashboard = ref.watch(dashboardProvider);
+  return (
+    status: dashboard['status']?.toString() ?? '',
+    startedAt: (dashboard['startedAt'] as num?)?.toInt(),
+    systemProxy: dashboard['systemProxy'] == true,
+  );
+});
 final profilesProvider = Provider<List<Json>>((ref) => _readField(ref, (b) => b.profiles));
 final groupsProvider = Provider<List<Json>>((ref) => _readField(ref, (b) => b.groups));
 final connectionsProvider = Provider<List<Json>>((ref) => _readField(ref, (b) => b.connections));

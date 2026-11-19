@@ -12,7 +12,7 @@ class SystemProxyPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final colors = context.colorScheme;
-    final enabled = ref.watch(dashboardProvider)['systemProxy'] == true;
+    final enabled = ref.watch(dashboardStatusProvider).systemProxy;
     final title = context.tr('Network takeover');
     void change(bool value) => ref.read(boxControllerProvider).systemProxySet(value);
     return Semantics(

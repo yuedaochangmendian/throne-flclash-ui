@@ -317,13 +317,13 @@ class _StatusPanelState extends ConsumerState<StatusPanel> with WidgetsBindingOb
     // The old `context.box` subscribed to every state aspect. Watch the exact
     // fields this card renders so unrelated state changes don't rebuild it.
     final color = context.colorScheme;
-    final dashboard = ref.watch(dashboardProvider);
+    final dashboard = ref.watch(dashboardStatusProvider);
     final running = ref.watch(runningProvider);
     final transitioning = ref.watch(transitioningProvider);
     final remote = ref.watch(remoteProvider);
     final selectedProfile = ref.watch(selectedProfileProvider);
     final status = transitioning
-        ? dashboard['status'].toString()
+        ? dashboard.status
         : running
         ? 'Running'
         : 'Not running';
@@ -634,10 +634,7 @@ class _StatusPanelState extends ConsumerState<StatusPanel> with WidgetsBindingOb
                               child: _StatusCell(
                                 label: 'Run time',
                                 child: _RuntimeValue(
-                                  startedAt: running
-                                      ? (dashboard['startedAt'] as num?)
-                                            ?.toInt()
-                                      : null,
+                                  startedAt: running ? dashboard.startedAt : null,
                                 ),
                               ),
                             ),
